@@ -1,0 +1,544 @@
+import { useState, useEffect, useRef } from 'react';
+import client from '../../api/client';
+import { 
+  Plus, X, Pencil, UploadCloud, Loader2, Clock, 
+  CheckCircle, Trash2, Database, ChevronDown 
+} from 'lucide-react';
+
+// --- 1. Type Definitions ---
+interface RateProfile { 
+  id: string; 
+  name: string; 
+}
+
+interface Lotto {
+  id: string; 
+  name: string; 
+  code: string; 
+  category: string; 
+  img_url: string | null;
+  rate_profile_id: string; 
+  open_days: string[]; 
+  open_time: string | null;
+  close_time: string | null; 
+  result_time: string | null; 
+  api_link: string | null;
+  is_active: boolean;
+}
+
+const CATEGORIES = [
+  { id: 'THAI', label: '🇹🇭 หวยรัฐบาล' },
+  { id: 'LAOS', label: '🇱🇦 หวยลาว' },
+  { id: 'HANOI', label: '🇻🇳 หวยฮานอย' },
+  { id: 'STOCKS', label: '📈 หวยหุ้น' },
+  { id: 'YIKI', label: '🎱 ยี่กี' },
+  { id: 'OTHERS', label: '🌐 อื่นๆ' }
+];
+
+const DAYS = [
+  { id: 'SUN', label: 'อาทิตย์' }, { id: 'MON', label: 'จันทร์' }, { id: 'TUE', label: 'อังคาร' },
+  { id: 'WED', label: 'พุธ' }, { id: 'THU', label: 'พฤหัส' }, { id: 'FRI', label: 'ศุกร์' }, { id: 'SAT', label: 'เสาร์' },
+];
+
+const INITIAL_FORM_STATE = {
+  name: '', 
+  code: '', 
+  category: 'OTHERS', 
+  img_url: '',
+  rate_profile_id: '', 
+  open_days: [] as string[],
+  open_time: '00:00', 
+  close_time: '15:30', 
+  result_time: '16:00', 
+  api_link: ''
+};
+
+// --- 2. Custom Components (Light/Gold Theme) ---
+
+// ตัวเลือกตัวเลข (Custom Dropdown)
+const CustomNumberSelect = ({ value, options, onChange }: any) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: any) {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [wrapperRef]);
+
+    useEffect(() => {
+        if (isOpen && listRef.current) {
+            const selectedElement = document.getElementById(`option-${value}`);
+            if (selectedElement) {
+                selectedElement.scrollIntoView({ block: 'center' });
+            }
+        }
+    }, [isOpen, value]);
+
+    return (
+        <div className="relative w-full" ref={wrapperRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full flex items-center justify-between bg-white border border-gray-300 text-slate-700 text-lg font-bold font-mono rounded-lg px-3 py-1.5 hover:border-amber-400 transition-all ${isOpen ? 'ring-2 ring-amber-100 border-amber-400' : ''}`}
+            >
+                <span>{value}</span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isOpen && (
+                <div 
+                    ref={listRef}
+                    className="absolute top-full left-0 w-full mt-1 max-h-40 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-xl z-50 custom-scrollbar"
+                >
+                    {options.map((opt: string) => (
+                        <div
+                            id={`option-${opt}`}
+                            key={opt}
+                            onClick={() => {
+                                onChange(opt);
+                                setIsOpen(false);
+                            }}
+                            className={`px-2 py-2 text-center font-mono cursor-pointer transition-colors text-sm ${
+                                opt === value 
+                                ? 'bg-amber-500 text-white font-bold' 
+                                : 'text-slate-600 hover:bg-amber-50 hover:text-amber-700'
+                            }`}
+                        >
+                            {opt}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ตัวเลือกเวลา (HH:mm)
+const TimeSelector = ({ label, value, onChange, iconColorClass }: any) => {
+    const [h, m] = (value || '00:00').split(':');
+    const HOURS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+    const MINUTES = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
+
+    const handleH = (newH: string) => onChange(`${newH}:${m || '00'}`);
+    const handleM = (newM: string) => onChange(`${h || '00'}:${newM}`);
+
+    return (
+        <div className="p-3 rounded-xl border border-gray-200 bg-gray-50/50 flex flex-col items-center justify-center">
+            <label className={`text-xs font-bold mb-2 flex items-center gap-1.5 ${iconColorClass}`}>
+                <Clock size={14} /> {label}
+            </label>
+            
+            <div className="flex items-center gap-2 w-full">
+                <CustomNumberSelect value={h} options={HOURS} onChange={handleH} />
+                <span className="text-gray-300 font-bold text-lg">:</span>
+                <CustomNumberSelect value={m} options={MINUTES} onChange={handleM} />
+            </div>
+        </div>
+    );
+};
+
+// --- 3. Main Component ---
+export default function ManageLottoTemplates() {
+  const [lottos, setLottos] = useState<Lotto[]>([]);
+  const [rateProfiles, setRateProfiles] = useState<RateProfile[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // States
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load Data
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      const [resLottos, resRates] = await Promise.all([
+        client.get('/play/lottos/templates'), 
+        client.get('/play/rates')
+      ]);
+      setLottos(resLottos.data);
+      setRateProfiles(resRates.data);
+    } catch (err) { 
+        console.error("Fetch Error:", err); 
+    } finally { 
+        setIsLoading(false); 
+    }
+  };
+
+  const formatTimeForInput = (timeStr: string | null | undefined) => {
+    if (!timeStr) return '00:00';
+    return timeStr.substring(0, 5);
+  };
+
+  // Handlers
+  const openCreateModal = () => {
+    setEditingId(null);
+    setFormData(INITIAL_FORM_STATE);
+    setShowModal(true);
+  };
+
+  const openEditModal = (lotto: Lotto) => {
+    setEditingId(lotto.id);
+    setFormData({
+      name: lotto.name,
+      code: lotto.code,
+      category: lotto.category || 'OTHERS',
+      img_url: lotto.img_url || '',
+      rate_profile_id: lotto.rate_profile_id || '',
+      open_days: lotto.open_days || [],
+      open_time: formatTimeForInput(lotto.open_time),
+      close_time: formatTimeForInput(lotto.close_time || '15:30:00'),
+      result_time: formatTimeForInput(lotto.result_time || '16:00:00'),
+      api_link: lotto.api_link || ''
+    });
+    setShowModal(true);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    const data = new FormData();
+    data.append('file', file);
+    try {
+      const res = await client.post('/upload/', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      let fullUrl = res.data.url;
+      if (fullUrl && fullUrl.startsWith('/static')) fullUrl = `http://127.0.0.1:8000${fullUrl}`;
+      setFormData(prev => ({ ...prev, img_url: fullUrl }));
+    } catch (err) { 
+        alert('อัปโหลดรูปไม่สำเร็จ'); 
+    } finally { 
+        setIsUploading(false); 
+    }
+  };
+
+  const handleSaveLotto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const payload = { 
+          ...formData, 
+          is_template: true // ระบุว่าเป็นแม่แบบ
+      };
+
+      if (editingId) {
+        await client.put(`/play/lottos/${editingId}`, payload);
+        alert('แก้ไขแม่แบบสำเร็จ!');
+      } else {
+        await client.post('/play/lottos', payload);
+        alert('สร้างแม่แบบสำเร็จ!');
+      }
+      setShowModal(false);
+      fetchData();
+    } catch (err: any) {
+      alert(`Error: ${err.response?.data?.detail || 'เกิดข้อผิดพลาด'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+      if(!confirm("ยืนยันลบแม่แบบนี้? (ร้านค้าที่ดึงไปแล้วจะไม่ได้รับผลกระทบ)")) return;
+      try {
+          await client.delete(`/play/lottos/${id}`);
+          fetchData();
+      } catch(err) { alert("ลบไม่สำเร็จ"); }
+  }
+
+  const toggleDay = (dayId: string) => {
+    setFormData(prev => {
+      const currentDays = prev.open_days || [];
+      const newDays = currentDays.includes(dayId) ? currentDays.filter(d => d !== dayId) : [...currentDays, dayId];
+      return { ...prev, open_days: newDays };
+    });
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto animate-fade-in pb-12">
+      
+      {/* --- Header Section (White + Gold Theme) --- */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+        <div>
+          <h2 className="text-3xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
+            <div className="p-2 bg-linear-to-br from-yellow-400 to-amber-500 rounded-lg shadow-lg shadow-amber-200">
+                <Database className="text-white" size={24} /> 
+            </div>
+            หวยแม่แบบ <span className="text-slate-400 text-lg font-normal">(Templates)</span>
+          </h2>
+          <p className="text-slate-500 text-sm mt-2 ml-1">จัดการข้อมูลหวยมาตรฐานสำหรับให้ร้านค้าดึงไปใช้งาน (System Global)</p>
+        </div>
+        <button 
+            onClick={openCreateModal} 
+            className="group relative bg-white border border-amber-200 text-amber-600 px-6 py-3 rounded-xl font-bold flex gap-2 items-center shadow-sm hover:shadow-md hover:border-amber-400 transition-all duration-300 overflow-hidden"
+        >
+            <div className="absolute inset-0 w-full h-full bg-amber-50 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <span className="relative flex items-center gap-2">
+                <Plus size={20} className="text-amber-500" /> สร้างแม่แบบใหม่
+            </span>
+        </button>
+      </div>
+
+      {/* --- White Clean Table Card --- */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+        {isLoading ? (
+          <div className="p-20 text-center text-slate-400 flex flex-col items-center">
+             <Loader2 className="animate-spin mb-4 text-amber-500" size={40} /> 
+             <span className="animate-pulse">กำลังโหลดข้อมูลระบบ...</span>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+             <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-gray-50 text-slate-600 font-bold uppercase text-xs border-b border-gray-200">
+                <tr>
+                    <th className="p-5 w-24 text-center">รูปปก</th>
+                    <th className="p-5">ชื่อหวย / รหัส</th>
+                    <th className="p-5 text-center">หมวดหมู่</th>
+                    <th className="p-5 text-center">เวลาปิดรับ (Default)</th>
+                    <th className="p-5 text-center">จัดการ</th>
+                </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-slate-700">
+                {lottos.map(lotto => (
+                    <tr key={lotto.id} className="hover:bg-yellow-50/50 transition-colors group">
+                    <td className="p-4 text-center">
+                        <div className="w-12 h-12 rounded-xl bg-gray-100 border border-gray-200 p-0.5 mx-auto overflow-hidden shadow-sm group-hover:scale-110 transition-transform">
+                            {lotto.img_url ? (
+                                <img src={lotto.img_url} className="w-full h-full object-cover rounded-lg" />
+                            ) : (
+                                <div className="w-full h-full bg-gray-50 flex items-center justify-center text-xs text-gray-400 font-bold">NO IMG</div>
+                            )}
+                        </div>
+                    </td>
+                    <td className="p-4">
+                        <div className="font-bold text-base text-slate-800">{lotto.name}</div>
+                        <div className="text-xs font-mono text-amber-600 mt-1 bg-amber-50 px-2 py-0.5 rounded-md inline-block border border-amber-100">{lotto.code}</div>
+                    </td>
+                    <td className="p-4 text-center">
+                        <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold border border-gray-200">
+                           {CATEGORIES.find(c => c.id === lotto.category)?.label || lotto.category}
+                        </span>
+                    </td>
+                    <td className="p-4 text-center">
+                        <span className="font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
+                            {formatTimeForInput(lotto.close_time)}
+                        </span>
+                    </td>
+                    <td className="p-4 text-center">
+                        <div className="flex justify-center gap-2">
+                            <button 
+                                onClick={() => openEditModal(lotto)} 
+                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="แก้ไข"
+                            >
+                                <Pencil size={18} />
+                            </button>
+                            <button 
+                                onClick={() => handleDelete(lotto.id)} 
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="ลบ"
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                        </div>
+                    </td>
+                    </tr>
+                ))}
+                {lottos.length === 0 && (
+                    <tr>
+                        <td colSpan={5} className="p-12 text-center text-slate-400">
+                            <Database size={48} className="mx-auto mb-3 opacity-20 text-gray-300" />
+                            ยังไม่มีข้อมูลแม่แบบในระบบ
+                        </td>
+                    </tr>
+                )}
+                </tbody>
+             </table>
+          </div>
+        )}
+      </div>
+
+      {/* --- Modal (Clean White Form) --- */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] text-slate-800 animate-in zoom-in-95 duration-200">
+                {/* Modal Header */}
+                <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
+                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                        {editingId ? <Pencil size={20} className="text-blue-500"/> : <Plus size={20} className="text-amber-500"/>} 
+                        {editingId ? 'แก้ไขแม่แบบ' : 'สร้างแม่แบบใหม่'}
+                    </h3>
+                    <button onClick={() => setShowModal(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                        <X className="text-gray-400 hover:text-red-500" />
+                    </button>
+                </div>
+                
+                {/* Modal Body */}
+                <div className="overflow-y-auto p-6 flex-1 custom-scrollbar">
+                    <form id="lotto-form" onSubmit={handleSaveLotto} className="space-y-6">
+                         
+                         {/* Top Section: Image & Basic Info */}
+                         <div className="flex flex-col md:flex-row gap-6">
+                            {/* Image Upload */}
+                            <div className="w-full md:w-1/3 flex flex-col gap-2">
+                                <label className="text-sm font-bold text-gray-600">รูปภาพปก</label>
+                                <div 
+                                    onClick={() => !isUploading && fileInputRef.current?.click()} 
+                                    className="aspect-square rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-all relative overflow-hidden group"
+                                >
+                                    {isUploading ? (
+                                        <Loader2 className="animate-spin text-amber-500" size={32} />
+                                    ) : formData.img_url ? (
+                                        <>
+                                            <img src={formData.img_url} className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-50" />
+                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Pencil className="text-white drop-shadow-md" size={32} />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-center p-4">
+                                            <UploadCloud className="text-gray-400 mx-auto mb-2 group-hover:text-amber-500" size={32} />
+                                            <span className="text-xs text-gray-500 group-hover:text-amber-600">คลิกเพื่ออัปโหลด</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+                            </div>
+                            
+                            {/* Text Inputs */}
+                            <div className="flex-1 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-bold mb-1 text-gray-700">ชื่อหวย <span className="text-red-500">*</span></label>
+                                    <input 
+                                        className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none transition-all placeholder-gray-400" 
+                                        placeholder="เช่น หวยรัฐบาลไทย"
+                                        value={formData.name || ''} 
+                                        onChange={e => setFormData({...formData, name: e.target.value})} 
+                                        required 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold mb-1 text-gray-700">รหัส (Code) <span className="text-red-500">*</span></label>
+                                    <input 
+                                        className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 font-mono focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none uppercase placeholder-gray-400" 
+                                        placeholder="EX: THAI"
+                                        value={formData.code || ''} 
+                                        onChange={e => setFormData({...formData, code: e.target.value})} 
+                                        required 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold mb-1 text-gray-700">หมวดหมู่</label>
+                                    <select 
+                                        className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none"
+                                        value={formData.category}
+                                        onChange={e => setFormData({...formData, category: e.target.value})}
+                                    >
+                                        {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold mb-1 text-amber-600">เรทราคาเริ่มต้น</label>
+                                    <select 
+                                        className="w-full bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-amber-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none font-bold"
+                                        value={formData.rate_profile_id || ''} 
+                                        onChange={e => setFormData({...formData, rate_profile_id: e.target.value})}
+                                    >
+                                        <option value="">-- เลือกเรทราคา --</option>
+                                        {rateProfiles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                         </div>
+
+                         <div className="h-px bg-gray-100 my-4" />
+
+                         {/* Time Settings */}
+                         <div className="space-y-4">
+                            <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                                <Clock size={18} className="text-amber-500" /> ตั้งค่าเวลา (ค่าเริ่มต้น)
+                            </h4>
+                            <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-200 space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold mb-2 text-gray-500 uppercase tracking-wider">วันเปิดรับ</label>
+                                    <div className="flex gap-2 flex-wrap">
+                                        {DAYS.map(d => (
+                                            <button 
+                                                type="button" 
+                                                key={d.id} 
+                                                onClick={() => toggleDay(d.id)}
+                                                className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
+                                                    formData.open_days.includes(d.id) 
+                                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md scale-105' 
+                                                    : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400 hover:text-gray-600'
+                                                }`}
+                                            >
+                                                {d.label[0]}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <TimeSelector 
+                                        label="เวลาเปิด" 
+                                        value={formData.open_time} 
+                                        onChange={(v:string)=>setFormData({...formData, open_time: v})} 
+                                        iconColorClass="text-emerald-600" 
+                                    />
+                                    <TimeSelector 
+                                        label="เวลาปิด" 
+                                        value={formData.close_time} 
+                                        onChange={(v:string)=>setFormData({...formData, close_time: v})} 
+                                        iconColorClass="text-rose-600" 
+                                    />
+                                    <TimeSelector 
+                                        label="ผลออก" 
+                                        value={formData.result_time} 
+                                        onChange={(v:string)=>setFormData({...formData, result_time: v})} 
+                                        iconColorClass="text-blue-600" 
+                                    />
+                                </div>
+                            </div>
+                         </div>
+
+                    </form>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-5 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex justify-end gap-3">
+                    <button 
+                        onClick={() => setShowModal(false)} 
+                        className="px-4 py-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition-colors font-bold"
+                    >
+                        ยกเลิก
+                    </button>
+                    <button 
+                        type="submit" 
+                        form="lotto-form" 
+                        disabled={isSubmitting}
+                        className="px-6 py-2 bg-linear-to-r from-yellow-400 to-amber-500 text-white rounded-lg font-bold shadow-lg shadow-amber-200 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />} 
+                        บันทึกข้อมูล
+                    </button>
+                </div>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+}
