@@ -10,7 +10,7 @@ const client = axios.create({
   },
 });
 
-// Interceptor สำหรับใส่ Token
+// Request Interceptor: แนบ Token
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -18,5 +18,18 @@ client.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Response Interceptor: ดักจับ 401 Token หมดอายุ
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // ถ้า Token ใช้ไม่ได้ ให้ลบออกแล้ว Refresh หน้าเพื่อเข้า Login ใหม่
+      localStorage.removeItem('token');
+      // window.location.href = '/login'; // หรือจะปล่อยให้ AuthContext จัดการก็ได้
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default client;

@@ -1,15 +1,11 @@
+// src/pages/Login.tsx
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import client from '../api/client';
+import { loginApi } from '../api/auth'; // ✅ ดึง API แยกมาใช้
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { 
-  Loader2, 
-  User, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  ShieldCheck 
+  Loader2, User, Lock, Eye, EyeOff, ShieldCheck 
 } from 'lucide-react';
 
 export default function Login() {
@@ -29,42 +25,45 @@ export default function Login() {
     const toastId = toast.loading('กำลังตรวจสอบ...', { position: 'bottom-center' });
 
     try {
+      // 1. เตรียมข้อมูล
       const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
 
-      const res = await client.post('/auth/login', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      });
+      // 2. ยิง API Login (ใช้จาก auth.ts)
+      const data = await loginApi(formData);
 
-      login(res.data.access_token);
+      // 3. เรียก Context login และ **รอ** ให้มันดึง User เสร็จ
+      await login(data.access_token);
+
+      // 4. แจ้งเตือนและเปลี่ยนหน้า (ข้อมูล User พร้อมแล้วแน่นอน)
       toast.dismiss(toastId);
       toast.success('เข้าสู่ระบบสำเร็จ', { position: 'bottom-center' });
-      setTimeout(() => navigate('/'), 500);
+      navigate('/'); // ไปได้เลย ไม่ต้องรอ timeout แล้ว เพราะข้อมูลพร้อมแล้ว
       
     } catch (err: any) {
       console.error("Login Error:", err);
       toast.dismiss(toastId);
-      toast.error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', { position: 'bottom-center' });
+      
+      // แสดง Error message จาก Backend ถ้ามี
+      const msg = err.response?.data?.detail || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+      toast.error(msg, { position: 'bottom-center' });
+    } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
+    // ... (ส่วน UI เหมือนเดิมเป๊ะ ไม่ต้องแก้) ...
     <div className="min-h-screen bg-[#0f172a] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans">
-      
-      {/* Header Logo (อยู่นอกกล่อง เพื่อลดความอึดอัด) */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-6">
         <h1 className="text-3xl font-black text-white tracking-tight">SHOP SYSTEMS</h1>
         <p className="mt-2 text-sm text-slate-400">ระบบจัดการร้านค้าออนไลน์</p>
       </div>
 
-      {/* Main Card (Compact) */}
       <div className="sm:mx-auto sm:w-full sm:max-w-sm">
         <div className="bg-white py-8 px-6 shadow-xl rounded-2xl sm:px-8 border border-slate-200">
-            
             <form onSubmit={handleSubmit} className="space-y-5">
-              
               {/* Username */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1 ml-1 uppercase">ชื่อผู้ใช้</label>
@@ -108,7 +107,6 @@ export default function Login() {
                 </div>
               </div>
               
-              {/* Button */}
               <button 
                 type="submit" 
                 disabled={isSubmitting}
@@ -122,14 +120,12 @@ export default function Login() {
               </button>
             </form>
 
-            {/* Footer Text */}
             <div className="mt-6 flex justify-center">
                 <div className="flex items-center gap-1.5 text-[10px] text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
                     <ShieldCheck size={12} className="text-green-500" />
                     <span>TEAMZENT CONTEXT</span>
                 </div>
             </div>
-
         </div>
       </div>
     </div>
