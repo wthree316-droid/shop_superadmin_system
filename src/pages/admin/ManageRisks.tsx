@@ -124,7 +124,10 @@ export default function ManageRisks() {
                     <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center overflow-hidden">
                             {lotto.img_url ? (
-                                <img src={lotto.img_url} loading="lazy" className="w-full h-full object-cover" />
+                                <img src={lotto.img_url} 
+                                    loading="lazy" 
+                                    decoding="async"
+                                    alt={lotto.name}  className="w-full h-full object-cover" />
                             ) : (
                                 <span className="text-xs font-bold text-blue-600">{lotto.code.substring(0,3)}</span>
                             )}
