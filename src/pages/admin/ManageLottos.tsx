@@ -293,7 +293,7 @@ export default function ManageLottos() {
                   <tr key={lotto.id} className="hover:bg-blue-50/30 transition-colors group">
                     <td className="p-4 text-center">
                       <div className="w-10 h-10 mx-auto rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center">
-                        {lotto.img_url ? <img src={lotto.img_url} className="w-full h-full object-cover" /> : <span className="text-[10px] font-bold text-slate-300">NO</span>}
+                        {lotto.img_url ? <img src={lotto.img_url} loading="lazy" className="w-full h-full object-cover" /> : <span className="text-[10px] font-bold text-slate-300">NO</span>}
                       </div>
                     </td>
                     <td className="p-4">
@@ -333,7 +333,7 @@ export default function ManageLottos() {
               <div key={lotto.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative overflow-hidden">
                   <div className="flex items-start gap-4 mb-3">
                       <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
-                          {lotto.img_url ? <img src={lotto.img_url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-300">NO IMG</div>}
+                          {lotto.img_url ? <img src={lotto.img_url} loading="lazy" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-300">NO IMG</div>}
                       </div>
                       <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start">

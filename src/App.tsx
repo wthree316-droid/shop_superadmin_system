@@ -27,6 +27,9 @@ import MemberLayout from './layouts/MemberLayout';
 import LottoMarket from './pages/member/LottoMarket';
 import BettingRoom from './pages/member/BettingRoom';
 import MemberResults from './pages/member/MemberResults';
+import Topup from './pages/member/Topup';
+import Profile from './pages/member/Profile';
+
 
 import { Toaster } from 'react-hot-toast';
 
@@ -107,6 +110,8 @@ function App() {
               <Route path="play/:id" element={<BettingRoom />} /> {/* หน้าแทง: ใส่เลข */}
               <Route path="history" element={<History />} />
               <Route path="results" element={<MemberResults />} />
+              <Route path="Topup" element={<Topup />} />
+              <Route path="profile" element={<Profile />} />
             </Route>
           </Route>
 

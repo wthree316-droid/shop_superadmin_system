@@ -4,11 +4,11 @@ import client from '../../api/client';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   Trash2, Loader2, 
-  Camera, Save,
-  Settings2
+  Save, // ลบ Camera ออกตามแจ้งเตือน
+  Settings2, ArrowLeft
 } from 'lucide-react';
 import { type CartItem } from '../../types/lotto';
-import { generateNumbers } from '../../types/lottoLogic'; // ใช้แค่ generateNumbers พื้นฐาน
+import { generateNumbers } from '../../types/lottoLogic';
 import toast from 'react-hot-toast';
 
 // --- Types & Helpers ---
@@ -16,7 +16,7 @@ type GroupedCartItem = {
   id: string; 
   numbers: string[];
   types: string[]; 
-  prices: number[]; // เปลี่ยนเป็น array เพื่อ map 1:1 กับ types
+  prices: number[];
   totalAmount: number;
   label: string; 
   priceLabel: string;
@@ -27,6 +27,24 @@ const reverseNumber = (num: string) => {
     return num;
 };
 
+// Helper ดึงค่าเรท
+const getRateVal = (rateObj: any, field: 'pay' | 'min' | 'max') => {
+    if (!rateObj) return field === 'min' ? 1 : (field === 'max' ? '-' : 0);
+    
+    // กรณีเป็น Object
+    if (typeof rateObj === 'object') {
+        const val = rateObj[field];
+        if (field === 'pay') return val || 0;
+        if (field === 'min') return val || 1;
+        if (field === 'max') return val || '-';
+        return val;
+    }
+    // กรณีเป็นตัวเลข (Legacy)
+    if (field === 'pay') return Number(rateObj);
+    if (field === 'min') return 1;
+    return '-';
+};
+
 export default function BettingRoom() {
   const { id } = useParams(); 
   const navigate = useNavigate();
@@ -34,7 +52,7 @@ export default function BettingRoom() {
   // Data State
   const [lotto, setLotto] = useState<any>(null);
   const [risks, setRisks] = useState<any[]>([]);
-  const [rateProfile, setRateProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   
   // UI State
   const [tab, setTab] = useState<'2' | '3' | '19' | 'run' | 'win'>('2');
@@ -50,26 +68,28 @@ export default function BettingRoom() {
   // Cart & Note
   const [cart, setCart] = useState<CartItem[]>([]);
   const [note, setNote] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- 1. Fetch Data ---
   useEffect(() => {
     if(!id) return;
     const fetchData = async () => {
+        setLoading(true);
         try {
-            const resLotto = await client.get('/play/lottos');
-            const found = resLotto.data.find((l:any) => l.id === id);
-            if(found) {
-                setLotto(found);
-                if(found.rate_profile_id) {
-                    const resRates = await client.get('/play/rates');
-                    const foundRate = resRates.data.find((r:any) => r.id === found.rate_profile_id);
-                    setRateProfile(foundRate);
-                }
-            } else { navigate('/play'); }
-            const resRisks = await client.get(`/play/risks/${id}`);
+            const [resLotto, resRisks] = await Promise.all([
+                client.get(`/play/lottos/${id}`), 
+                client.get(`/play/risks/${id}`)
+            ]);
+            
+            setLotto(resLotto.data);
             setRisks(resRisks.data);
-        } catch (err) { console.error("Load data error", err); }
+        } catch (err) { 
+            console.error("Load data error", err);
+            toast.error("ไม่พบข้อมูลหวย");
+            navigate('/play');
+        } finally {
+            setLoading(false);
+        }
     };
     fetchData();
   }, [id, navigate]);
@@ -85,11 +105,11 @@ export default function BettingRoom() {
 
   // --- Functions ---
   const getInputConfig = () => {
-      // ปรับ max ของวินให้เยอะเข้าไว้ เพราะเราจะไม่ Auto-add แล้ว
-      if (tab === 'win') return { max: 10, min: (winMode === '2' ? 2 : 3) };
+      if (tab === 'win') return { max: 8, min: (winMode === '2' ? 2 : 3) };
       if (tab === '3') return { max: 3, min: 3 };
       if (tab === '2') return { max: 2, min: 2 };
       if (tab === '19') return { max: 1, min: 1 };
+      if (tab === 'run') return { max: 1, min: 1 };
       return { max: 1, min: 1 }; 
   };
 
@@ -98,30 +118,30 @@ export default function BettingRoom() {
       if (!numToAdd) return;
 
       const config = getInputConfig();
-      // เช็คความยาวขั้นต่ำ (ยกเว้นวินที่อาจจะยืดหยุ่นกว่า แต่ต้องไม่ต่ำกว่า min)
       if (numToAdd.length < config.min) {
            return toast.error(`กรุณาระบุตัวเลขอย่างน้อย ${config.min} ตัว`);
       }
 
       let numbersToAdd: string[] = [numToAdd];
       
-      // Logic แตกตัวเลข
       if (tab === '19') {
-          // 19 ประตู (รูดหน้า+หลัง)
           numbersToAdd = generateNumbers(numToAdd, '19gate');
       } else if (tab === 'win') {
-          // วินเลข (Win)
           const mode = winMode === '2' ? 'win2' : 'win3';
           numbersToAdd = generateNumbers(numToAdd, mode);
           if(numbersToAdd.length === 0) return toast.error("จับวินไม่ได้ (เลขซ้ำหรือจำนวนไม่พอ)");
       }
 
       const newNumbers = numbersToAdd.filter(n => !bufferNumbers.includes(n));
+      if(newNumbers.length === 0 && numbersToAdd.length > 0) {
+           setCurrentInput('');
+           return;
+      }
+      
       setBufferNumbers(prev => [...prev, ...newNumbers]);
       setCurrentInput('');
   };
 
-  // Auto Add: ทำงานเฉพาะที่ไม่ใช่โหมด 'win'
   useEffect(() => {
       const config = getInputConfig();
       if (tab !== 'win' && currentInput.length === config.max) {
@@ -129,46 +149,31 @@ export default function BettingRoom() {
       }
   }, [currentInput, tab]);
 
-  // --- 1. เพิ่มฟังก์ชัน Quick Option (เบิ้ลหน้า/หลัง/หาม/19ประตู) ---
   const handleQuickOption = (type: string) => {
       let list: string[] = [];
       
-      // 2 ตัว
       if (tab === '2' || tab === '19') {
-          if (type === 'double') { // เบิ้ล 00-99
+          if (type === 'double') { 
              for(let i=0; i<10; i++) list.push(`${i}${i}`);
           }
-          if (type === 'sibling' && tab === '2') { // พี่น้อง 01, 12...
+          if (type === 'sibling' && tab === '2') { 
              const siblings = ['01','12','23','34','45','56','67','78','89','90','09','98','87','76','65','54','43','32','21','10'];
              list = [...siblings];
           }
       }
 
-      // 3 ตัว
       if (tab === '3') {
-          if (type === 'triple') { // ตอง 000-999
+          if (type === 'triple') { 
               for(let i=0; i<10; i++) list.push(`${i}${i}${i}`);
           }
-          if (type === 'double_front') { // เบิ้ลหน้า (AAB) เช่น 110, 225
-              for(let i=0; i<10; i++) {
-                  for(let j=0; j<10; j++) {
-                     if (i !== j) list.push(`${i}${i}${j}`);
-                  }
-              }
+          if (type === 'double_front') {
+              for(let i=0; i<10; i++) for(let j=0; j<10; j++) if (i !== j) list.push(`${i}${i}${j}`);
           }
-          if (type === 'double_back') { // เบิ้ลหลัง (ABB) เช่น 011, 522
-              for(let i=0; i<10; i++) {
-                  for(let j=0; j<10; j++) {
-                     if (i !== j) list.push(`${i}${j}${j}`);
-                  }
-              }
+          if (type === 'double_back') {
+              for(let i=0; i<10; i++) for(let j=0; j<10; j++) if (i !== j) list.push(`${i}${j}${j}`);
           }
-          if (type === 'sandwich') { // หาม (ABA) เช่น 101, 525
-              for(let i=0; i<10; i++) {
-                  for(let j=0; j<10; j++) {
-                     if (i !== j) list.push(`${i}${j}${i}`);
-                  }
-              }
+          if (type === 'sandwich') {
+              for(let i=0; i<10; i++) for(let j=0; j<10; j++) if (i !== j) list.push(`${i}${j}${i}`);
           }
       }
 
@@ -179,58 +184,118 @@ export default function BettingRoom() {
       }
   };
 
+  // --- Add to Cart Logic ---
   const handleAddBill = () => {
-      // ถ้ามีเลขค้างใน Input (เช่นพิมพ์วินค้างไว้) ให้เอาไปรวมด้วย
-      if (currentInput && tab === 'win') {
+      if (currentInput && currentInput.length >= getInputConfig().min) {
           handleAddNumberToBuffer();
-          // รอ useEffect หรือ state update รอบหน้า? ไม่ได้เพราะ state เป็น async
-          // ในที่นี้ต้องระวังนิดนึง แต่วิธีที่ง่ายคือ user ต้องกด + ที่ input ก่อน
-          // หรือ ถ้า user กดเพิ่มบิลเลย ให้เตือนถ้า buffer ว่าง
       }
 
-      if (bufferNumbers.length === 0) return toast.error("กรุณาระบุตัวเลข");
+      let finalNumbers = [...bufferNumbers];
+      if (currentInput && currentInput.length >= getInputConfig().min && tab === 'win') {
+           const mode = winMode === '2' ? 'win2' : 'win3';
+           const generated = generateNumbers(currentInput, mode);
+           finalNumbers = [...finalNumbers, ...generated];
+           setCurrentInput('');
+      } 
+      
+      if (finalNumbers.length === 0) return toast.error("กรุณาระบุตัวเลข");
       if (!priceTop && !priceBottom) return toast.error("กรุณาระบุราคาอย่างน้อย 1 ช่อง");
 
       const pTop = Number(priceTop) || 0;
       const pBottom = Number(priceBottom) || 0;
       const newItems: CartItem[] = [];
 
-      bufferNumbers.forEach(num => {
-          const isRisk = risks.find(r => r.number === num && r.risk_type === 'CLOSE');
-          if (isRisk) return;
+      // [FIX] เตรียม Rate สำหรับ lookup
+      const currentRates = lotto?.rates || {};
 
-          const numsToProcess = isReverse && tab === '2' 
+      finalNumbers.forEach(num => {
+          const isClosed = risks.find(r => r.number === num && r.risk_type === 'CLOSE');
+          if (isClosed) return;
+
+          const numsToProcess = (isReverse && tab === '2') 
             ? Array.from(new Set([num, reverseNumber(num)])) 
             : [num];
 
           numsToProcess.forEach(n => {
-             // Logic การจับคู่ Tab -> BetType
              if (tab === '2' || tab === '19' || (tab === 'win' && winMode === '2')) {
-                 if (pTop > 0) newItems.push({ temp_id: uuidv4(), number: n, bet_type: '2up', amount: pTop, display_text: n });
-                 if (pBottom > 0) newItems.push({ temp_id: uuidv4(), number: n, bet_type: '2down', amount: pBottom, display_text: n });
+                 if (pTop > 0) newItems.push({ 
+                    temp_id: uuidv4(), 
+                    number: n, 
+                    bet_type: '2up', 
+                    amount: pTop, 
+                    display_text: n,
+                    // [FIX 1] ใส่ rate_pay
+                    rate_pay: Number(getRateVal(currentRates['2up'], 'pay'))
+                 });
+                 if (pBottom > 0) newItems.push({ 
+                    temp_id: uuidv4(), 
+                    number: n, 
+                    bet_type: '2down', 
+                    amount: pBottom, 
+                    display_text: n,
+                    // [FIX 1] ใส่ rate_pay
+                    rate_pay: Number(getRateVal(currentRates['2down'], 'pay'))
+                 });
              } else if (tab === '3' || (tab === 'win' && winMode === '3')) {
-                 if (pTop > 0) newItems.push({ temp_id: uuidv4(), number: n, bet_type: '3top', amount: pTop, display_text: n });
-                 if (pBottom > 0) newItems.push({ temp_id: uuidv4(), number: n, bet_type: '3tod', amount: pBottom, display_text: n });
+                 if (pTop > 0) newItems.push({ 
+                    temp_id: uuidv4(), 
+                    number: n, 
+                    bet_type: '3top', 
+                    amount: pTop, 
+                    display_text: n,
+                    // [FIX 1] ใส่ rate_pay
+                    rate_pay: Number(getRateVal(currentRates['3top'], 'pay'))
+                 });
+                 if (pBottom > 0) newItems.push({ 
+                    temp_id: uuidv4(), 
+                    number: n, 
+                    bet_type: '3tod', 
+                    amount: pBottom, 
+                    display_text: n,
+                    // [FIX 1] ใส่ rate_pay
+                    rate_pay: Number(getRateVal(currentRates['3tod'], 'pay'))
+                 });
              } else if (tab === 'run') {
-                 if (pTop > 0) newItems.push({ temp_id: uuidv4(), number: n, bet_type: 'run_up', amount: pTop, display_text: n });
-                 if (pBottom > 0) newItems.push({ temp_id: uuidv4(), number: n, bet_type: 'run_down', amount: pBottom, display_text: n });
+                 if (pTop > 0) newItems.push({ 
+                    temp_id: uuidv4(), 
+                    number: n, 
+                    bet_type: 'run_up', 
+                    amount: pTop, 
+                    display_text: n,
+                    // [FIX 1] ใส่ rate_pay
+                    rate_pay: Number(getRateVal(currentRates['run_up'], 'pay'))
+                 });
+                 if (pBottom > 0) newItems.push({ 
+                    temp_id: uuidv4(), 
+                    number: n, 
+                    bet_type: 'run_down', 
+                    amount: pBottom, 
+                    display_text: n,
+                    // [FIX 1] ใส่ rate_pay
+                    rate_pay: Number(getRateVal(currentRates['run_down'], 'pay'))
+                 });
              }
           });
       });
+
+      if(newItems.length === 0) {
+          return toast.error("ไม่มีรายการที่เพิ่มได้ (อาจเป็นเลขปิดรับทั้งหมด)");
+      }
 
       setCart(prev => [...newItems, ...prev]); 
       setBufferNumbers([]);
       setPriceTop('');
       setPriceBottom('');
       setIsReverse(false);
-      toast.success('เพิ่มรายการเรียบร้อย');
+      if (currentInput && tab === 'win') setCurrentInput('');
+
+      toast.success(`เพิ่ม ${newItems.length} รายการ`);
   };
 
-  // --- Grouping Logic for Cart Display (ฉบับแก้ไข: รวมยอดเงินก่อนจัดกลุ่ม) ---
+  // --- Grouping Logic ---
   const getGroupedCartItems = (): GroupedCartItem[] => {
       const groupedByNum = new Map<string, {type: string, amount: number}[]>();
       
-      // 1. จัดของใส่ตะกร้าแยกตามเลขก่อน
       cart.forEach(item => {
           if (!groupedByNum.has(item.number)) groupedByNum.set(item.number, []);
           groupedByNum.get(item.number)?.push({ type: item.bet_type, amount: item.amount });
@@ -239,8 +304,6 @@ export default function BettingRoom() {
       const finalGroups = new Map<string, GroupedCartItem>();
 
       groupedByNum.forEach((bets, num) => {
-          // 2. [NEW] รวมยอดเงินของประเภทเดียวกัน (Merge Duplicate Types)
-          // เช่น มี 2up:10 และ 2up:5 -> รวมเป็น 2up:15
           const mergedBetsMap = new Map<string, number>();
           bets.forEach(b => {
               mergedBetsMap.set(b.type, (mergedBetsMap.get(b.type) || 0) + b.amount);
@@ -250,15 +313,11 @@ export default function BettingRoom() {
           mergedBetsMap.forEach((amt, type) => {
               mergedBets.push({ type, amount: amt });
           });
-
-          // 3. Sort เพื่อให้ลำดับตรงกัน (เช่น บนมาก่อนล่างเสมอ)
           mergedBets.sort((a, b) => a.type.localeCompare(b.type));
           
-          // 4. สร้าง Signature จากยอดที่รวมแล้ว
           const sig = mergedBets.map(b => `${b.type}-${b.amount}`).join('|');
           
           if (!finalGroups.has(sig)) {
-              // แปลง Type เป็น Label ภาษาไทย
               const typesArr: string[] = [];
               const pricesArr: number[] = [];
               let labelGroup = "หวย";
@@ -268,26 +327,28 @@ export default function BettingRoom() {
                  pricesArr.push(b.amount);
               });
 
-              // หา Label หลัก
               if (typesArr.some(t => t.includes('2') || t.includes('19'))) labelGroup = "2 ตัว";
               else if (typesArr.some(t => t.includes('3'))) labelGroup = "3 ตัว";
               else if (typesArr.some(t => t.includes('run'))) labelGroup = "เลขวิ่ง";
 
-              // สร้าง Price Label
               const typeLabels = typesArr.map(t => {
-                  if(t.includes('up') || t.includes('top')) return t.includes('3') ? '3บน' : (t.includes('run')?'วิ่งบน':'บน');
-                  if(t.includes('down') || t.includes('tod')) return t.includes('tod') ? '3โต๊ด' : (t.includes('run')?'วิ่งล่าง':'ล่าง');
+                  if(t === '2up') return 'บน';
+                  if(t === '2down') return 'ล่าง';
+                  if(t === '3top') return '3บน';
+                  if(t === '3tod') return '3โต๊ด';
+                  if(t === 'run_up') return 'วิ่งบน';
+                  if(t === 'run_down') return 'วิ่งล่าง';
                   return t;
               });
               
-              const priceLabelStr = `${typeLabels.join(' x ')}\n${pricesArr.join(' x ')}`;
+              const priceLabelStr = `${typeLabels.join(' + ')}\n${pricesArr.join(' + ')}`;
               const totalPerNum = pricesArr.reduce((a,b)=>a+b, 0);
 
               finalGroups.set(sig, {
                   id: sig,
                   numbers: [num],
                   types: typesArr,
-                  prices: pricesArr, // ตรงนี้คือราคาต่อหน่วยที่รวมแล้ว
+                  prices: pricesArr,
                   totalAmount: totalPerNum, 
                   label: labelGroup,
                   priceLabel: priceLabelStr
@@ -297,7 +358,6 @@ export default function BettingRoom() {
           }
       });
 
-      // คืนค่าพร้อมคำนวณยอดรวมทั้งหมด (ราคาต่อชุด x จำนวนเลข)
       return Array.from(finalGroups.values()).map(g => ({
           ...g,
           totalAmount: g.totalAmount * g.numbers.length
@@ -305,22 +365,17 @@ export default function BettingRoom() {
   };
 
   const deleteGroup = (group: GroupedCartItem) => {
-      // ลบรายการทั้งหมดที่ เลข และ ประเภท ตรงกับกลุ่มนี้ (ไม่เช็คราคาเป๊ะๆ เพราะราคามันถูกรวมไปแล้ว)
       setCart(prev => prev.filter(item => {
           const isNumInGroup = group.numbers.includes(item.number);
           const isTypeInGroup = group.types.includes(item.bet_type);
-          
-          // ถ้าเลขอยู่ในกลุ่ม และประเภทการแทงอยู่ในกลุ่ม -> ลบทิ้ง (return false)
-          if (isNumInGroup && isTypeInGroup) {
-              return false;
-          }
-          return true; // เก็บไว้
+          if (isNumInGroup && isTypeInGroup) return false;
+          return true;
       }));
   };
 
   const submitTicket = async () => {
     if (cart.length === 0) return;
-    setIsLoading(true);
+    setIsSubmitting(true);
     const toastId = toast.loading('กำลังส่งโพย...');
     try {
         const payload = {
@@ -343,7 +398,7 @@ export default function BettingRoom() {
         toast.dismiss(toastId);
         toast.error(err.response?.data?.detail || 'ส่งโพยไม่สำเร็จ');
     } finally {
-        setIsLoading(false);
+        setIsSubmitting(false);
     }
   };
 
@@ -351,24 +406,11 @@ export default function BettingRoom() {
   const groupedItems = getGroupedCartItems();
   const labels = tab === '3' ? { top: '3 ตัวบน', bottom: '3 ตัวโต๊ด' } : (tab === 'run' ? { top: 'วิ่งบน', bottom: 'วิ่งล่าง' } : { top: 'บน', bottom: 'ล่าง' });
 
-  if(!lotto) return <div className="p-10 text-center"><Loader2 className="animate-spin mx-auto"/></div>;
+  if(loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-500 w-10 h-10"/></div>;
+  if(!lotto) return null;
 
-  const getRateVal = (rateObj: any, field: string) => {
-    if (!rateObj) return '-';
-    // กรณีข้อมูลเป็น Object แบบใหม่
-    if (typeof rateObj === 'object') {
-        const val = rateObj[field];
-        // ถ้า field เป็น pay แล้วไม่มีค่า ให้คืน 0, ถ้า min คืน 1
-        if (field === 'pay') return val || 0;
-        if (field === 'min') return val || 1;
-        if (field === 'max') return val || '-'; // ถ้าไม่ตั้ง max คือไม่อั้นไม้
-        return val;
-    }
-    // กรณีข้อมูลเก่า (เก็บแค่ราคาจ่ายเป็นตัวเลขเพียวๆ)
-    if (field === 'pay') return rateObj;
-    if (field === 'min') return 1;
-    return '-';
-  };
+  // [FIX 2] ลบ fallback ของ rateProfile ออก เพราะใช้ lotto.rates โดยตรงแล้ว
+  const activeRates = lotto.rates || {};
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden font-sans">
@@ -379,31 +421,26 @@ export default function BettingRoom() {
           <div className="flex-1 overflow-y-auto pb-20 bg-white"> 
              <div className="p-4 max-w-4xl mx-auto space-y-4">
                 
+                {/* Header Navigation */}
+                <button onClick={() => navigate('/play')} className="flex items-center gap-1 text-gray-500 hover:text-gray-800 text-sm mb-2">
+                    <ArrowLeft size={16} /> กลับไปหน้าตลาด
+                </button>
+
                 {/* Header Info Card */}
                 <div className="bg-[#E0F7FA] border border-[#B2DFDB] rounded-lg p-3 flex justify-between items-center shadow-sm">
                     <div>
                         <h2 className="font-bold text-gray-800 text-lg">{lotto.name}</h2>
-                        <div className="text-xs text-gray-600 mt-1">อัตราจ่าย <span className="font-bold">100 อัตราจ่ายเริ่มต้น</span></div>
+                        <div className="text-xs text-gray-600 mt-1">ปิดรับ <span className="font-bold text-red-500">{lotto.close_time?.substring(0,5)} น.</span></div>
                     </div>
                     <div className="text-right">
-                        <div className="font-bold text-gray-800">03-01-2026</div>
-                        {lotto.img_url && <img src={lotto.img_url} alt="flag" className="w-8 h-5 object-cover mt-1 ml-auto shadow-sm" />}
+                        <div className="font-bold text-gray-800">งวดวันที่</div>
+                        <div className="text-sm font-bold text-blue-600">{new Date().toLocaleDateString('th-TH')}</div>
                     </div>
                 </div>
 
                 {/* Main Betting Card */}
-                <div className="bg-[#E0F7FA] border border-[#B2DFDB] rounded-lg p-4 shadow-sm relative">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <h3 className="font-bold text-gray-800 text-lg">แทงเร็ว</h3>
-                            <div className="text-sm font-bold text-gray-700 mt-1">{lotto.name}</div>
-                        </div>
-                        <div className="text-right">
-                             <div className="font-bold text-gray-800">03-01-2026</div>
-                             {lotto.img_url && <img src={lotto.img_url} alt="flag" className="w-10 h-6 object-cover mt-1 ml-auto shadow-sm" />}
-                        </div>
-                    </div>
-
+                <div className="bg-[#F8FAFC] border border-gray-200 rounded-lg p-4 shadow-sm relative">
+                    
                     {/* Tabs */}
                     <div className="flex flex-wrap gap-2 mb-4">
                         {[
@@ -427,15 +464,13 @@ export default function BettingRoom() {
                         ))}
                     </div>
 
-                    {/* ✅ เพิ่มส่วนนี้เข้าไปครับ: ปุ่มเลือกโหมดวิน (แสดงเฉพาะตอนเลือกวิน) */}
+                    {/* Mode Selector for Win */}
                     {tab === 'win' && (
                         <div className="flex gap-1 mb-4 bg-white p-1 rounded-md border border-green-200 w-fit">
                             <button
                                 onClick={() => setWinMode('2')}
                                 className={`px-4 py-1 rounded text-xs font-bold transition-all ${
-                                    winMode === '2' 
-                                    ? 'bg-[#2ECC71] text-white shadow-sm' 
-                                    : 'text-gray-500 hover:bg-gray-100'
+                                    winMode === '2' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'
                                 }`}
                             >
                                 วิน 2 ตัว
@@ -443,9 +478,7 @@ export default function BettingRoom() {
                             <button
                                 onClick={() => setWinMode('3')}
                                 className={`px-4 py-1 rounded text-xs font-bold transition-all ${
-                                    winMode === '3' 
-                                    ? 'bg-[#2ECC71] text-white shadow-sm' 
-                                    : 'text-gray-500 hover:bg-gray-100'
+                                    winMode === '3' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'
                                 }`}
                             >
                                 วิน 3 ตัว
@@ -453,19 +486,20 @@ export default function BettingRoom() {
                         </div>
                     )}
 
-                    {/* ปุ่มยกเลิก */}
+                    {/* ปุ่มยกเลิก Buffer */}
                     <div className="flex justify-end mb-2">
                         <button 
                             onClick={() => setBufferNumbers([])}
-                            className="bg-[#EF5350] hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-xs flex items-center gap-1 shadow-sm transition-colors"
+                            disabled={bufferNumbers.length === 0}
+                            className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition-colors disabled:opacity-50"
                         >
-                            <Trash2 size={14} /> ยกเลิก
+                            <Trash2 size={14} /> ล้างเลขที่เลือก
                         </button>
                     </div>
 
                     {/* Buffer Area */}
                     {bufferNumbers.length > 0 && (
-                        <div className="bg-white rounded-lg p-3 mb-3 border border-gray-200 min-h-15 max-h-37.5 overflow-y-auto">
+                        <div className="bg-white rounded-lg p-3 mb-3 border border-gray-200 min-h-12 max-h-32 overflow-y-auto">
                             <div className="flex flex-wrap gap-2">
                                 {bufferNumbers.map((n, idx) => (
                                     <span key={idx} className="bg-[#2ECC71] text-white px-2 py-1 rounded text-sm font-bold shadow-sm">
@@ -476,7 +510,7 @@ export default function BettingRoom() {
                         </div>
                     )}
 
-                    {/* Quick Options (เพิ่มครบตามสั่ง) */}
+                    {/* Quick Options */}
                     <div className="flex flex-wrap gap-2 mb-4">
                          {tab === '2' && (
                             <>
@@ -492,7 +526,6 @@ export default function BettingRoom() {
                                 <button onClick={() => handleQuickOption('double_back')} className="bg-[#00897B] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ เบิ้ลหลัง</button>
                             </>
                          )}
-                         {/* เพิ่มปุ่มเบิ้ลของ 19 ประตู */}
                          {tab === '19' && (
                             <button onClick={() => handleQuickOption('double')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#27AE60]">+ รูดเบิ้ล</button>
                          )}
@@ -506,7 +539,7 @@ export default function BettingRoom() {
                                 type="tel" 
                                 value={currentInput}
                                 onChange={e => setCurrentInput(e.target.value.replace(/[^0-9]/g, ''))}
-                                placeholder={tab === 'win' ? "ใส่เลขวิน (กด +)" : "ใส่เลข"}
+                                placeholder={tab === 'win' ? "ใส่เลขวิน (กด + เพื่อรวม)" : "ใส่เลข"}
                                 className="w-full bg-[#E0F2F1] border-b-2 border-blue-400 text-center text-xl font-bold py-1 focus:outline-none focus:border-blue-600 text-gray-700 placeholder-blue-300"
                                 maxLength={getInputConfig().max}
                                 autoFocus
@@ -555,13 +588,13 @@ export default function BettingRoom() {
 
                 </div>
 
-                {/* Cart List (Grouping Style Fixed) */}
+                {/* Cart List */}
                 {groupedItems.length > 0 && (
-                    <div className="mt-6 space-y-4">
+                    <div className="mt-6 space-y-4 animate-fade-in">
                         <div className="flex flex-col gap-3">
                             {groupedItems.map((group) => (
                                 <div key={group.id} className="bg-gray-50 rounded-md border border-gray-200 overflow-hidden flex shadow-sm">
-                                    {/* Left: Info Label */}
+                                    {/* Left: Info */}
                                     <div className="w-28 md:w-36 bg-white border-r border-gray-200 p-3 flex flex-col justify-center items-center text-center shrink-0">
                                         <div className="font-bold text-gray-800 text-sm mb-1">{group.label}</div>
                                         <div className="text-xs font-bold text-blue-600 whitespace-pre-line leading-relaxed">
@@ -572,8 +605,15 @@ export default function BettingRoom() {
                                     {/* Middle: Numbers */}
                                     <div className="flex-1 p-3 flex flex-wrap content-center gap-2 bg-white">
                                         {group.numbers.map((num, idx) => (
-                                            <span key={idx} className="font-mono text-gray-800 text-sm font-bold bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                                            <span key={idx} className="font-mono text-gray-800 text-sm font-bold bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 relative">
                                                 {num}
+                                                {/* Badge จ่ายครึ่ง */}
+                                                {risks.some(r => r.number === num && r.risk_type === 'HALF') && (
+                                                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                                    </span>
+                                                )}
                                             </span>
                                         ))}
                                     </div>
@@ -601,6 +641,7 @@ export default function BettingRoom() {
                             type="text" 
                             value={note}
                             onChange={e => setNote(e.target.value)}
+                            placeholder="บันทึกช่วยจำ (ถ้ามี)"
                             className="flex-1 border-b border-gray-300 focus:border-blue-500 outline-none px-2 py-1 bg-transparent text-sm"
                         />
                      </div>
@@ -609,20 +650,17 @@ export default function BettingRoom() {
                         <h2 className="text-3xl font-bold text-gray-800 mb-6">รวม: {totalAmount.toLocaleString()} บาท</h2>
                         
                         <div className="flex justify-center gap-3">
-                            <button className="bg-[#2ECC71] hover:bg-[#27AE60] text-white px-5 py-2 rounded-md font-bold flex items-center gap-2 shadow-sm transition-colors">
-                                <Camera size={20} /> Screenshot
-                            </button>
                             <button 
                                 onClick={submitTicket}
-                                disabled={isLoading || cart.length === 0}
-                                className={`px-8 py-2 rounded-md font-bold text-white shadow-sm flex items-center gap-2 transition-all ${
-                                    isLoading || cart.length === 0 
+                                disabled={isSubmitting || cart.length === 0}
+                                className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg flex items-center gap-2 transition-all w-full md:w-auto justify-center ${
+                                    isSubmitting || cart.length === 0 
                                     ? 'bg-gray-400 cursor-not-allowed' 
-                                    : 'bg-[#2962FF] hover:bg-blue-700'
+                                    : 'bg-[#2962FF] hover:bg-blue-700 hover:scale-105 active:scale-95'
                                 }`}
                             >
-                                {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-                                บันทึก
+                                {isSubmitting ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />}
+                                บันทึกโพย
                             </button>
                         </div>
                      </div>
@@ -638,18 +676,12 @@ export default function BettingRoom() {
                <div className="p-4 bg-[#0f172a] border-b border-gray-700 flex justify-between items-center">
                    <div>
                        <h3 className="font-bold text-lg text-blue-400">อัตราจ่าย</h3>
-                       <div className="text-xs text-gray-400 mt-1">{lotto.name}</div>
-                   </div>
-                   {/* แสดงสถานะปิดรับ */}
-                   <div className="text-right">
-                        <div className="text-[10px] text-gray-500">ปิดรับ</div>
-                        <div className="font-mono text-red-400 font-bold">{lotto.close_time?.substring(0,5) || '-'}</div>
                    </div>
                </div>
                
                <div className="p-3 space-y-6">
                    
-                   {/* 1. ตารางเรทราคา (Pay, Min, Max) */}
+                   {/* 1. ตารางเรทราคา */}
                    <div className="bg-[#1e293b] rounded-lg overflow-hidden border border-gray-700">
                        <table className="w-full text-xs text-center">
                            <thead className="bg-[#334155] text-white font-bold">
@@ -662,17 +694,17 @@ export default function BettingRoom() {
                            </thead>
                            <tbody className="divide-y divide-gray-700">
                                {[
-                                   { key: 'run_up', label: 'วิ่งบน' },
-                                   { key: 'run_down', label: 'วิ่งล่าง' },
-                                   { key: '2up', label: '2 ตัวบน' },
-                                   { key: '2down', label: '2 ตัวล่าง' },
                                    { key: '3top', label: '3 ตัวบน' },
                                    { key: '3tod', label: '3 ตัวโต๊ด' },
+                                   { key: '2up', label: '2 ตัวบน' },
+                                   { key: '2down', label: '2 ตัวล่าง' },
+                                   { key: 'run_up', label: 'วิ่งบน' },
+                                   { key: 'run_down', label: 'วิ่งล่าง' },
                                ].map((t) => {
-                                   const rate = rateProfile?.rates?.[t.key];
+                                   const rate = activeRates[t.key];
                                    const pay = getRateVal(rate, 'pay');
                                    const min = getRateVal(rate, 'min');
-                                   const max = getRateVal(rate, 'max'); // ขั้นสูงต่อไม้
+                                   const max = getRateVal(rate, 'max');
 
                                    return (
                                        <tr key={t.key} className="hover:bg-gray-800 transition-colors">
@@ -701,7 +733,7 @@ export default function BettingRoom() {
                                </div>
                            ) : (
                                <div className="space-y-3">
-                                   {/* เลขปิดรับ (แทงไม่ได้) */}
+                                   {/* เลขปิดรับ */}
                                    {risks.filter(r => r.risk_type === 'CLOSE').length > 0 && (
                                        <div>
                                            <div className="text-[10px] font-bold text-red-500 mb-1">⛔ ปิดรับ (ห้ามแทง)</div>
@@ -715,7 +747,7 @@ export default function BettingRoom() {
                                        </div>
                                    )}
 
-                                   {/* เลขอั้น (จ่ายครึ่ง/จ่ายลด) */}
+                                   {/* เลขอั้น */}
                                    {risks.filter(r => r.risk_type !== 'CLOSE').length > 0 && (
                                        <div>
                                            <div className="text-[10px] font-bold text-orange-400 mb-1">⚠️ จ่ายครึ่ง / อั้น</div>

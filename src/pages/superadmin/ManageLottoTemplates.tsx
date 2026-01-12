@@ -318,7 +318,7 @@ export default function ManageLottoTemplates() {
                     <td className="p-4 text-center">
                         <div className="w-12 h-12 rounded-xl bg-gray-100 border border-gray-200 p-0.5 mx-auto overflow-hidden shadow-sm group-hover:scale-110 transition-transform">
                             {lotto.img_url ? (
-                                <img src={lotto.img_url} className="w-full h-full object-cover rounded-lg" />
+                                <img src={lotto.img_url} loading="lazy" className="w-full h-full object-cover rounded-lg" />
                             ) : (
                                 <div className="w-full h-full bg-gray-50 flex items-center justify-center text-xs text-gray-400 font-bold">NO IMG</div>
                             )}

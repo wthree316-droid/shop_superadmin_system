@@ -1,7 +1,7 @@
 // src/pages/Login.tsx
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { loginApi } from '../api/auth'; // ✅ ดึง API แยกมาใช้
+import { loginApi, fetchMeApi } from '../api/auth'; // ✅ ดึง API แยกมาใช้
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { 
@@ -30,24 +30,41 @@ export default function Login() {
       formData.append('username', username);
       formData.append('password', password);
 
-      // 2. ยิง API Login (ใช้จาก auth.ts)
+      // 2. ยิง API Login เพื่อขอ Token
       const data = await loginApi(formData);
+      
+      // [สำคัญ] เก็บ Token ลง LocalStorage ก่อน เพื่อให้ fetchMeApi มี Token แนบไป
+      localStorage.setItem('token', data.access_token);
 
-      // 3. เรียก Context login และ **รอ** ให้มันดึง User เสร็จ
+      // 3. [จุดที่ชัวร์ที่สุด] ยิงขอข้อมูล User ทันทีเพื่อเช็ค Role
+      // เราไม่รอ useAuth().user เพราะมันเป็น Asynchronous state (อาจจะมาไม่ทัน)
+      const userData = await fetchMeApi(); 
+      
+      // 4. สั่ง Context ให้ Update State (เพื่อให้ส่วนอื่นของแอปรู้ว่า Login แล้ว)
+      // (Context จะ fetchMe อีกรอบก็ไม่เป็นไร หรือจะปรับ Context ให้รับ User ไปเลยก็ได้)
       await login(data.access_token);
 
-      // 4. แจ้งเตือนและเปลี่ยนหน้า (ข้อมูล User พร้อมแล้วแน่นอน)
-      toast.dismiss(toastId);
-      toast.success('เข้าสู่ระบบสำเร็จ', { position: 'bottom-center' });
-      navigate('/'); // ไปได้เลย ไม่ต้องรอ timeout แล้ว เพราะข้อมูลพร้อมแล้ว
-      
+      toast.success(`ยินดีต้อนรับ ${userData.username}`, { id: toastId });
+
+      // 5. Redirect ตาม Role ที่ได้จาก API สดๆ
+      switch (userData.role) {
+        case 'superadmin':
+          navigate('/super/shops');
+          break;
+        case 'admin':
+          navigate('/admin/dashboard');
+          break;
+        case 'member':
+          navigate('/play');
+          break;
+        default:
+          navigate('/unauthorized');
+      }
+
     } catch (err: any) {
-      console.error("Login Error:", err);
-      toast.dismiss(toastId);
-      
-      // แสดง Error message จาก Backend ถ้ามี
-      const msg = err.response?.data?.detail || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
-      toast.error(msg, { position: 'bottom-center' });
+      console.error(err);
+      toast.error('เข้าสู่ระบบไม่สำเร็จ: ' + (err.response?.data?.detail || 'รหัสผ่านผิด'), { id: toastId });
+      localStorage.removeItem('token'); // ลบ Token ทิ้งถ้า Login ไม่ผ่าน
     } finally {
       setIsSubmitting(false);
     }

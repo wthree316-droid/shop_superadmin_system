@@ -77,7 +77,7 @@ export default function LottoMarket() {
             {/* 1. Background Image Layer */}
             <div className="absolute inset-0 z-0">
                 {lotto.img_url ? (
-                    <img src={lotto.img_url} alt={lotto.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                    <img src={lotto.img_url} alt={lotto.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                 ) : (
                     <div className="w-full h-full bg-linear-to-br from-slate-700 to-slate-900 flex items-center justify-center">
                         <span className="text-white/50 font-bold text-xl">No Image</span>

@@ -6,25 +6,29 @@ export default function SuperDashboard() {
   const [stats, setStats] = useState({
     total_shops: 0,
     total_users: 0,
-    active_shops: 0
+    active_shops: 0,
+    total_tickets: 0
   });
 
   useEffect(() => {
-    // ในอนาคตควรทำ API /stats/system สำหรับ superadmin โดยเฉพาะ
-    // ตอนนี้ Mock หรือดึงจาก list shop ไปพลางๆ
+
     fetchStats();
   }, []);
 
   const fetchStats = async () => {
-    try {
-        const resShops = await client.get('/shops/');
-        // const resUsers = await client.get('/users/all'); // ต้องทำ API นี้เพิ่มถ้าอยากได้
-        setStats({
-            total_shops: resShops.data.length,
-            active_shops: resShops.data.filter((s:any) => s.is_active).length,
-            total_users: 0 // รอ API
-        });
-    } catch(err) { console.error(err); }
+  try {
+      // [แก้ไข] เปลี่ยนจากเรียก /shops มาเรียก /system/stats ทีเดียวจบ
+      const res = await client.get('/system/stats'); 
+      
+      setStats({
+          total_shops: res.data.total_shops,
+          active_shops: res.data.active_shops,
+          total_users: res.data.total_users, // ได้ค่าจริงแล้ว
+          total_tickets: res.data.total_tickets
+      });
+  } catch(err) { 
+      console.error(err); 
+  }
   };
 
   // ฟังก์ชันล้างระบบ

@@ -1,22 +1,28 @@
 import { useEffect, useState } from 'react';
 import client from '../../api/client';
 import { 
-  User, Search, Plus, Wallet, CreditCard, SearchX, 
-  CheckCircle, XCircle 
+  User, Search, Plus, Wallet, SearchX, 
+  CheckCircle, XCircle, KeyRound, Save, Loader2 
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function ManageMembers() {
   const [members, setMembers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // State สำหรับ Modal
+  // Modals State
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null); // สำหรับเติมเงิน/แก้ไข
+  const [selectedUser, setSelectedUser] = useState<any>(null); // ใช้ร่วมกันทั้ง เติมเงิน และ รีเซ็ต
   
-  // Form States
+  // Forms State
   const [newMember, setNewMember] = useState({ username: '', password: '', full_name: '' });
   const [creditForm, setCreditForm] = useState({ amount: '', note: '' });
+  const [resetForm, setResetForm] = useState({ username: '', password: '' }); // [ใหม่] Form รีเซ็ต
+
+  // Mode Control (CREDIT หรือ RESET)
+  const [modalMode, setModalMode] = useState<'CREDIT' | 'RESET' | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     fetchMembers();
@@ -38,12 +44,12 @@ export default function ManageMembers() {
     e.preventDefault();
     try {
       await client.post('/users/members', newMember);
-      alert('สร้างสมาชิกสำเร็จ!');
+      toast.success('สร้างสมาชิกสำเร็จ');
       setShowCreateModal(false);
       setNewMember({ username: '', password: '', full_name: '' });
       fetchMembers();
     } catch (err: any) {
-      alert(`สร้างไม่สำเร็จ: ${err.response?.data?.detail}`);
+      toast.error(err.response?.data?.detail || 'สร้างไม่สำเร็จ');
     }
   };
 
@@ -51,21 +57,63 @@ export default function ManageMembers() {
     e.preventDefault();
     if (!selectedUser || !creditForm.amount) return;
     
+    setIsSubmitting(true);
     try {
       await client.post(`/users/members/${selectedUser.id}/credit`, {
         amount: Number(creditForm.amount),
         note: creditForm.note
       });
-      alert('ปรับยอดเครดิตเรียบร้อย');
+      toast.success('ปรับยอดเครดิตเรียบร้อย');
+      setModalMode(null);
       setSelectedUser(null);
       setCreditForm({ amount: '', note: '' });
       fetchMembers();
     } catch (err: any) {
-      alert(`เกิดข้อผิดพลาด: ${err.response?.data?.detail}`);
+      toast.error(err.response?.data?.detail || 'เกิดข้อผิดพลาด');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Filter Logic
+  // [ใหม่] ฟังก์ชันรีเซ็ต Username/Password
+  const handleResetCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // ต้องกรอกอย่างน้อย 1 อย่าง
+    if (!resetForm.username && !resetForm.password) return toast.error('กรุณาระบุข้อมูลที่จะแก้ไข');
+    
+    if (!confirm(`ยืนยันการแก้ไขข้อมูลของ ${selectedUser.username}?`)) return;
+
+    setIsSubmitting(true);
+    try {
+        // ใช้ API update_member_by_admin ที่มีอยู่แล้วใน users.py
+        await client.put(`/users/members/${selectedUser.id}`, resetForm);
+        
+        toast.success('แก้ไขข้อมูลเข้าสู่ระบบสำเร็จ');
+        setModalMode(null);
+        setSelectedUser(null);
+        setResetForm({ username: '', password: '' });
+        fetchMembers(); // รีโหลดข้อมูลใหม่
+    } catch(err: any) {
+        toast.error(err.response?.data?.detail || 'แก้ไขไม่สำเร็จ');
+    } finally {
+        setIsSubmitting(false);
+    }
+  };
+
+  // เปิด Modal รีเซ็ต
+  const openResetModal = (user: any) => {
+      setSelectedUser(user);
+      setResetForm({ username: user.username, password: '' }); // ดึง username เดิมมาแสดง
+      setModalMode('RESET');
+  };
+
+  // เปิด Modal เติมเงิน
+  const openCreditModal = (user: any) => {
+      setSelectedUser(user);
+      setCreditForm({ amount: '', note: '' });
+      setModalMode('CREDIT');
+  }
+
   const filteredMembers = members.filter(m => 
     m.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (m.full_name && m.full_name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -87,7 +135,6 @@ export default function ManageMembers() {
         </div>
         
         <div className="flex flex-col sm:flex-row w-full md:w-auto gap-2">
-            {/* Search Bar */}
             <div className="relative flex-1 md:w-64">
                 <Search className="absolute left-3 top-3 text-slate-400" size={18} />
                 <input 
@@ -99,7 +146,6 @@ export default function ManageMembers() {
                 />
             </div>
             
-            {/* Add Button */}
             <button 
                 onClick={() => setShowCreateModal(true)}
                 className="bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold shadow-lg hover:bg-black flex items-center justify-center gap-2 transition-transform active:scale-95"
@@ -109,7 +155,7 @@ export default function ManageMembers() {
         </div>
       </div>
 
-      {/* --- Desktop Table View (Hidden on Mobile) --- */}
+      {/* --- Desktop Table View --- */}
       <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left border-collapse">
             <thead>
@@ -123,7 +169,7 @@ export default function ManageMembers() {
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
                 {isLoading ? (
-                    <tr><td colSpan={5} className="p-12 text-center text-slate-400">กำลังโหลดข้อมูล...</td></tr>
+                    <tr><td colSpan={5} className="p-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto"/></td></tr>
                 ) : filteredMembers.length === 0 ? (
                     <tr>
                         <td colSpan={5} className="p-12 text-center text-slate-400 flex flex-col items-center justify-center">
@@ -137,7 +183,7 @@ export default function ManageMembers() {
                             <td className="p-4 text-center text-slate-400 font-mono">{index + 1}</td>
                             <td className="p-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-lg border border-slate-200 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-lg border border-slate-200">
                                         {m.username.charAt(0).toUpperCase()}
                                     </div>
                                     <div>
@@ -165,13 +211,25 @@ export default function ManageMembers() {
                                 </div>
                             </td>
                             <td className="p-4 text-center">
-                                <button 
-                                    onClick={() => setSelectedUser(m)}
-                                    className="text-slate-400 hover:text-blue-600 bg-white border border-slate-200 hover:border-blue-300 p-2 rounded-lg transition-all shadow-sm active:scale-95"
-                                    title="จัดการเครดิต"
-                                >
-                                    <Wallet size={18} />
-                                </button>
+                                <div className="flex justify-center gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {/* ปุ่มเติมเงิน */}
+                                    <button 
+                                        onClick={() => openCreditModal(m)}
+                                        className="text-slate-400 hover:text-blue-600 bg-white border border-slate-200 hover:border-blue-300 p-2 rounded-lg transition-all shadow-sm active:scale-95"
+                                        title="จัดการเครดิต"
+                                    >
+                                        <Wallet size={18} />
+                                    </button>
+                                    
+                                    {/* [ใหม่] ปุ่มรีเซ็ต */}
+                                    <button 
+                                        onClick={() => openResetModal(m)}
+                                        className="text-slate-400 hover:text-amber-600 bg-white border border-slate-200 hover:border-amber-300 p-2 rounded-lg transition-all shadow-sm active:scale-95"
+                                        title="รีเซ็ต User/Pass"
+                                    >
+                                        <KeyRound size={18} />
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     ))
@@ -180,15 +238,9 @@ export default function ManageMembers() {
         </table>
       </div>
 
-      {/* --- Mobile Card View (Show on Mobile) --- */}
+      {/* --- Mobile Card View --- */}
       <div className="md:hidden space-y-4">
-          {isLoading && <div className="text-center py-10 text-slate-400">กำลังโหลด...</div>}
-          {!isLoading && filteredMembers.length === 0 && (
-              <div className="text-center py-12 text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">
-                  <SearchX size={32} className="mx-auto mb-2 opacity-30" />
-                  ไม่พบข้อมูล
-              </div>
-          )}
+          {isLoading && <div className="text-center py-10 text-slate-400"><Loader2 className="animate-spin mx-auto"/></div>}
           
           {filteredMembers.map((m) => (
               <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative overflow-hidden">
@@ -215,12 +267,20 @@ export default function ManageMembers() {
                       </div>
                   </div>
 
-                  <button 
-                      onClick={() => setSelectedUser(m)}
-                      className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2"
-                  >
-                      <Wallet size={18} /> จัดการเครดิต
-                  </button>
+                  <div className="flex gap-2">
+                      <button 
+                          onClick={() => openCreditModal(m)}
+                          className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm shadow-md hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                      >
+                          <Wallet size={18} /> เติมเครดิต
+                      </button>
+                      <button 
+                          onClick={() => openResetModal(m)}
+                          className="px-4 py-2.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl font-bold text-sm hover:bg-amber-100 active:scale-95 transition-all flex items-center justify-center"
+                      >
+                          <KeyRound size={18} />
+                      </button>
+                  </div>
               </div>
           ))}
       </div>
@@ -275,7 +335,7 @@ export default function ManageMembers() {
       )}
 
       {/* --- Modal เติมเครดิต --- */}
-      {selectedUser && (
+      {modalMode === 'CREDIT' && selectedUser && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
                 <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -283,7 +343,7 @@ export default function ManageMembers() {
                         <h3 className="font-bold text-lg text-slate-800">จัดการเครดิต</h3>
                         <p className="text-xs text-slate-500 font-medium">Member: <span className="text-blue-600">{selectedUser.username}</span></p>
                     </div>
-                    <button onClick={() => setSelectedUser(null)} className="bg-white p-1 rounded-full text-slate-400 hover:text-red-500 border border-slate-200 transition-colors">
+                    <button onClick={() => setModalMode(null)} className="bg-white p-1 rounded-full text-slate-400 hover:text-red-500 border border-slate-200 transition-colors">
                         <Plus className="rotate-45" size={20} />
                     </button>
                 </div>
@@ -305,7 +365,7 @@ export default function ManageMembers() {
                                 onChange={e => setCreditForm({...creditForm, amount: e.target.value})}
                             />
                             <div className="absolute left-4 top-4 text-slate-400 pointer-events-none">
-                                <CreditCard size={24} />
+                                <Wallet size={24} />
                             </div>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-1.5 ml-1 flex items-center gap-1">
@@ -325,8 +385,62 @@ export default function ManageMembers() {
                         />
                     </div>
 
-                    <button type="submit" className="w-full bg-green-600 text-white py-3.5 rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-200 transition-all flex justify-center gap-2 items-center active:scale-95">
-                        <Wallet size={20} /> ยืนยันทำรายการ
+                    <button type="submit" disabled={isSubmitting} className="w-full bg-green-600 text-white py-3.5 rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-200 transition-all flex justify-center gap-2 items-center active:scale-95 disabled:opacity-70">
+                        {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={20} />} ยืนยันทำรายการ
+                    </button>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {/* --- [ใหม่] Modal Reset Credentials --- */}
+      {modalMode === 'RESET' && selectedUser && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+                <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <div>
+                        <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                            <KeyRound size={20} className="text-amber-500"/> แก้ไขข้อมูลเข้าสู่ระบบ
+                        </h3>
+                        <p className="text-xs text-slate-500 font-medium">Member: <span className="text-amber-600">{selectedUser.username}</span></p>
+                    </div>
+                    <button onClick={() => setModalMode(null)} className="bg-white p-1 rounded-full text-slate-400 hover:text-red-500 border border-slate-200 transition-colors">
+                        <Plus className="rotate-45" size={20} />
+                    </button>
+                </div>
+                
+                <form onSubmit={handleResetCredentials} className="p-6 space-y-5">
+                    <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 text-xs text-amber-800 flex items-start gap-2">
+                        <span className="text-xl">💡</span>
+                        <div>
+                            กรอกเฉพาะช่องที่ต้องการเปลี่ยน หากไม่ต้องการเปลี่ยนให้เว้นว่างไว้
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Username (ไอดีใหม่)</label>
+                        <input 
+                            type="text"
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 outline-none transition-all font-bold text-slate-800"
+                            placeholder="เว้นว่างถ้าไม่เปลี่ยน"
+                            value={resetForm.username}
+                            onChange={e => setResetForm({...resetForm, username: e.target.value})}
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Password (รหัสผ่านใหม่)</label>
+                        <input 
+                            type="text" // ใช้ type text ให้แอดมินเห็นตัวเลขชัดๆ
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 outline-none transition-all font-mono text-slate-800"
+                            placeholder="เว้นว่างถ้าไม่เปลี่ยน"
+                            value={resetForm.password}
+                            onChange={e => setResetForm({...resetForm, password: e.target.value})}
+                        />
+                    </div>
+
+                    <button type="submit" disabled={isSubmitting} className="w-full bg-amber-500 text-white py-3.5 rounded-xl font-bold hover:bg-amber-600 shadow-lg shadow-amber-200 transition-all flex justify-center gap-2 items-center active:scale-95 disabled:opacity-70">
+                        {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={20} />} บันทึกการแก้ไข
                     </button>
                 </form>
             </div>

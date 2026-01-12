@@ -15,6 +15,7 @@ export default function MemberLayout() {
     { path: '/play', label: 'ตลาดหวย', icon: Store },
     { path: '/history', label: 'โพยของฉัน', icon: List },
     { path: '/results', label: 'ผลรางวัล', icon: FileText },
+    { path: '/topup', label: 'เติมเครดิต', icon: Wallet },
   ];
 
   return (
@@ -57,7 +58,8 @@ export default function MemberLayout() {
 
         {/* Credit Card (Colorful Glass) */}
         <div className="px-6 mb-2">
-            <div className="bg-linear-to-r from-yellow-500 to-rose-500 rounded-2xl p-5 text-white shadow-lg shadow-pink-500/30 relative overflow-hidden group">
+          <Link to="/profile">
+            <div className="bg-linear-to-r from-yellow-500 to-yellow-900 rounded-2xl p-5 text-white shadow-lg shadow-yellow-500/30 relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-white/20 rounded-full blur-2xl -mr-10 -mt-10"></div>
                 <div className="absolute bottom-0 left-0 w-16 h-16 bg-yellow-400/20 rounded-full blur-xl -ml-5 -mb-5"></div>
                 
@@ -78,6 +80,7 @@ export default function MemberLayout() {
                     <span className="bg-black/20 px-2 py-0.5 rounded-full text-[10px]">Member</span>
                 </div>
             </div>
+          </Link>
         </div>
 
         {/* Navigation */}
@@ -182,12 +185,12 @@ export default function MemberLayout() {
                     </Link>
                 );
             })}
-             <button onClick={() => setIsSidebarOpen(true)} className="flex flex-col items-center justify-center w-full h-full py-2 text-slate-400 hover:text-slate-600">
-                <div className="p-2 mb-1">
+             <Link to="/profile" className="flex flex-col items-center justify-center w-full h-full py-2 text-slate-400 hover:text-slate-600">
+                <div className={`p-2 mb-1 ${location.pathname === '/profile' ? 'bg-indigo-50 rounded-xl text-indigo-600' : ''}`}>
                     <User size={22} />
                 </div>
-                <span className="text-[10px] font-medium">โปรไฟล์</span>
-            </button>
+                <span className={`text-[10px] ${location.pathname === '/profile' ? 'font-bold text-indigo-600' : 'font-medium'}`}>โปรไฟล์</span>
+            </Link>
         </div>
       </main>
     </div>

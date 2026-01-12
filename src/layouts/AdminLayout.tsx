@@ -24,6 +24,21 @@ export default function AdminLayout() {
     navigate('/login');
   };
 
+  // [ใหม่] ฟังก์ชันออกจากร่างทรง (กลับเป็น Superadmin)
+  const superBackupToken = localStorage.getItem('super_backup_token');
+  
+  const handleExitImpersonation = () => {
+      if (superBackupToken) {
+          // 1. คืนชีพ Token เดิม
+          localStorage.setItem('token', superBackupToken);
+          // 2. ลบตัวสำรองทิ้ง
+          localStorage.removeItem('super_backup_token');
+          // 3. ดีดกลับไปหน้า Super Shop List
+          window.location.href = '/super/shops';
+      }
+  };
+
+
   const menuItems = [
     { path: '/admin/dashboard', label: 'ภาพรวม', fullLabel: 'ภาพรวม (Dashboard)', icon: PieChart },
     { path: '/admin/shop', label: 'ตั้งค่าร้าน', fullLabel: 'จัดการร้าน & หวย', icon: Settings }, 
@@ -80,6 +95,21 @@ export default function AdminLayout() {
 
         {/* Navigation Menu */}
         <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto custom-scrollbar">
+          
+          {/* [ใหม่] ปุ่มแจ้งเตือนว่ากำลังสวมรอยอยู่ (กดเพื่อออก) */}
+          {superBackupToken && (
+             <div className="mb-4 px-2 animate-pulse">
+                <button 
+                  onClick={handleExitImpersonation}
+                  className="w-full bg-red-600 text-white p-3 rounded-xl shadow-lg shadow-red-200 flex items-center gap-3 font-bold text-sm hover:bg-red-700 transition-colors"
+                >
+                    <div className="bg-white/20 p-1.5 rounded-full"><LogOut size={16}/></div>
+                    <span>ออกจากการสวมรอย</span>
+                </button>
+                <p className="text-[10px] text-center text-red-400 mt-1 font-medium">คุณกำลังใช้งานในฐานะ Admin ร้าน</p>
+             </div>
+          )}
+
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-3 mb-2">Main Menu</div>
           {menuItems.map((item) => {
             const isActive = location.pathname.startsWith(item.path);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Store, Users, Settings, FileSpreadsheet, ShieldAlert } from 'lucide-react';
+import { Store, Users, Settings, FileSpreadsheet, ShieldAlert, Wallet, Building2, ClipboardList, MessageSquare } from 'lucide-react';
 
 // Import Components ย่อย
 import ManageMembers from './ManageMembers';
@@ -7,16 +7,24 @@ import ManageLottos from './ManageLottos';
 import ManageRates from './ManageRates'; 
 import ManageRisks from './ManageRisks';
 import DailyReport from './DailyReport';
+import ManageBanks from './ManageBanks';
+import ManageTransactions from './ManageTransactions';
+import AuditLogs from './AuditLogs';
+import ManageLineConfig from './ManageLineConfig'; 
 
 export default function ShopManagement() {
   const [activeTab, setActiveTab] = useState('members');
 
   const tabs = [
     { id: 'members', label: 'สมาชิก', icon: Users },
+    { id: 'transactions', label: 'รายการเงิน', icon: Wallet }, 
+    { id: 'banks', label: 'บัญชีร้าน', icon: Building2 },
+    { id: 'line', label: 'การแจ้งเตือน', icon: MessageSquare },
     { id: 'rates', label: 'เรทจ่าย', icon: FileSpreadsheet },
     { id: 'lottos', label: 'ตั้งค่าหวย', icon: Settings },
     { id: 'risks', label: 'เลขอั้น', icon: ShieldAlert },
-    { id: 'report', label: 'รายงาน', icon: Store }, // หรือใช้ BarChart3 ก็สวย
+    { id: 'logs', label: 'ประวัติ', icon: ClipboardList },
+    { id: 'report', label: 'รายงาน', icon: Store }, 
   ];
 
   return (
@@ -72,6 +80,25 @@ export default function ShopManagement() {
                 </div>
             )}
 
+            {activeTab === 'transactions' && (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <ManageTransactions />
+                </div>
+            )}
+
+            {/* เพิ่มส่วนนี้เข้าไปสำหรับ Tab แจ้งเตือน */}
+            {activeTab === 'line' && (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <ManageLineConfig />
+                </div>
+            )}
+
+            {activeTab === 'banks' && (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <ManageBanks />
+                </div>
+            )}
+
             {/* Tab 2: เรทจ่าย */}
             {activeTab === 'rates' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -90,6 +117,12 @@ export default function ShopManagement() {
             {activeTab === 'risks' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageRisks />
+                </div>
+            )}
+
+            {activeTab === 'logs' && (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <AuditLogs />
                 </div>
             )}
             

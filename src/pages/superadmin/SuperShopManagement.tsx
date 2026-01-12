@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import client from '../../api/client';
 import { 
-    Store, UserPlus, Plus, ExternalLink, Users, Trash2, X, Eraser, 
-    Search, CheckCircle, Loader2, Building2 
+    Store, UserPlus, Plus, Users, Trash2, X, Eraser, 
+    Search, CheckCircle, Loader2, Building2, LogIn
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext'; // เรียกใช้ Auth Context
 
 export default function SuperShopManagement() {
   const [shops, setShops] = useState<any[]>([]);
-  const navigate = useNavigate();
+  const { login } = useAuth(); // ดึงฟังก์ชัน login มาใช้ (เพื่อ set token ใหม่)
 
   // Modal States
   const [showShopModal, setShowShopModal] = useState(false);
@@ -75,10 +75,6 @@ export default function SuperShopManagement() {
     }
   };
 
-  const handleManageShop = (shopId: string) => {
-      navigate(`/admin/dashboard?shop_id=${shopId}`);
-  };
-
   const openAddAdminModal = (shop: any) => {
       setSelectedShopId(shop.id);
       setSelectedShopName(shop.name);
@@ -130,6 +126,49 @@ export default function SuperShopManagement() {
     s.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+// [ใหม่] ฟังก์ชันกดเปลี่ยนสถานะร้าน (Active/Inactive)
+  const toggleShopStatus = async (shopId: string, currentStatus: boolean) => {
+    const action = currentStatus ? 'ระงับ' : 'เปิดใช้งาน';
+    if (!confirm(`คุณต้องการ "${action}" ร้านค้านี้ใช่หรือไม่?`)) return;
+
+    try {
+        // เรียก API ที่มีอยู่ใน shops.py แล้ว
+        await client.patch(`/shops/${shopId}/toggle_status`);
+        
+        // อัปเดตหน้าจอทันที
+        setShops(shops.map(s => 
+            s.id === shopId ? { ...s, is_active: !currentStatus } : s
+        ));
+    } catch (err: any) {
+        alert('เปลี่ยนสถานะไม่สำเร็จ: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  // [แก้ไข] ฟังก์ชันกดเข้าร้าน (เพิ่มการเก็บ Token สำรอง)
+  const handleImpersonate = async (shopId: string) => {
+      if(!confirm('คุณต้องการเข้าสู่ระบบในฐานะแอดมินของร้านนี้ใช่ไหม?')) return;
+      
+      try {
+          // 1. [สำคัญ] เก็บ Token ของ Superadmin ไว้ก่อน เพื่อให้กดกลับมาได้
+          const currentToken = localStorage.getItem('token');
+          if (currentToken) {
+              localStorage.setItem('super_backup_token', currentToken);
+          }
+
+          // 2. เรียก API เพื่อขอ Token ของร้านนั้น
+          const res = await client.post(`/users/impersonate/${shopId}`);
+          
+          // 3. สั่ง Login ด้วย Token ใหม่
+          await login(res.data.access_token);
+          
+          // 4. บังคับโหลดหน้าใหม่เพื่อเข้าสู่ Dashboard ร้าน
+          window.location.href = '/admin/dashboard';
+          
+      } catch(err: any) {
+          alert(err.response?.data?.detail || 'เข้าระบบไม่ได้ (ร้านอาจยังไม่มี Admin)');
+      }
+  };
+
   return (
     <div className="p-4 md:p-8 animate-fade-in text-slate-800 pb-24 md:pb-8">
       
@@ -165,115 +204,150 @@ export default function SuperShopManagement() {
         </div>
       </div>
 
-      {/* --- Desktop Table View (Hidden on Mobile) --- */}
-      <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-xs tracking-wider">
-            <tr>
-              <th className="p-5">ข้อมูลร้านค้า</th>
-              <th className="p-5 text-center">สถานะ</th>
-              <th className="p-5 text-center">เข้าใช้งาน</th>
-              <th className="p-5 text-center">Admin Tools</th>
+      {/* --- Desktop Table View (ซ่อนบนมือถือ) --- */}
+    <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <table className="w-full text-left">
+        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-xs tracking-wider">
+          <tr>
+            <th className="p-5">ข้อมูลร้านค้า</th>
+            <th className="p-5 text-center">สถานะ</th>
+            <th className="p-5 text-center">เข้าใช้งาน</th>
+            <th className="p-5 text-center">Admin Tools</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 text-sm">
+          {filteredShops.map((shop) => (
+            <tr key={shop.id} className="hover:bg-amber-50/30 transition-colors group">
+              <td className="p-5">
+                  <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 font-bold border border-slate-200 group-hover:border-amber-300 group-hover:text-amber-500 transition-colors">
+                          {shop.name[0]}
+                      </div>
+                      <div>
+                          <div className="font-bold text-slate-800 text-base">{shop.name}</div>
+                          <div className="font-mono text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded inline-block mt-0.5">CODE: {shop.code}</div>
+                      </div>
+                  </div>
+              </td>
+              <td className="p-5 text-center">
+                <button 
+                    onClick={() => toggleShopStatus(shop.id, shop.is_active)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm active:scale-95 ${
+                        shop.is_active 
+                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' 
+                        : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                    }`}
+                    title="คลิกเพื่อเปลี่ยนสถานะ"
+                >
+                    {shop.is_active ? 'Active' : 'Inactive'}
+                </button>
+              </td>
+              <td className="p-5 text-center">
+                  {/* ✅ [แก้ไข] ปุ่มนี้เรียก handleImpersonate เพื่อเข้าร้าน */}
+                  <button 
+                      onClick={() => handleImpersonate(shop.id)}
+                      className="text-indigo-600 hover:text-white hover:bg-indigo-600 border border-indigo-200 font-bold text-xs flex items-center justify-center gap-1.5 mx-auto px-4 py-2 rounded-lg transition-all shadow-sm"
+                  >
+                      <LogIn size={14} /> เข้าร้าน (Login)
+                  </button>
+              </td>
+              <td className="p-5 text-center">
+                  <div className="flex justify-center gap-2">
+                      {/* ปุ่มแก้ไขข้อมูลร้าน */}
+                      <button 
+                        onClick={() => {
+                            setNewShop({ name: shop.name, code: shop.code });
+                            setSelectedShopId(shop.id);
+                            setShowShopModal(true);
+                        }} 
+                        className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-blue-600 bg-slate-50 hover:bg-blue-100 rounded-lg transition-colors border border-slate-200" 
+                        title="แก้ไขร้าน"
+                      >
+                          <Eraser size={16} /> {/* หรือใช้ไอคอน Pencil */}
+                      </button>
+
+                      {/* ปุ่มดู Admin */}
+                      <button onClick={() => openAdminListModal(shop)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-amber-600 bg-slate-50 hover:bg-amber-100 rounded-lg transition-colors border border-slate-200" title="ดู Admin">
+                          <Users size={16} />
+                      </button>
+
+                      {/* ปุ่มเพิ่ม Admin */}
+                      <button onClick={() => openAddAdminModal(shop)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-green-600 bg-slate-50 hover:bg-green-100 rounded-lg transition-colors border border-slate-200" title="เพิ่ม Admin">
+                          <UserPlus size={16} />
+                      </button>
+                      
+                      {/* ปุ่มล้างข้อมูล */}
+                      <button onClick={() => handleCleanupShop(shop.id, shop.name)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 bg-slate-50 hover:bg-red-100 rounded-lg transition-colors border border-slate-200" title="ล้างข้อมูล">
+                          <Trash2 size={16} />
+                      </button>
+                  </div>
+              </td>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm">
-            {filteredShops.map((shop) => (
-              <tr key={shop.id} className="hover:bg-amber-50/30 transition-colors group">
-                <td className="p-5">
+          ))}
+        </tbody>
+      </table>
+      {filteredShops.length === 0 && <div className="p-12 text-center text-slate-400 flex flex-col items-center"><Store size={48} className="opacity-20 mb-2" />ไม่พบร้านค้าในระบบ</div>}
+    </div>
+
+    {/* --- Mobile Card View (แสดงบนมือถือ) --- */}
+    <div className="md:hidden grid grid-cols-1 gap-4">
+        {filteredShops.map((shop) => (
+            <div key={shop.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden">
+                <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 font-bold border border-slate-200 group-hover:border-amber-300 group-hover:text-amber-500 transition-colors">
+                        <div className="w-12 h-12 rounded-xl bg-linear-to-br from-slate-100 to-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg shadow-inner">
                             {shop.name[0]}
                         </div>
                         <div>
-                            <div className="font-bold text-slate-800 text-base">{shop.name}</div>
-                            <div className="font-mono text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded inline-block mt-0.5">CODE: {shop.code}</div>
+                            <h3 className="font-bold text-lg text-slate-800">{shop.name}</h3>
+                            <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">#{shop.code}</span>
                         </div>
                     </div>
-                </td>
-                <td className="p-5 text-center">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold border ${shop.is_active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                    {shop.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td className="p-5 text-center">
+                    {/* แก้ไขปุ่มสถานะตรงนี้ */}
                     <button 
-                        onClick={() => handleManageShop(shop.id)}
-                        className="text-blue-600 hover:text-white hover:bg-blue-600 border border-blue-200 font-bold text-xs flex items-center justify-center gap-1.5 mx-auto px-4 py-2 rounded-lg transition-all"
+                        onClick={() => toggleShopStatus(shop.id, shop.is_active)}
+                        className={`w-3 h-3 rounded-full ${shop.is_active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`}
+                        title="แตะเพื่อเปลี่ยนสถานะ"
+                    ></button>
+                </div>
+                
+                {/* ปุ่มหลักบนมือถือ */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                    {/* ✅ [แก้ไข] ปุ่มนี้เรียก handleImpersonate */}
+                    <button 
+                      onClick={() => handleImpersonate(shop.id)}
+                      className="col-span-2 flex items-center justify-center gap-2 py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-sm border border-indigo-100 hover:bg-indigo-100 active:scale-95 transition-all shadow-sm"
                     >
-                        <ExternalLink size={14} /> Access
+                        <LogIn size={18} /> เข้าสู่ระบบร้านค้า
                     </button>
-                </td>
-                <td className="p-5 text-center">
-                    <div className="flex justify-center gap-2">
-                        <button onClick={() => openAdminListModal(shop)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-amber-600 bg-slate-50 hover:bg-amber-100 rounded-lg transition-colors border border-slate-200" title="ดู Admin">
-                            <Users size={16} />
-                        </button>
-                        <button onClick={() => openAddAdminModal(shop)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-green-600 bg-slate-50 hover:bg-green-100 rounded-lg transition-colors border border-slate-200" title="เพิ่ม Admin">
-                            <UserPlus size={16} />
-                        </button>
-                        <button onClick={() => handleCleanupShop(shop.id, shop.name)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 bg-slate-50 hover:bg-red-100 rounded-lg transition-colors border border-slate-200" title="ล้างข้อมูล">
-                            <Eraser size={16} />
-                        </button>
-                    </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filteredShops.length === 0 && <div className="p-12 text-center text-slate-400 flex flex-col items-center"><Store size={48} className="opacity-20 mb-2" />ไม่พบร้านค้าในระบบ</div>}
-      </div>
 
-      {/* --- Mobile Card View (Show on Mobile) --- */}
-      <div className="md:hidden grid grid-cols-1 gap-4">
-          {filteredShops.map((shop) => (
-              <div key={shop.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden">
-                  <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-xl bg-linear-to-br from-slate-100 to-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg shadow-inner">
-                              {shop.name[0]}
-                          </div>
-                          <div>
-                              <h3 className="font-bold text-lg text-slate-800">{shop.name}</h3>
-                              <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">#{shop.code}</span>
-                          </div>
-                      </div>
-                      <span className={`w-3 h-3 rounded-full ${shop.is_active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`}></span>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                      <button 
-                        onClick={() => handleManageShop(shop.id)}
-                        className="col-span-2 flex items-center justify-center gap-2 py-2.5 bg-blue-50 text-blue-600 rounded-xl font-bold text-sm border border-blue-100 hover:bg-blue-100 active:scale-95 transition-all"
-                      >
-                          <ExternalLink size={16} /> เข้าสู่หน้าร้าน
-                      </button>
-                      <button 
-                        onClick={() => openAdminListModal(shop)}
-                        className="flex items-center justify-center gap-2 py-2 bg-slate-50 text-slate-600 rounded-xl font-medium text-xs border border-slate-100 active:bg-slate-200"
-                      >
-                          <Users size={14} /> รายชื่อ Admin
-                      </button>
-                       <button 
-                        onClick={() => openAddAdminModal(shop)}
-                        className="flex items-center justify-center gap-2 py-2 bg-slate-50 text-slate-600 rounded-xl font-medium text-xs border border-slate-100 active:bg-slate-200"
-                      >
-                          <UserPlus size={14} /> เพิ่ม Admin
-                      </button>
-                  </div>
+                    <button 
+                      onClick={() => openAdminListModal(shop)}
+                      className="flex items-center justify-center gap-2 py-2 bg-slate-50 text-slate-600 rounded-xl font-medium text-xs border border-slate-100 active:bg-slate-200"
+                    >
+                        <Users size={14} /> รายชื่อ Admin
+                    </button>
+                     <button 
+                      onClick={() => openAddAdminModal(shop)}
+                      className="flex items-center justify-center gap-2 py-2 bg-slate-50 text-slate-600 rounded-xl font-medium text-xs border border-slate-100 active:bg-slate-200"
+                    >
+                        <UserPlus size={14} /> เพิ่ม Admin
+                    </button>
+                </div>
 
-                  <div className="border-t border-slate-100 pt-3 flex justify-between items-center">
-                      <span className="text-xs text-slate-400 font-medium">System Tools</span>
-                      <button 
-                        onClick={() => handleCleanupShop(shop.id, shop.name)}
-                        className="flex items-center gap-1 text-red-400 text-xs font-bold hover:text-red-600"
-                      >
-                          <Eraser size={14} /> ล้างข้อมูลร้าน
-                      </button>
-                  </div>
-              </div>
-          ))}
-          {filteredShops.length === 0 && <div className="text-center py-10 text-slate-400">ไม่พบข้อมูลร้านค้า</div>}
-      </div>
+                <div className="border-t border-slate-100 pt-3 flex justify-between items-center">
+                    <span className="text-xs text-slate-400 font-medium">Danger Zone</span>
+                    <button 
+                      onClick={() => handleCleanupShop(shop.id, shop.name)}
+                      className="flex items-center gap-1 text-red-400 text-xs font-bold hover:text-red-600 bg-red-50 px-3 py-1.5 rounded-lg"
+                    >
+                        <Trash2 size={14} /> ล้างข้อมูล
+                    </button>
+                </div>
+            </div>
+        ))}
+        {filteredShops.length === 0 && <div className="text-center py-10 text-slate-400">ไม่พบข้อมูลร้านค้า</div>}
+    </div>
 
 
       {/* --- Modal 1: สร้างร้าน --- */}

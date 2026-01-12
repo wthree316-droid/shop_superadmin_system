@@ -1,22 +1,63 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import client from '../../api/client';
-import { Search, Calendar, Trophy, ArrowRight, Loader2 } from 'lucide-react';
+import { 
+  Search, Calendar, Trophy, ArrowLeft, 
+  ChevronRight, Sparkles, TrendingUp 
+} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+
+// Interfaces
+interface LottoType {
+  id: string;
+  name: string;
+  img_url?: string;
+}
+
+interface LottoResult {
+  id: string;
+  lotto_name: string;
+  round_date: string;
+  top_3: string;
+  bottom_2: string;
+  created_at: string;
+}
 
 export default function MemberResults() {
-  const [results, setResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  // [ใหม่] State ค้นหา
-  const [searchTerm, setSearchTerm] = useState('');
-  const navigate = useNavigate();
+  // State ควบคุมหน้าจอ
+  const [view, setView] = useState<'MENU' | 'HISTORY'>('MENU');
+  const [selectedLotto, setSelectedLotto] = useState<LottoType | null>(null);
 
+  // Data State
+  const [lottos, setLottos] = useState<LottoType[]>([]);
+  const [results, setResults] = useState<LottoResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  // Search State
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // 1. โหลดรายชื่อหวยทั้งหมดมาก่อน (สำหรับทำเมนู)
   useEffect(() => {
-    fetchResults();
+    const fetchLottos = async () => {
+      try {
+        const res = await client.get('/play/lottos'); // ใช้ API เดิมที่ดึงรายชื่อหวย
+        setLottos(res.data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchLottos();
   }, []);
 
-  const fetchResults = async () => {
+  // 2. ฟังก์ชันกดเลือกหวย -> โหลดประวัติ
+  const handleSelectLotto = async (lotto: LottoType) => {
+    setLoading(true);
+    setSelectedLotto(lotto);
+    setView('HISTORY'); // เปลี่ยนหน้า
+    setResults([]); // เคลียร์ของเก่า
+
     try {
-      const res = await client.get('/reward/history');
+      // ยิง API ที่เราแก้ backend ตะกี้ พร้อมส่ง ID ไปกรอง
+      const res = await client.get(`/reward/history?lotto_type_id=${lotto.id}&limit=50`);
       setResults(res.data);
     } catch (err) {
       console.error(err);
@@ -25,96 +66,158 @@ export default function MemberResults() {
     }
   };
 
-  // [ใหม่] Logic กรองข้อมูล
-  const filteredResults = results.filter(item => 
-    item.lotto_name.toLowerCase().includes(searchTerm.toLowerCase())
+  const handleBack = () => {
+    setView('MENU');
+    setSelectedLotto(null);
+    setSearchTerm('');
+  };
+
+  // Helper สำหรับจัดรูปแบบวันที่
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('th-TH', {
+      year: 'numeric', month: 'short', day: 'numeric', weekday: 'short'
+    });
+  };
+
+  // กรองรายชื่อหวยในหน้าเมนู
+  const filteredLottos = lottos.filter(l => 
+    l.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="p-6 pb-24 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Trophy className="text-yellow-500" /> ผลรางวัลย้อนหลัง
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">ตรวจสอบผลรางวัลหวยทุกประเภท</p>
-        </div>
-        
-        {/* Search Bar (ตกแต่ง) */}
-        <div className="relative w-full md:w-64">
-          <input 
-            type="text" 
-            placeholder="ค้นหาตามชื่อหวย..." 
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-        </div>
-      </div>
+    <div className="p-4 pb-24 max-w-4xl mx-auto animate-fade-in font-sans">
+      
+      {/* ================= VIEW 1: MENU (เลือกหวย) ================= */}
+      {view === 'MENU' && (
+        <>
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2 mb-2">
+              <Trophy className="text-yellow-500" /> ผลรางวัล
+            </h1>
+            <p className="text-slate-500 text-sm">เลือกประเภทหวยเพื่อดูผลย้อนหลัง</p>
+          </div>
 
-      {/* Results Grid */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <Loader2 className="animate-spin mb-2" size={32} />
-            <p>กำลังโหลดข้อมูล...</p>
-        </div>
-      ) : filteredResults.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-xl border-2 border-dashed border-gray-200">
-            <div className="text-4xl mb-2">📭</div>
-            <p className="text-gray-500 font-medium">ไม่พบข้อมูลผลรางวัล</p>
-            <p className="text-xs text-gray-400 mt-1">ลองเปลี่ยนคำค้นหา หรือรอผลรางวัลออก</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredResults.map((item) => (
-            <div key={item.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all duration-300 group">
-              {/* Card Header */}
-              <div className="bg-gradient-to-r from-blue-600 to-blue-500 p-4 text-white flex justify-between items-center">
-                <h3 className="font-bold text-lg truncate pr-2">{item.lotto_name}</h3>
-                <div className="flex items-center gap-1 text-blue-100 text-xs bg-white/20 px-2 py-1 rounded backdrop-blur-sm">
-                  <Calendar size={12} />
-                  {new Date(item.round_date).toLocaleDateString('th-TH', { 
-                    day: 'numeric', month: 'short', year: '2-digit' 
-                  })}
-                </div>
-              </div>
+          {/* Search Bar */}
+          <div className="relative mb-6">
+            <input 
+              type="text" 
+              placeholder="ค้นหาชื่อหวย..." 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <Search className="absolute left-3 top-3.5 text-slate-400" size={20} />
+          </div>
 
-              {/* Card Body */}
-              <div className="p-6">
-                <div className="flex gap-4 text-center">
-                  {/* 3 ตัวบน */}
-                  <div className="flex-1 bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col justify-center min-h-[100px]">
-                    <div className="text-[10px] text-gray-500 font-bold uppercase mb-1 tracking-wider">3 ตัวบน</div>
-                    <div className={`text-3xl font-black tracking-widest ${item.top_3 ? 'text-gray-800' : 'text-gray-300 text-xl tracking-normal font-medium'}`}>
-                      {item.top_3 || 'รอผล'}
-                    </div>
-                  </div>
-
-                  {/* 2 ตัวล่าง */}
-                  <div className="flex-1 bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col justify-center min-h-[100px]">
-                    <div className="text-[10px] text-gray-500 font-bold uppercase mb-1 tracking-wider">2 ตัวล่าง</div>
-                    <div className={`text-3xl font-black tracking-widest ${item.bottom_2 ? 'text-blue-600' : 'text-gray-300 text-xl tracking-normal font-medium'}`}>
-                      {item.bottom_2 || 'รอผล'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card Footer (Link ไปหน้า History) */}
-              <div 
-                className="px-6 py-3 bg-gray-50 border-t border-gray-100 text-center cursor-pointer hover:bg-gray-100 transition-colors group/btn"
-                onClick={() => navigate('/history')}
+          {/* Grid Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredLottos.map(lotto => (
+              <button 
+                key={lotto.id}
+                onClick={() => handleSelectLotto(lotto)}
+                className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all flex items-center justify-between group"
               >
-                <span className="text-sm text-blue-600 font-bold flex items-center justify-center gap-1 group-hover/btn:translate-x-1 transition-transform">
-                  ตรวจโพยของฉัน <ArrowRight size={14} />
-                </span>
-              </div>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold shadow-sm group-hover:scale-110 transition-transform">
+                    {lotto.img_url ? (
+                      <img src={lotto.img_url} loading="lazy" className="w-full h-full object-cover rounded-full" />
+                    ) : (
+                      lotto.name.charAt(0)
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <div className="font-bold text-slate-800 text-lg group-hover:text-blue-600 transition-colors">
+                        {lotto.name}
+                    </div>
+                    <div className="text-xs text-slate-400 flex items-center gap-1">
+                        <TrendingUp size={12}/> คลิกเพื่อดูผลย้อนหลัง
+                    </div>
+                  </div>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <ChevronRight size={18} />
+                </div>
+              </button>
+            ))}
+
+            {filteredLottos.length === 0 && (
+                <div className="col-span-full text-center py-10 text-slate-400">
+                    ไม่พบหวยที่คุณค้นหา
+                </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ================= VIEW 2: HISTORY (ดูผล) ================= */}
+      {view === 'HISTORY' && selectedLotto && (
+        <div className="animate-slide-up">
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-6">
+            <button 
+                onClick={handleBack}
+                className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm transition-colors"
+            >
+                <ArrowLeft size={20} />
+            </button>
+            <div>
+                <h2 className="text-xl font-bold text-slate-800">{selectedLotto.name}</h2>
+                <div className="text-xs text-slate-500 flex items-center gap-1">
+                    <Sparkles size={12} className="text-yellow-500"/> ผลรางวัลล่าสุด & ย้อนหลัง
+                </div>
             </div>
-          ))}
+          </div>
+
+          {/* Result List */}
+          {loading ? (
+             <div className="py-20 flex flex-col items-center text-slate-400">
+                 <Loader2 className="animate-spin mb-2" size={32} />
+                 <p>กำลังโหลดข้อมูล...</p>
+             </div>
+          ) : results.length > 0 ? (
+             <div className="space-y-4">
+                 {/* Card รายการผลรางวัล */}
+                 {results.map((item, index) => (
+                     <div key={item.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                         {/* วันที่หัวตาราง */}
+                         <div className={`px-4 py-2 border-b border-slate-50 flex justify-between items-center ${index === 0 ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600'}`}>
+                             <div className="flex items-center gap-2 font-bold text-sm">
+                                 <Calendar size={14} />
+                                 {formatDate(item.round_date)}
+                             </div>
+                             {index === 0 && <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">ล่าสุด</span>}
+                         </div>
+
+                         {/* เนื้อหาผลรางวัล */}
+                         <div className="p-4 flex items-center divide-x divide-slate-100">
+                             {/* 3 ตัวบน */}
+                             <div className="flex-1 flex flex-col items-center justify-center px-2">
+                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">3 ตัวบน</span>
+                                 <span className="text-3xl font-black text-slate-800 tracking-widest">
+                                     {item.top_3 || '-'}
+                                 </span>
+                             </div>
+                             
+                             {/* 2 ตัวล่าง */}
+                             <div className="flex-1 flex flex-col items-center justify-center px-2">
+                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">2 ตัวล่าง</span>
+                                 <span className="text-3xl font-black text-blue-600 tracking-widest">
+                                     {item.bottom_2 || '-'}
+                                 </span>
+                             </div>
+                         </div>
+                     </div>
+                 ))}
+             </div>
+          ) : (
+             <div className="bg-white p-8 rounded-2xl border border-dashed border-slate-200 text-center text-slate-400">
+                 <Trophy className="mx-auto mb-2 opacity-20" size={48} />
+                 <p>ยังไม่มีการออกผลรางวัลสำหรับหวยนี้</p>
+             </div>
+          )}
         </div>
       )}
+
     </div>
   );
 }
