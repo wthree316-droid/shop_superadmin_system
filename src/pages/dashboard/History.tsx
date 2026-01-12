@@ -171,10 +171,18 @@ export default function History() {
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold shadow-sm group-hover:scale-110 transition-transform">
                                 {lotto.img_url ? (
-                                    <img src={lotto.img_url} 
-                                    loading="lazy" 
-                                    decoding="async"
-                                    alt={lotto.name}  className="w-full h-full object-cover rounded-full" />
+                                    <img 
+                                        src={lotto.img_url} 
+                                        loading="lazy" 
+                                        decoding="async"
+                                        alt={lotto.name}  
+                                        className="w-full h-full object-cover rounded-full" 
+                                        onError={(e) => {
+                                            const target = e.target as HTMLImageElement;
+                                            target.src = 'https://placehold.co/100x100?text=NA'; // รูปสำรอง
+                                            target.onerror = null;
+                                        }}
+                                    />
                                 ) : (
                                     lotto.name.charAt(0)
                                 )}

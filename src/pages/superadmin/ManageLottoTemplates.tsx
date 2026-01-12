@@ -322,7 +322,12 @@ export default function ManageLottoTemplates() {
                                 loading="lazy" 
                                 decoding="async"
                                 alt={lotto.name}  
-                                className="w-full h-full object-cover rounded-lg" />
+                                className="w-full h-full object-cover rounded-lg" 
+                                onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.src = 'https://placehold.co/100x100?text=No+Img';
+                                    target.onerror = null;
+                                }}/>
                             ) : (
                                 <div className="w-full h-full bg-gray-50 flex items-center justify-center text-xs text-gray-400 font-bold">NO IMG</div>
                             )}
@@ -408,7 +413,14 @@ export default function ManageLottoTemplates() {
                                         <Loader2 className="animate-spin text-amber-500" size={32} />
                                     ) : formData.img_url ? (
                                         <>
-                                            <img src={formData.img_url} className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-50" />
+                                            <img 
+                                                src={formData.img_url} 
+                                                className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-50" 
+                                                    onError={(e) => {
+                                                        const target = e.target as HTMLImageElement;
+                                                        target.style.display = 'none'; // ซ่อนรูปที่เสีย เพื่อให้เห็น icon upload
+                                                }}
+                                             />
                                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <Pencil className="text-white drop-shadow-md" size={32} />
                                             </div>

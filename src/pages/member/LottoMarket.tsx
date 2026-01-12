@@ -77,11 +77,18 @@ export default function LottoMarket() {
             {/* 1. Background Image Layer */}
             <div className="absolute inset-0 z-0">
                 {lotto.img_url ? (
-                    <img src={lotto.img_url} 
-                    loading="lazy" 
-                    decoding="async"
-                    alt={lotto.name}  
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                    <img 
+                        src={lotto.img_url} 
+                        alt={lotto.name} 
+                        loading="lazy" 
+                        decoding="async" // แนะนำให้ใส่
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = 'https://placehold.co/400x300?text=No+Image'; // รูปสำรอง
+                            target.onerror = null; // ป้องกัน Loop นรก
+                        }}
+                    />
                 ) : (
                     <div className="w-full h-full bg-linear-to-br from-slate-700 to-slate-900 flex items-center justify-center">
                         <span className="text-white/50 font-bold text-xl">No Image</span>

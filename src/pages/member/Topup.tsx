@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import client from '../../api/client';
 import { 
   Wallet, Upload, History, 
-  Copy, Loader2, Image as ImageIcon, AlertCircle,
+  Copy, Loader2, Image as AlertCircle,
   ArrowRightLeft, Banknote, Landmark
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -34,20 +34,19 @@ export default function WalletPage() {
   // Data State
   const [shopBanks, setShopBanks] = useState<BankAccount[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true); // ✅ จะถูกนำไปใช้แสดงผลแล้ว
+  const [loading, setLoading] = useState(true);
 
   // Form State (Deposit)
   const [depAmount, setDepAmount] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null); // URL สำหรับ Preview
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State (Withdraw)
-  const [withAmount, setWithAmount] = useState('');
-  const [userBankName, setUserBankName] = useState('');
-  const [userAccName, setUserAccName] = useState('');
-  const [userAccNum, setUserAccNum] = useState('');
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [wdAmount, setWdAmount] = useState('');
+  const [wdBank, setWdBank] = useState('');
+  const [wdAccName, setWdAccName] = useState('');
+  const [wdAccNum, setWdAccNum] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -56,261 +55,337 @@ export default function WalletPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      if (activeTab === 'DEPOSIT') {
-        const [resBanks, resHistory] = await Promise.all([
-          client.get('/topup/banks'),
-          client.get('/topup/requests')
-        ]);
-        setShopBanks(resBanks.data);
-        setTransactions(resHistory.data.map((t:any) => ({...t, type: 'DEPOSIT'})));
-      } else {
-        const resHistory = await client.get('/withdraw/requests');
-        setTransactions(resHistory.data.map((t:any) => ({...t, type: 'WITHDRAW'})));
-      }
+        if(activeTab === 'DEPOSIT') {
+            const resBanks = await client.get('/topup/banks');
+            setShopBanks(resBanks.data);
+            const resTrans = await client.get('/topup/requests?limit=10'); // ดึงแค่ 10 รายการล่าสุด
+            setTransactions(resTrans.data.map((t:any) => ({...t, type: 'DEPOSIT'})));
+        } else {
+            // Withdraw Logic (ถ้ามี API แล้ว)
+             try {
+                const res = await client.get('/withdraw/requests?limit=10');
+                setTransactions(res.data.map((t:any) => ({...t, type: 'WITHDRAW'})));
+             } catch(e) {}
+        }
     } catch (err) {
-      console.error(err);
-      toast.error('โหลดข้อมูลไม่สำเร็จ');
+        console.error(err);
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
   };
 
-  // --- Handlers ---
-
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success('คัดลอกเลขบัญชีแล้ว');
+  // Handle File Select
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if(e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          if(file.size > 5 * 1024 * 1024) return toast.error('ไฟล์ใหญ่เกิน 5MB');
+          
+          setSelectedFile(file);
+          setPreviewUrl(URL.createObjectURL(file));
+      }
   };
 
-  const handleDepositSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!depAmount || !file) return toast.error('กรุณากรอกข้อมูลให้ครบ');
-    setIsSubmitting(true);
-    const toastId = toast.loading('กำลังส่งข้อมูล...');
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const uploadRes = await client.post('/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
-      const proofImage = uploadRes.data.url || uploadRes.data.filename;
+  // 1. แจ้งเติมเงิน
+  const handleDeposit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if(!depAmount || Number(depAmount) <= 0) return toast.error('กรุณาระบุยอดเงิน');
+      if(!selectedFile) return toast.error('กรุณาแนบสลิปโอนเงิน');
 
-      await client.post('/topup/requests', { amount: Number(depAmount), proof_image: proofImage });
-      
-      toast.success('แจ้งเติมเงินสำเร็จ', { id: toastId });
-      setDepAmount(''); setFile(null); setPreviewUrl(null);
-      fetchData();
-    } catch (err) {
-      toast.error('ทำรายการไม่สำเร็จ', { id: toastId });
-    } finally { setIsSubmitting(false); }
+      setIsSubmitting(true);
+      try {
+          // 1. Upload Slip
+          const formData = new FormData();
+          formData.append('file', selectedFile);
+          
+          // ✅ [เพิ่ม] ระบุ Folder เพื่อให้ลง Bucket "slips"
+          formData.append('folder', 'slip'); 
+
+          const uploadRes = await client.post('/upload/', formData);
+          const slipUrl = uploadRes.data.url;
+
+          // 2. Create Request
+          await client.post('/topup/requests', {
+              amount: Number(depAmount),
+              proof_image: slipUrl
+          });
+
+          toast.success('แจ้งเติมเงินสำเร็จ! รอตรวจสอบ');
+          setDepAmount('');
+          setSelectedFile(null);
+          setPreviewUrl(null);
+          fetchData();
+
+      } catch (err: any) {
+          toast.error(err.response?.data?.detail || 'เกิดข้อผิดพลาด');
+      } finally {
+          setIsSubmitting(false);
+      }
   };
 
-  const handleWithdrawSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!withAmount || !userBankName || !userAccName || !userAccNum) return toast.error('กรุณากรอกข้อมูลให้ครบ');
-    
-    if (Number(withAmount) > (user?.credit_balance || 0)) {
-        return toast.error('ยอดเงินคงเหลือไม่พอ');
-    }
-
-    setIsSubmitting(true);
-    const toastId = toast.loading('กำลังดำเนินการ...');
-    try {
-      await client.post('/withdraw/requests', {
-          amount: Number(withAmount),
-          bank_name: userBankName,
-          account_name: userAccName,
-          account_number: userAccNum
-      });
+  // 2. แจ้งถอนเงิน
+  const handleWithdraw = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if(!wdAmount || !wdBank || !wdAccNum) return toast.error('กรอกข้อมูลให้ครบ');
       
-      toast.success('แจ้งถอนสำเร็จ! เครดิตถูกตัดเพื่อรอตรวจสอบ', { id: toastId });
-      setWithAmount(''); 
-      await fetchMe();
-      fetchData();
-    } catch (err: any) {
-      const msg = err.response?.data?.detail || 'ทำรายการไม่สำเร็จ';
-      toast.error(msg, { id: toastId });
-    } finally { setIsSubmitting(false); }
+      setIsSubmitting(true);
+      try {
+          await client.post('/withdraw/requests', {
+              amount: Number(wdAmount),
+              bank_name: wdBank,
+              account_name: wdAccName,
+              account_number: wdAccNum
+          });
+          toast.success('แจ้งถอนเงินสำเร็จ');
+          setWdAmount('');
+          fetchData();
+          fetchMe(); // อัปเดตยอดเงินมุมบน
+      } catch (err: any) {
+          toast.error(err.response?.data?.detail || 'ถอนเงินไม่สำเร็จ');
+      } finally {
+          setIsSubmitting(false);
+      }
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'APPROVED': return <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">สำเร็จ</span>;
-      case 'REJECTED': return <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">ถูกปฏิเสธ</span>;
-      default: return <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold">รอตรวจสอบ</span>;
-    }
+      switch(status) {
+          case 'APPROVED': return <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded text-[10px] font-bold border border-green-100">สำเร็จ</span>;
+          case 'REJECTED': return <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded text-[10px] font-bold border border-red-100">ปฏิเสธ</span>;
+          default: return <span className="text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded text-[10px] font-bold border border-yellow-100">รอตรวจสอบ</span>;
+      }
   };
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-in">
+        <Loader2 className="w-10 h-10 text-slate-300 animate-spin mb-4" />
+        <p className="text-slate-400 text-sm font-medium">กำลังโหลดข้อมูลกระเป๋าเงิน...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4 max-w-lg mx-auto pb-24 animate-fade-in font-sans">
-      
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Wallet className="text-blue-600" /> กระเป๋าเงิน
-        </h1>
-        <div className="text-right">
-            <div className="text-xs text-gray-500">เครดิตคงเหลือ</div>
-            <div className="text-xl font-black text-blue-600">{user?.credit_balance?.toLocaleString()} ฿</div>
+    <div className="space-y-6 pb-20 animate-fade-in">
+        
+        {/* Header ยอดเงิน */}
+        <div className="bg-linear-to-r from-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+            <div className="relative z-10">
+                <p className="text-slate-400 text-xs font-bold mb-1 uppercase tracking-wider">Credit Balance</p>
+                <h1 className="text-4xl font-black tracking-tight">{user?.credit_balance?.toLocaleString()} ฿</h1>
+                <div className="flex gap-2 mt-4">
+                    <button 
+                        onClick={() => setActiveTab('DEPOSIT')}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'DEPOSIT' ? 'bg-green-500 text-white shadow-lg shadow-green-500/30' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
+                    >
+                        <Wallet size={16}/> ฝากเงิน
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('WITHDRAW')}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'WITHDRAW' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
+                    >
+                        <ArrowRightLeft size={16}/> ถอนเงิน
+                    </button>
+                </div>
+            </div>
         </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
-          <button 
-            onClick={() => setActiveTab('DEPOSIT')}
-            className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                activeTab === 'DEPOSIT' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-              <Banknote size={16} /> เติมเครดิต
-          </button>
-          <button 
-            onClick={() => setActiveTab('WITHDRAW')}
-            className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                activeTab === 'WITHDRAW' ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-              <ArrowRightLeft size={16} /> ถอนเครดิต
-          </button>
-      </div>
-
-      {/* ===================== DEPOSIT TAB ===================== */}
-      {activeTab === 'DEPOSIT' && (
-        <div className="animate-slide-up">
-            {/* Shop Bank Account */}
-            <div className="bg-linear-to-br from-blue-600 to-indigo-700 rounded-2xl p-5 text-white shadow-lg mb-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet size={100} /></div>
-                <h2 className="text-sm font-medium opacity-80 mb-4">โอนเงินเข้าบัญชีนี้</h2>
-                
-                {/* ✅ เพิ่ม Loading ตรงนี้ด้วยก็ได้ หรือจะปล่อยว่างไว้ก็ได้ */}
-                {loading && shopBanks.length === 0 ? (
-                   <div className="flex justify-center py-4"><Loader2 className="animate-spin text-white/50" /></div>
-                ) : shopBanks.length > 0 ? shopBanks.map(bank => (
-                    <div key={bank.id} className="relative z-10 mb-4 last:mb-0">
-                        <div className="font-bold text-lg mb-1">{bank.bank_name}</div>
-                        <div className="flex items-center justify-between bg-white/10 p-3 rounded-lg backdrop-blur-sm">
-                            <div>
-                                <div className="text-2xl font-mono font-bold tracking-wider">{bank.account_number}</div>
-                                <div className="text-sm opacity-90">{bank.account_name}</div>
+        {/* --- Deposit Form --- */}
+        {activeTab === 'DEPOSIT' && (
+            <div className="space-y-4">
+                {/* 1. เลือกบัญชี */}
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <Landmark className="text-blue-500" size={20}/> โอนเงินเข้าบัญชี
+                    </h3>
+                    <div className="space-y-3">
+                        {shopBanks.map(bank => (
+                            <div key={bank.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center">
+                                <div>
+                                    <div className="font-bold text-slate-700">{bank.bank_name}</div>
+                                    <div className="text-sm font-mono text-slate-600 tracking-wide">{bank.account_number}</div>
+                                    <div className="text-xs text-slate-400">{bank.account_name}</div>
+                                </div>
+                                <button 
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(bank.account_number);
+                                        toast.success('คัดลอกเลขบัญชีแล้ว');
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                >
+                                    <Copy size={18}/>
+                                </button>
                             </div>
-                            <button onClick={() => handleCopy(bank.account_number)} className="p-2 hover:bg-white/20 rounded-full"><Copy size={20} /></button>
-                        </div>
+                        ))}
                     </div>
-                )) : <div className="text-center bg-white/10 p-3 rounded opacity-80">ไม่พบข้อมูลบัญชีร้าน</div>}
-            </div>
+                </div>
 
-            {/* Deposit Form */}
-            <form onSubmit={handleDepositSubmit} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mb-8">
-                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} /> แจ้งสลิปการโอน</h3>
-                <div className="space-y-4">
+                {/* 2. กรอกยอด + แนบสลิป */}
+                <form onSubmit={handleDeposit} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-slate-600 mb-1">จำนวนเงินที่โอน</label>
-                        <input type="number" value={depAmount} onChange={e => setDepAmount(e.target.value)} placeholder="ระบุยอดเงิน" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500" min="1" />
+                        <label className="text-xs font-bold text-slate-500 uppercase ml-1">จำนวนเงินที่โอน</label>
+                        <input 
+                            type="number" 
+                            className="w-full mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-lg outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                            placeholder="0.00"
+                            value={depAmount}
+                            onChange={e => setDepAmount(e.target.value)}
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-2 block">หลักฐานการโอน (สลิป)</label>
+                        <div className="relative">
+                            <input 
+                                type="file" 
+                                accept="image/*"
+                                onChange={handleFileChange}
+                                className="hidden" 
+                                id="slip-upload"
+                            />
+                            <label 
+                                htmlFor="slip-upload"
+                                className={`w-full h-32 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all ${
+                                    previewUrl ? 'border-green-300 bg-green-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'
+                                }`}
+                            >
+                                {previewUrl ? (
+                                    <div className="relative w-full h-full p-2">
+                                        {/* ✅ แก้ไข: ใส่ onError ตรงนี้ */}
+                                        <img 
+                                            src={previewUrl} 
+                                            alt="Preview" 
+                                            loading="lazy"
+                                            decoding="async"
+                                            className="w-full h-full object-contain rounded-lg"
+                                            onError={(e) => {
+                                                // วิธีแก้ TypeScript Error ตรงนี้
+                                                const target = e.target as HTMLImageElement;
+                                                target.src = 'https://placehold.co/400x200?text=Error';
+                                                target.onerror = null;
+                                            }}
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity rounded-lg">
+                                            <p className="text-white font-bold text-xs">คลิกเพื่อเปลี่ยนรูป</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center text-slate-400">
+                                        <Upload className="mx-auto mb-2" size={24}/>
+                                        <span className="text-xs">คลิกเพื่อแนบสลิป</span>
+                                    </div>
+                                )}
+                            </label>
+                        </div>
+                    </div>
+
+                    <button 
+                        type="submit" 
+                        disabled={isSubmitting}
+                        className="w-full py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-200 hover:bg-green-700 active:scale-95 transition-all flex justify-center items-center gap-2"
+                    >
+                        {isSubmitting ? <Loader2 className="animate-spin"/> : <UploadCloud size={20}/>}
+                        แจ้งเติมเงิน
+                    </button>
+                </form>
+            </div>
+        )}
+
+        {/* --- Withdraw Form --- */}
+        {activeTab === 'WITHDRAW' && (
+            <form onSubmit={handleWithdraw} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                 <div className="bg-orange-50 p-3 rounded-xl flex gap-2 items-start text-xs text-orange-700 border border-orange-100 mb-2">
+                    <AlertCircle size={16} className="shrink-0 mt-0.5"/>
+                    <p>ระบบจะโอนเงินเข้าบัญชีตามที่คุณระบุ โปรดตรวจสอบความถูกต้องก่อนกดยืนยัน</p>
+                 </div>
+                 
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase ml-1">จำนวนเงินที่ถอน</label>
+                        <input 
+                            type="number" 
+                            className="w-full mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-lg outline-none focus:ring-2 focus:ring-orange-500"
+                            placeholder="0.00"
+                            value={wdAmount} onChange={e => setWdAmount(e.target.value)}
+                        />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-slate-600 mb-1">หลักฐาน (สลิป)</label>
-                        <div className="relative border-2 border-dashed border-slate-200 rounded-xl p-4 text-center hover:bg-slate-50 cursor-pointer group">
-                            <input type="file" accept="image/*" onChange={(e) => {
-                                if(e.target.files?.[0]) {
-                                    setFile(e.target.files[0]);
-                                    setPreviewUrl(URL.createObjectURL(e.target.files[0]));
-                                }
-                            }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                            {previewUrl ? <img src={previewUrl} className="max-h-40 mx-auto rounded shadow" /> : <div className="text-slate-400 text-sm"><ImageIcon className="mx-auto mb-1"/>แตะเพื่ออัปโหลด</div>}
-                        </div>
+                         <label className="text-xs font-bold text-slate-500 uppercase ml-1">ธนาคาร</label>
+                         <input 
+                            className="w-full mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                            placeholder="เช่น กสิกรไทย"
+                            value={wdBank} onChange={e => setWdBank(e.target.value)}
+                        />
                     </div>
-                    <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg disabled:opacity-50 transition-all">
-                        {isSubmitting ? <Loader2 className="animate-spin mx-auto"/> : 'ยืนยันแจ้งเติมเงิน'}
-                    </button>
-                </div>
+                    <div>
+                         <label className="text-xs font-bold text-slate-500 uppercase ml-1">เลขบัญชี</label>
+                         <input 
+                            className="w-full mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 text-sm font-mono"
+                            placeholder="xxx-x-xxxxx-x"
+                            value={wdAccNum} onChange={e => setWdAccNum(e.target.value)}
+                        />
+                    </div>
+                    <div className="col-span-2">
+                         <label className="text-xs font-bold text-slate-500 uppercase ml-1">ชื่อบัญชี</label>
+                         <input 
+                            className="w-full mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                            placeholder="ชื่อ-นามสกุล"
+                            value={wdAccName} onChange={e => setWdAccName(e.target.value)}
+                        />
+                    </div>
+                 </div>
+
+                 <button 
+                    type="submit" 
+                    disabled={isSubmitting}
+                    className="w-full py-3 bg-orange-600 text-white font-bold rounded-xl shadow-lg shadow-orange-200 hover:bg-orange-700 active:scale-95 transition-all flex justify-center items-center gap-2"
+                >
+                    {isSubmitting ? <Loader2 className="animate-spin"/> : <ArrowRightLeft size={20}/>}
+                    แจ้งถอนเงิน
+                </button>
             </form>
-        </div>
-      )}
+        )}
 
-      {/* ===================== WITHDRAW TAB ===================== */}
-      {activeTab === 'WITHDRAW' && (
-        <div className="animate-slide-up">
-            <div className="bg-orange-50 border border-orange-100 p-4 rounded-xl mb-6 text-sm text-orange-800 flex items-start gap-3">
-                <AlertCircle size={20} className="shrink-0 mt-0.5" />
-                <div>
-                    <b>ข้อควรระวัง:</b> เมื่อกดยืนยัน ยอดเครดิตจะถูกหักทันทีเพื่อรอการตรวจสอบ หากถูกปฏิเสธ ยอดเงินจะคืนเข้ากระเป๋าอัตโนมัติ
-                </div>
-            </div>
-
-            <form onSubmit={handleWithdrawSubmit} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mb-8">
-                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Landmark size={18} /> ข้อมูลบัญชีรับเงิน</h3>
-                <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2">
-                            <label className="block text-sm font-medium text-slate-600 mb-1">ธนาคาร</label>
-                            <input type="text" value={userBankName} onChange={e => setUserBankName(e.target.value)} placeholder="เช่น กสิกรไทย" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-400" />
+        {/* --- History List --- */}
+        <div className="space-y-3">
+            <h3 className="font-bold text-slate-700 ml-1 flex items-center gap-2">
+                <History size={18}/> รายการล่าสุด
+            </h3>
+            {transactions.length > 0 ? transactions.map(item => (
+                <div key={item.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            item.type === 'WITHDRAW' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
+                        }`}>
+                            {item.type === 'WITHDRAW' ? <ArrowRightLeft size={20}/> : <Banknote size={20}/>}
                         </div>
-                        <div className="col-span-2">
-                            <label className="block text-sm font-medium text-slate-600 mb-1">เลขบัญชี</label>
-                            <input type="text" value={userAccNum} onChange={e => setUserAccNum(e.target.value)} placeholder="เลขบัญชี" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-400 font-mono" />
-                        </div>
-                        <div className="col-span-2">
-                            <label className="block text-sm font-medium text-slate-600 mb-1">ชื่อบัญชี</label>
-                            <input type="text" value={userAccName} onChange={e => setUserAccName(e.target.value)} placeholder="ชื่อ-นามสกุล" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-orange-400" />
+                        <div>
+                            <div className={`font-bold ${item.type === 'WITHDRAW' ? 'text-orange-600' : 'text-green-600'}`}>
+                                {item.type === 'WITHDRAW' ? '-' : '+'}{Number(item.amount).toLocaleString()} ฿
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                                {new Date(item.created_at).toLocaleString('th-TH')}
+                            </div>
                         </div>
                     </div>
-                    <div className="pt-2 border-t border-dashed">
-                         <label className="block text-sm font-bold text-slate-700 mb-1">จำนวนเงินที่ต้องการถอน</label>
-                         <input type="number" value={withAmount} onChange={e => setWithAmount(e.target.value)} placeholder="ระบุยอดเงิน" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-xl text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400" min="1" />
+                    <div className="text-right">
+                        {getStatusBadge(item.status)}
+                        {item.admin_remark && (
+                            <div className="text-[10px] text-red-500 mt-1 max-w-37.5 truncate">
+                                {item.admin_remark}
+                            </div>
+                        )}
                     </div>
-                    <button type="submit" disabled={isSubmitting} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-orange-200 disabled:opacity-50 transition-all">
-                        {isSubmitting ? <Loader2 className="animate-spin mx-auto"/> : 'ยืนยันแจ้งถอนเงิน'}
-                    </button>
                 </div>
-            </form>
+            )) : (
+                <div className="text-center text-slate-400 py-6 bg-slate-50 rounded-xl text-sm">
+                    ไม่มีรายการ
+                </div>
+            )}
         </div>
-      )}
-
-      {/* Transaction History (Shared) */}
-      <div>
-          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <History size={18} /> ประวัติการ{activeTab === 'DEPOSIT' ? 'เติม' : 'ถอน'} (ล่าสุด)
-          </h3>
-          <div className="space-y-3">
-              {/* ✅ [แก้ไข] เพิ่ม Loading State ตรงนี้ */}
-              {loading ? (
-                  <div className="py-10 text-center text-slate-400 flex flex-col items-center">
-                      <Loader2 className="animate-spin mb-2" size={24} />
-                      <span className="text-xs">กำลังโหลดข้อมูล...</span>
-                  </div>
-              ) : transactions.length > 0 ? transactions.slice(0, 10).map(item => (
-                  <div key={item.id} className="bg-white p-3 rounded-xl border border-slate-100 flex justify-between items-center shadow-sm">
-                      <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                              item.status === 'APPROVED' ? 'bg-green-100 text-green-600' : 
-                              item.status === 'REJECTED' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'
-                          }`}>
-                              {item.type === 'DEPOSIT' ? <Banknote size={20}/> : <ArrowRightLeft size={20}/>}
-                          </div>
-                          <div>
-                              <div className={`font-bold ${item.type === 'DEPOSIT' ? 'text-green-600' : 'text-orange-600'}`}>
-                                  {item.type === 'DEPOSIT' ? '+' : '-'}{Number(item.amount).toLocaleString()} ฿
-                              </div>
-                              <div className="text-[10px] text-slate-400">
-                                  {new Date(item.created_at).toLocaleString('th-TH')}
-                              </div>
-                          </div>
-                      </div>
-                      <div className="text-right">
-                          {getStatusBadge(item.status)}
-                          {item.admin_remark && (
-                              <div className="text-[10px] text-red-500 mt-1 max-w-25 truncate">
-                                  {item.admin_remark}
-                              </div>
-                          )}
-                      </div>
-                  </div>
-              )) : (
-                  <div className="text-center text-slate-400 py-6 bg-slate-50 rounded-xl text-sm">
-                      ไม่มีรายการ
-                  </div>
-              )}
-          </div>
-      </div>
 
     </div>
   );
 }
+
+// ต้อง import UploadCloud ถ้ายังไม่มี
+import { UploadCloud } from 'lucide-react';
