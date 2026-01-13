@@ -39,14 +39,16 @@ export interface LottoType {
   name: string;
   code: string;
   category: string;
-  img_url?: string;       // [สำคัญ] ต้องมีเพื่อโชว์รูป
-  open_time?: string;     // "08:00:00"
-  close_time?: string;    // "15:30:00"
+  img_url?: string;
+  rate_profile_id: string;
+  open_days: string[];       
+  open_time?: string;     
+  close_time?: string;    
   result_time?: string;
   api_link?: string;
   is_active: boolean;
   is_template: boolean;
-  rules?: any;            // เก็บ config อื่นๆ
+  rules?: any;          
 }
 
 export interface NumberRisk {

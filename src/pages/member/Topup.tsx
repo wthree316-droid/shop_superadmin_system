@@ -3,7 +3,7 @@ import client from '../../api/client';
 import { 
   Wallet, Upload, History, 
   Copy, Loader2, Image as AlertCircle,
-  ArrowRightLeft, Banknote, Landmark
+  ArrowRightLeft, Banknote, Landmark, UploadCloud
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -39,7 +39,7 @@ export default function WalletPage() {
   // Form State (Deposit)
   const [depAmount, setDepAmount] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null); // URL สำหรับ Preview
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State (Withdraw)
@@ -58,10 +58,9 @@ export default function WalletPage() {
         if(activeTab === 'DEPOSIT') {
             const resBanks = await client.get('/topup/banks');
             setShopBanks(resBanks.data);
-            const resTrans = await client.get('/topup/requests?limit=10'); // ดึงแค่ 10 รายการล่าสุด
+            const resTrans = await client.get('/topup/requests?limit=10');
             setTransactions(resTrans.data.map((t:any) => ({...t, type: 'DEPOSIT'})));
         } else {
-            // Withdraw Logic (ถ้ามี API แล้ว)
              try {
                 const res = await client.get('/withdraw/requests?limit=10');
                 setTransactions(res.data.map((t:any) => ({...t, type: 'WITHDRAW'})));
@@ -74,10 +73,26 @@ export default function WalletPage() {
     }
   };
 
+  // Helper: แปลง Error Object เป็น String เพื่อป้องกัน App Crash
+  const getErrorMessage = (err: any) => {
+      const detail = err.response?.data?.detail;
+      // กรณี 1: เป็น String ปกติ
+      if (typeof detail === 'string') return detail;
+      // กรณี 2: เป็น Array (Validation Error ของ FastAPI)
+      if (Array.isArray(detail)) {
+          return detail.map((e: any) => e.msg).join(', ') || 'ข้อมูลไม่ถูกต้อง';
+      }
+      // กรณี 3: เป็น Object
+      if (typeof detail === 'object') return JSON.stringify(detail);
+      
+      return 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
+  };
+
   // Handle File Select
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       if(e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
+          // เช็คขนาดไฟล์ (เช่น ไม่เกิน 5MB)
           if(file.size > 5 * 1024 * 1024) return toast.error('ไฟล์ใหญ่เกิน 5MB');
           
           setSelectedFile(file);
@@ -92,15 +107,19 @@ export default function WalletPage() {
       if(!selectedFile) return toast.error('กรุณาแนบสลิปโอนเงิน');
 
       setIsSubmitting(true);
+      const toastId = toast.loading('กำลังส่งข้อมูล...');
+
       try {
           // 1. Upload Slip
           const formData = new FormData();
           formData.append('file', selectedFile);
           
-          // ✅ [เพิ่ม] ระบุ Folder เพื่อให้ลง Bucket "slips"
+          // ✅ ระบุ Folder (ต้องตรงกับที่ Backend รองรับ)
           formData.append('folder', 'slip'); 
 
-          const uploadRes = await client.post('/upload/', formData);
+          const uploadRes = await client.post('/upload/', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+          });
           const slipUrl = uploadRes.data.url;
 
           // 2. Create Request
@@ -109,14 +128,16 @@ export default function WalletPage() {
               proof_image: slipUrl
           });
 
-          toast.success('แจ้งเติมเงินสำเร็จ! รอตรวจสอบ');
+          toast.success('แจ้งเติมเงินสำเร็จ! รอตรวจสอบ', { id: toastId });
           setDepAmount('');
           setSelectedFile(null);
           setPreviewUrl(null);
           fetchData();
 
       } catch (err: any) {
-          toast.error(err.response?.data?.detail || 'เกิดข้อผิดพลาด');
+          console.error("Deposit Error:", err);
+          // ✅ ใช้ Helper Function แปลง Error ป้องกันจอขาว
+          toast.error(getErrorMessage(err), { id: toastId });
       } finally {
           setIsSubmitting(false);
       }
@@ -128,6 +149,8 @@ export default function WalletPage() {
       if(!wdAmount || !wdBank || !wdAccNum) return toast.error('กรอกข้อมูลให้ครบ');
       
       setIsSubmitting(true);
+      const toastId = toast.loading('กำลังทำรายการ...');
+
       try {
           await client.post('/withdraw/requests', {
               amount: Number(wdAmount),
@@ -135,12 +158,13 @@ export default function WalletPage() {
               account_name: wdAccName,
               account_number: wdAccNum
           });
-          toast.success('แจ้งถอนเงินสำเร็จ');
+          toast.success('แจ้งถอนเงินสำเร็จ', { id: toastId });
           setWdAmount('');
           fetchData();
-          fetchMe(); // อัปเดตยอดเงินมุมบน
+          fetchMe(); 
       } catch (err: any) {
-          toast.error(err.response?.data?.detail || 'ถอนเงินไม่สำเร็จ');
+          console.error("Withdraw Error:", err);
+          toast.error(getErrorMessage(err), { id: toastId });
       } finally {
           setIsSubmitting(false);
       }
@@ -191,7 +215,7 @@ export default function WalletPage() {
 
         {/* --- Deposit Form --- */}
         {activeTab === 'DEPOSIT' && (
-            <div className="space-y-4">
+            <div className="space-y-4 animate-slide-up">
                 {/* 1. เลือกบัญชี */}
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
                     <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -250,7 +274,6 @@ export default function WalletPage() {
                             >
                                 {previewUrl ? (
                                     <div className="relative w-full h-full p-2">
-                                        {/* ✅ แก้ไข: ใส่ onError ตรงนี้ */}
                                         <img 
                                             src={previewUrl} 
                                             alt="Preview" 
@@ -258,9 +281,8 @@ export default function WalletPage() {
                                             decoding="async"
                                             className="w-full h-full object-contain rounded-lg"
                                             onError={(e) => {
-                                                // วิธีแก้ TypeScript Error ตรงนี้
                                                 const target = e.target as HTMLImageElement;
-                                                target.src = 'https://placehold.co/400x200?text=Error';
+                                                target.src = 'https://placehold.co/400x200?text=Image+Error';
                                                 target.onerror = null;
                                             }}
                                         />
@@ -292,7 +314,7 @@ export default function WalletPage() {
 
         {/* --- Withdraw Form --- */}
         {activeTab === 'WITHDRAW' && (
-            <form onSubmit={handleWithdraw} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <form onSubmit={handleWithdraw} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4 animate-slide-up">
                  <div className="bg-orange-50 p-3 rounded-xl flex gap-2 items-start text-xs text-orange-700 border border-orange-100 mb-2">
                     <AlertCircle size={16} className="shrink-0 mt-0.5"/>
                     <p>ระบบจะโอนเงินเข้าบัญชีตามที่คุณระบุ โปรดตรวจสอบความถูกต้องก่อนกดยืนยัน</p>
@@ -386,6 +408,3 @@ export default function WalletPage() {
     </div>
   );
 }
-
-// ต้อง import UploadCloud ถ้ายังไม่มี
-import { UploadCloud } from 'lucide-react';

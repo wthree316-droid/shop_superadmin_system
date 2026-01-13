@@ -4,27 +4,8 @@ import {
   Plus, X, Pencil, UploadCloud, Loader2, Clock, 
   CheckCircle, Trash2, Database, ChevronDown 
 } from 'lucide-react';
+import type { LottoType, RateProfile } from '../../types/lotto';
 
-// --- 1. Type Definitions ---
-interface RateProfile { 
-  id: string; 
-  name: string; 
-}
-
-interface Lotto {
-  id: string; 
-  name: string; 
-  code: string; 
-  category: string; 
-  img_url: string | null;
-  rate_profile_id: string; 
-  open_days: string[]; 
-  open_time: string | null;
-  close_time: string | null; 
-  result_time: string | null; 
-  api_link: string | null;
-  is_active: boolean;
-}
 
 const CATEGORIES = [
   { id: 'THAI', label: '🇹🇭 หวยรัฐบาล' },
@@ -145,7 +126,7 @@ const TimeSelector = ({ label, value, onChange, iconColorClass }: any) => {
 
 // --- 3. Main Component ---
 export default function ManageLottoTemplates() {
-  const [lottos, setLottos] = useState<Lotto[]>([]);
+  const [lottos, setLottos] = useState<LottoType[]>([]);
   const [rateProfiles, setRateProfiles] = useState<RateProfile[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -191,7 +172,7 @@ export default function ManageLottoTemplates() {
     setShowModal(true);
   };
 
-  const openEditModal = (lotto: Lotto) => {
+  const openEditModal = (lotto: LottoType) => {
     setEditingId(lotto.id);
     setFormData({
       name: lotto.name,
@@ -271,7 +252,7 @@ export default function ManageLottoTemplates() {
   return (
     <div className="max-w-7xl mx-auto animate-fade-in pb-12">
       
-      {/* --- Header Section (White + Gold Theme) --- */}
+      {/* --- Header Section --- */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
           <h2 className="text-3xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
@@ -293,7 +274,7 @@ export default function ManageLottoTemplates() {
         </button>
       </div>
 
-      {/* --- White Clean Table Card --- */}
+      {/* --- Table Card --- */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
         {isLoading ? (
           <div className="p-20 text-center text-slate-400 flex flex-col items-center">
@@ -318,16 +299,17 @@ export default function ManageLottoTemplates() {
                     <td className="p-4 text-center">
                         <div className="w-12 h-12 rounded-xl bg-gray-100 border border-gray-200 p-0.5 mx-auto overflow-hidden shadow-sm group-hover:scale-110 transition-transform">
                             {lotto.img_url ? (
-                                <img src={lotto.img_url} 
-                                loading="lazy" 
-                                decoding="async"
-                                alt={lotto.name}  
-                                className="w-full h-full object-cover rounded-lg" 
-                                onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.src = 'https://placehold.co/100x100?text=No+Img';
-                                    target.onerror = null;
-                                }}/>
+                                <img 
+                                    src={lotto.img_url} 
+                                    loading="lazy" 
+                                    className="w-full h-full object-cover rounded-lg"
+                                    // ✅ ใส่ onError ตรงนี้
+                                    onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.src = 'https://placehold.co/100x100?text=No+Img';
+                                        target.onerror = null;
+                                    }}
+                                />
                             ) : (
                                 <div className="w-full h-full bg-gray-50 flex items-center justify-center text-xs text-gray-400 font-bold">NO IMG</div>
                             )}
@@ -381,7 +363,7 @@ export default function ManageLottoTemplates() {
         )}
       </div>
 
-      {/* --- Modal (Clean White Form) --- */}
+      {/* --- Modal Form --- */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] text-slate-800 animate-in zoom-in-95 duration-200">
@@ -413,14 +395,15 @@ export default function ManageLottoTemplates() {
                                         <Loader2 className="animate-spin text-amber-500" size={32} />
                                     ) : formData.img_url ? (
                                         <>
+                                            {/* ✅ ใส่ onError ตรงนี้ (Preview Modal) */}
                                             <img 
                                                 src={formData.img_url} 
-                                                className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-50" 
-                                                    onError={(e) => {
-                                                        const target = e.target as HTMLImageElement;
-                                                        target.style.display = 'none'; // ซ่อนรูปที่เสีย เพื่อให้เห็น icon upload
+                                                className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-50"
+                                                onError={(e) => {
+                                                    const target = e.target as HTMLImageElement;
+                                                    target.style.display = 'none'; // ซ่อนรูปที่เสีย เพื่อให้เห็น icon upload
                                                 }}
-                                             />
+                                            />
                                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <Pencil className="text-white drop-shadow-md" size={32} />
                                             </div>

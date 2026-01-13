@@ -79,54 +79,54 @@ export default function ShopManagement() {
                     <ManageMembers />
                 </div>
             )}
-
+            {/* Tab 2: รายการเงิน */}
             {activeTab === 'transactions' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageTransactions />
                 </div>
             )}
-
-            {/* เพิ่มส่วนนี้เข้าไปสำหรับ Tab แจ้งเตือน */}
-            {activeTab === 'line' && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <ManageLineConfig />
-                </div>
-            )}
-
+            {/* Tab 3: บัญชีร้าน */}
             {activeTab === 'banks' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageBanks />
                 </div>
             )}
 
-            {/* Tab 2: เรทจ่าย */}
+            {/* Tab 4: การส่งแจ้งเตือน */}
+            {activeTab === 'line' && (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <ManageLineConfig />
+                </div>
+            )}
+
+            {/* Tab 5: เรทจ่าย */}
             {activeTab === 'rates' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageRates />
                 </div>
             )}
             
-            {/* Tab 3: หวย */}
+            {/* Tab 6: หวย */}
             {activeTab === 'lottos' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageLottos />
                 </div>
             )}
 
-            {/* Tab 4: เลขอั้น */}
+            {/* Tab 7: เลขอั้น */}
             {activeTab === 'risks' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageRisks />
                 </div>
             )}
-
+            {/* Tab 8: รายงาน */}
             {activeTab === 'logs' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <AuditLogs />
                 </div>
             )}
             
-            {/* Tab 5: รายงาน */}
+            {/* Tab 9: รายงานใน 1 วัน */}
             {activeTab === 'report' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <DailyReport />
