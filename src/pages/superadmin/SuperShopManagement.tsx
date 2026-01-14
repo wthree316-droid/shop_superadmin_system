@@ -23,7 +23,7 @@ export default function SuperShopManagement() {
 
   // Form States
   // ✅ [เพิ่ม] subdomain ใน state
-  const [newShop, setNewShop] = useState({ name: '', code: '', subdomain: '' });
+  const [newShop, setNewShop] = useState({ name: '', code: '', subdomain: '', logo_url: '' });
   const [newAdmin, setNewAdmin] = useState({ username: '', password: '', full_name: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -89,7 +89,7 @@ export default function SuperShopManagement() {
 
   // ✅ ฟังก์ชันเปิด Modal สร้างใหม่
   const openCreateModal = () => {
-      setNewShop({ name: '', code: '', subdomain: '' });
+      setNewShop({ name: '', code: '', subdomain: '', logo_url: '' });
       setIsEditMode(false);
       setShowShopModal(true);
   };
@@ -99,7 +99,8 @@ export default function SuperShopManagement() {
       setNewShop({ 
           name: shop.name, 
           code: shop.code, 
-          subdomain: shop.subdomain || '' 
+          subdomain: shop.subdomain || '',
+          logo_url: shop.logo_url || ''
       });
       setSelectedShopId(shop.id);
       setIsEditMode(true);
@@ -407,6 +408,31 @@ export default function SuperShopManagement() {
                         onChange={e => setNewShop({...newShop, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')})}
                       />
                   </div>
+
+                {/* ✅ [เพิ่มใหม่] ช่องใส่ Logo URL */}
+                <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        Logo URL (ลิงก์รูปภาพ)
+                    </label>
+                    <div className="flex gap-3 items-center">
+                        <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                            {newShop.logo_url ? (
+                                <img src={newShop.logo_url} className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-[10px] text-slate-400">No Img</span>
+                            )}
+                        </div>
+                        <input 
+                            placeholder="https://.../logo.png" 
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
+                            value={newShop.logo_url} 
+                            onChange={e => setNewShop({...newShop, logo_url: e.target.value})}
+                        />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1 ml-1">
+                        * แนะนำให้อัปโหลดรูปไปฝากไว้ที่อื่นแล้วนำลิงก์มาวาง หรือรอระบบอัปโหลดในเวอร์ชันหน้า
+                    </p>
+                </div>
               </div>
               
               <div className="flex gap-3 mt-6 pt-2">

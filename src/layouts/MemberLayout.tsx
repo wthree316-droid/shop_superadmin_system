@@ -4,9 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   Store, List, FileText, LogOut, Wallet, Menu, X, User, Bell, ChevronRight
 } from 'lucide-react';
+import { useShop } from '../hooks/useShop';
 
 export default function MemberLayout() {
   const { logout, user } = useAuth();
+  const { shop } = useShop();
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -17,6 +19,8 @@ export default function MemberLayout() {
     { path: '/results', label: 'ผลรางวัล', icon: FileText },
     { path: '/topup', label: 'เติมเครดิต', icon: Wallet },
   ];
+
+  const sidebarColor = shop?.theme_color || '#4338ca';
 
   return (
     <div className="flex h-screen bg-[#F0F4F8] font-sans overflow-hidden text-slate-800 relative">
@@ -39,16 +43,32 @@ export default function MemberLayout() {
         text-white border-r border-white/10 flex flex-col shadow-2xl md:shadow-none transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
         md:relative md:translate-x-0
-      `}>
+      `}
+        style={{ 
+              background: `linear-gradient(to bottom, ${sidebarColor}, #1e1b4b)` 
+          }}
+      >
         {/* Logo Area */}
         <div className="p-6 border-b border-gray-700 flex items-center justify-between">
-            {/* ✅ [แก้ตรงนี้] ใช้ชื่อร้านจาก user หรือใช้ OW WEI เป็นค่าสำรอง */}
-            <div className="flex items-center gap-2 font-black text-xl tracking-tighter truncate">
-                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white shrink-0">
-                    {user?.shop_name ? user.shop_name.charAt(0).toUpperCase() : 'S'}
+            <div className="flex items-center gap-3 font-black text-xl tracking-tighter truncate">
+                
+                {/* ✅ [ปรับปรุงใหม่] แสดง Logo ถ้ามี */}
+                <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center text-white shrink-0 overflow-hidden border border-white/20">
+                    {user?.shop_logo ? (
+                        <img 
+                            src={user.shop_logo} 
+                            className="w-full h-full object-cover" 
+                            alt="Shop Logo"
+                            onError={(e) => e.currentTarget.style.display = 'none'} // ถ้าโหลดรูปไม่ติด ให้ซ่อนไป
+                        />
+                    ) : (
+                        // ถ้าไม่มีรูป ให้โชว์ตัวอักษรย่อเหมือนเดิม
+                        <span>{user?.shop_name ? user.shop_name.charAt(0).toUpperCase() : 'S'}</span>
+                    )}
                 </div>
-                <span className="text-white truncate">
-                    {user?.shop_name || 'SYSTEM WEI'}
+
+                <span className="text-white truncate text-base">
+                    {user?.shop_name || 'SYSTEM'}
                 </span>
             </div>
             <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-2 bg-white/10 rounded-full text-white/70 hover:bg-white/20">
@@ -128,7 +148,8 @@ export default function MemberLayout() {
            <div className="flex items-center gap-3">
                <button 
                  onClick={() => setIsSidebarOpen(true)}
-                 className="md:hidden p-2.5 -ml-2 text-indigo-900 bg-white rounded-xl shadow-sm hover:shadow transition-all"
+                 className="md:hidden p-2.5 -ml-2 bg-white rounded-xl shadow-sm ..."
+                 style={{ color: sidebarColor }} // ✅ เปลี่ยนสีไอคอน Menu
                >
                  <Menu size={20} />
                </button>

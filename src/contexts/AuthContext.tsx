@@ -9,6 +9,7 @@ export interface User {
   role: 'superadmin' | 'admin' | 'member';
   shop_id: string | null;
   shop_name?: string;
+  shop_logo?: string;
   credit_balance: number; 
   full_name?: string;
 }

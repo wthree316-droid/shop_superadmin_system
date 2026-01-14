@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useShop } from '../../hooks/useShop'; // ✅ [1] เรียกใช้ useShop
 import client from '../../api/client';
 import { 
   User, Lock, Save, Shield, Wallet, Store, 
-  Loader2, KeyRound, CheckCircle2, AlertCircle 
+  Loader2, KeyRound, CheckCircle2, AlertCircle, Camera
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function Profile() {
-  const { user, fetchMe } = useAuth(); // ดึง user และฟังก์ชัน refresh จาก Context
+  const { user, fetchMe } = useAuth(); 
+  const { shop } = useShop(); // ✅ ดึงข้อมูลร้านเพื่อเอาสีธีม
   
   const [formData, setFormData] = useState({
     username: '',
@@ -19,7 +21,9 @@ export default function Profile() {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // โหลดข้อมูล User ลงฟอร์มเมื่อเข้าหน้าเว็บ
+  // กำหนดสีธีม (ถ้าไม่มีใช้สี Default)
+  const themeColor = shop?.theme_color || '#4f46e5'; 
+
   useEffect(() => {
     if (user) {
       setFormData(prev => ({
@@ -38,14 +42,12 @@ export default function Profile() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // 1. Validation เบื้องต้น
     if (formData.password && formData.password !== formData.confirmPassword) {
       setIsSubmitting(false);
       return toast.error('รหัสผ่านยืนยันไม่ตรงกัน');
     }
 
     try {
-      // 2. เตรียมข้อมูลส่ง (ถ้าไม่แก้รหัสผ่าน ก็ไม่ต้องส่ง key ไป)
       const payload: any = {
         username: formData.username,
         full_name: formData.full_name
@@ -55,14 +57,11 @@ export default function Profile() {
         payload.password = formData.password;
       }
 
-      // 3. ยิง API Update
       await client.put('/users/me', payload);
-      
-      // 4. อัปเดตข้อมูลใน Context ทันที (เพื่อให้ชื่อมุมขวาบนเปลี่ยน)
       await fetchMe();
 
       toast.success('บันทึกข้อมูลเรียบร้อย');
-      setFormData(prev => ({ ...prev, password: '', confirmPassword: '' })); // เคลียร์ช่องรหัสผ่าน
+      setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));
 
     } catch (err: any) {
       console.error(err);
@@ -76,18 +75,28 @@ export default function Profile() {
   return (
     <div className="max-w-4xl mx-auto pb-20 animate-fade-in">
       
-      {/* Header Banner */}
-      <div className="relative h-48 bg-linear-to-r from-blue-600 to-indigo-700 rounded-b-[3rem] shadow-lg mb-20 overflow-hidden">
+      {/* --- Header Banner (ปรับให้ใช้ Theme Color) --- */}
+      <div 
+        className="relative h-48 rounded-b-[3rem] shadow-lg mb-20 overflow-hidden"
+        style={{ background: `linear-gradient(to right, ${themeColor}, #1e1b4b)` }} // ✅ ไล่สีตามธีมร้าน
+      >
           <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+          
           <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center">
-              <div className="w-24 h-24 rounded-full bg-white p-1 shadow-xl">
-                  <div className="w-full h-full rounded-full bg-slate-100 flex items-center justify-center text-4xl font-bold text-indigo-600">
+              {/* รูปโปรไฟล์ User */}
+              <div className="w-24 h-24 rounded-full bg-white p-1 shadow-xl relative group cursor-pointer">
+                  <div className="w-full h-full rounded-full bg-slate-100 flex items-center justify-center text-4xl font-bold text-slate-400 overflow-hidden">
+                      {/* (อนาคต) ถ้ามีรูป User ให้ใส่ตรงนี้ */}
                       {user?.username?.charAt(0).toUpperCase()}
                   </div>
+                  <div className="absolute bottom-0 right-0 bg-slate-800 p-1.5 rounded-full border-2 border-white text-white">
+                      <Camera size={14} />
+                  </div>
               </div>
+              
               <div className="mt-2 text-center">
-                  <h1 className="text-xl font-bold text-slate-800">{user?.full_name || user?.username}</h1>
-                  <span className="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full font-bold">
+                  <h1 className="text-xl font-bold text-white shadow-sm">{user?.full_name || user?.username}</h1>
+                  <span className="text-[10px] px-2 py-0.5 bg-white/20 text-white rounded-full font-bold backdrop-blur-sm border border-white/10">
                       {user?.role?.toUpperCase()}
                   </span>
               </div>
@@ -96,41 +105,47 @@ export default function Profile() {
 
       <div className="px-4 grid grid-cols-1 md:grid-cols-3 gap-6">
           
-          {/* Left Column: Info Cards */}
+          {/* --- Left Column: Info Cards --- */}
           <div className="space-y-4">
               {/* Wallet Info */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden group hover:shadow-md transition-all">
-                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity" style={{ color: themeColor }}>
                       <Wallet size={80} />
                   </div>
                   <h3 className="text-slate-500 text-xs font-bold uppercase mb-2">เครดิตคงเหลือ</h3>
-                  <div className="text-3xl font-black text-indigo-600">
+                  <div className="text-3xl font-black" style={{ color: themeColor }}> {/* ✅ สีตัวเลขตามธีม */}
                       {user?.credit_balance?.toLocaleString()} <span className="text-sm text-slate-400">฿</span>
                   </div>
               </div>
 
-              {/* Shop Info */}
+              {/* Shop Info (แสดง Logo ร้าน) */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden hover:shadow-md transition-all">
                   <div className="flex items-center gap-3 mb-3">
-                      <div className="bg-orange-100 p-2 rounded-lg text-orange-600">
-                          <Store size={20} />
+                      {/* ✅ ถ้ามี Logo ร้าน ให้แสดง Logo */}
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden border border-slate-100 bg-slate-50">
+                          {user?.shop_logo ? (
+                              <img src={user.shop_logo} className="w-full h-full object-cover" />
+                          ) : (
+                              <Store size={20} className="text-slate-400" />
+                          )}
                       </div>
-                      <h3 className="font-bold text-slate-700">สังกัดร้านค้า</h3>
+                      <div>
+                          <h3 className="font-bold text-slate-700 text-sm">สมาชิกของร้าน</h3>
+                          <p className="text-slate-500 text-xs">{user?.shop_name || 'ไม่ระบุ'}</p>
+                      </div>
                   </div>
-                  <p className="text-slate-600 font-medium pl-1">
-                      {user?.shop_name || 'ไม่ระบุ'}
-                  </p>
-                  <div className="mt-4 pt-3 border-t border-slate-50 flex items-center gap-2 text-xs text-slate-400">
+                  
+                  <div className="mt-3 pt-3 border-t border-slate-50 flex items-center gap-2 text-xs text-slate-400">
                       <Shield size={12} className="text-green-500" /> บัญชีปลอดภัย
                   </div>
               </div>
           </div>
 
-          {/* Right Column: Edit Form */}
+          {/* --- Right Column: Edit Form --- */}
           <div className="md:col-span-2">
               <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                   <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                      <User className="text-indigo-600" size={20} /> แก้ไขข้อมูลส่วนตัว
+                      <User style={{ color: themeColor }} size={20} /> แก้ไขข้อมูลส่วนตัว
                   </h2>
 
                   <div className="space-y-5">
@@ -144,7 +159,8 @@ export default function Profile() {
                                   name="full_name"
                                   value={formData.full_name}
                                   onChange={handleChange}
-                                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none"
+                                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:bg-white transition-all outline-none"
+                                  style={{ '--tw-ring-color': themeColor } as any} // Custom ring color
                                   placeholder="เช่น สมชาย ใจดี"
                               />
                           </div>
@@ -160,7 +176,8 @@ export default function Profile() {
                                   name="username"
                                   value={formData.username}
                                   onChange={handleChange}
-                                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none font-medium"
+                                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:bg-white transition-all outline-none font-medium"
+                                  style={{ '--tw-ring-color': themeColor } as any}
                               />
                           </div>
                           <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
@@ -182,7 +199,8 @@ export default function Profile() {
                                       name="password"
                                       value={formData.password}
                                       onChange={handleChange}
-                                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none"
+                                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:bg-white transition-all outline-none"
+                                      style={{ '--tw-ring-color': themeColor } as any}
                                       placeholder="รหัสผ่านใหม่"
                                   />
                               </div>
@@ -193,7 +211,8 @@ export default function Profile() {
                                       name="confirmPassword"
                                       value={formData.confirmPassword}
                                       onChange={handleChange}
-                                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none"
+                                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:bg-white transition-all outline-none"
+                                      style={{ '--tw-ring-color': themeColor } as any}
                                       placeholder="ยืนยันรหัสผ่านใหม่"
                                   />
                               </div>
@@ -206,7 +225,8 @@ export default function Profile() {
                       <button 
                           type="submit" 
                           disabled={isSubmitting}
-                          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 flex items-center gap-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                          className="px-6 py-2.5 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed hover:brightness-110 active:scale-95"
+                          style={{ backgroundColor: themeColor }} // ✅ ปุ่มสีตามธีม
                       >
                           {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
                           บันทึกการแก้ไข

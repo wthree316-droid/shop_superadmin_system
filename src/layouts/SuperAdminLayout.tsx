@@ -133,7 +133,7 @@ export default function SuperAdminLayout() {
         </div>
 
         {/* Content Outlet */}
-        <div className="flex-1 overflow-auto p-4 md:p-8 pb-24 md:pb-8 relative z-0 custom-scrollbar">
+        <div className="flex-1 overflow-auto p-4 md:p-8 pb-24 md:pb-8 relative custom-scrollbar">
             <Outlet />
         </div>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Store, Users, Settings, FileSpreadsheet, ShieldAlert, Wallet, Building2, ClipboardList, MessageSquare } from 'lucide-react';
+import { Store, Users, Settings, FileSpreadsheet, ShieldAlert, Wallet, Building2, ClipboardList, Palette } from 'lucide-react';
 
 // Import Components ย่อย
 import ManageMembers from './ManageMembers';
@@ -10,7 +10,7 @@ import DailyReport from './DailyReport';
 import ManageBanks from './ManageBanks';
 import ManageTransactions from './ManageTransactions';
 import AuditLogs from './AuditLogs';
-import ManageLineConfig from './ManageLineConfig'; 
+import ManageShopSettings from './ManageShopSettings'; 
 
 export default function ShopManagement() {
   const [activeTab, setActiveTab] = useState('members');
@@ -19,7 +19,7 @@ export default function ShopManagement() {
     { id: 'members', label: 'สมาชิก', icon: Users },
     { id: 'transactions', label: 'รายการเงิน', icon: Wallet }, 
     { id: 'banks', label: 'บัญชีร้าน', icon: Building2 },
-    { id: 'line', label: 'การแจ้งเตือน', icon: MessageSquare },
+    { id: 'settings', label: 'ตั้งค่าร้าน', icon: Palette },
     { id: 'rates', label: 'เรทจ่าย', icon: FileSpreadsheet },
     { id: 'lottos', label: 'ตั้งค่าหวย', icon: Settings },
     { id: 'risks', label: 'เลขอั้น', icon: ShieldAlert },
@@ -93,9 +93,9 @@ export default function ShopManagement() {
             )}
 
             {/* Tab 4: การส่งแจ้งเตือน */}
-            {activeTab === 'line' && (
+            {activeTab === 'settings' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <ManageLineConfig />
+                    <ManageShopSettings />
                 </div>
             )}
 

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import client from '../../api/client';
-import { Store, Users, Server, ShieldCheck, Trash2, AlertTriangle } from 'lucide-react';
+import { 
+    Store, Users, Server, ShieldCheck, 
+    Trash2, AlertTriangle
+} from 'lucide-react';
 
 export default function SuperDashboard() {
   const [stats, setStats] = useState({
@@ -10,95 +13,178 @@ export default function SuperDashboard() {
     total_tickets: 0
   });
 
-  useEffect(() => {
+  // [ใหม่] State สำหรับเก็บข้อมูลตารางยอดขาย
+  const [shopStats, setShopStats] = useState<any[]>([]);
 
+  useEffect(() => {
     fetchStats();
+    fetchShopPerformance(); // <--- เรียกฟังก์ชันใหม่
   }, []);
 
   const fetchStats = async () => {
-  try {
-      // [แก้ไข] เปลี่ยนจากเรียก /shops มาเรียก /system/stats ทีเดียวจบ
-      const res = await client.get('/system/stats'); 
-      
-      setStats({
-          total_shops: res.data.total_shops,
-          active_shops: res.data.active_shops,
-          total_users: res.data.total_users, // ได้ค่าจริงแล้ว
-          total_tickets: res.data.total_tickets
-      });
-  } catch(err) { 
-      console.error(err); 
-  }
+    try {
+        const res = await client.get('/system/stats'); 
+        setStats({
+            total_shops: res.data.total_shops,
+            active_shops: res.data.active_shops,
+            total_users: res.data.total_users, 
+            total_tickets: res.data.total_tickets
+        });
+    } catch(err) { console.error(err); }
+  };
+
+  // [ใหม่] ฟังก์ชันดึงยอดขายรายร้าน
+  const fetchShopPerformance = async () => {
+    try {
+        const res = await client.get('/shops/stats/performance');
+        setShopStats(res.data);
+    } catch (err) { console.error(err); }
   };
 
   // ฟังก์ชันล้างระบบ
   const handleGlobalCleanup = async () => {
       const confirm1 = confirm("⚠️ คำเตือน: คุณกำลังจะล้างข้อมูลประวัติการแทงทั้งหมดในระบบ!");
       if (!confirm1) return;
-      const confirm2 = confirm("ยืนยันครั้งสุดท้าย: ข้อมูลจะไม่สามารถกู้คืนได้ พิมพ์ 'YES' เพื่อยืนยัน");
-      if (!confirm2) return; // หรือจะให้พิมพ์ input จริงๆ ก็ได้
+      const input = prompt("ยืนยันครั้งสุดท้าย: ข้อมูลจะไม่สามารถกู้คืนได้\nกรุณาพิมพ์คำว่า 'YES' เพื่อยืนยันการลบ");
+      if (input !== 'YES') return;
 
       try {
           await client.delete('/system/cleanup/global');
           alert('ล้างข้อมูลเรียบร้อย ระบบสะอาดเอี่ยม!');
-          // Refresh stats
           fetchStats();
+          fetchShopPerformance(); // Refresh ตารางด้วย
       } catch (err) {
           alert('เกิดข้อผิดพลาดในการล้างข้อมูล');
       }
   };
 
   return (
-    <div className="p-6 animate-fade-in text-gray-800">
+    <div className="p-6 animate-fade-in text-slate-800 pb-20">
+      
+      {/* --- Section 1: Overview Cards --- */}
       <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
           <Server className="text-purple-600" /> System Overview
       </h1>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
+          {/* Card: Shops */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
               <div className="p-4 bg-purple-100 text-purple-600 rounded-full">
                   <Store size={32} />
               </div>
               <div>
-                  <p className="text-sm text-gray-500">Total Shops</p>
-                  <h3 className="text-3xl font-bold text-gray-800">{stats.total_shops}</h3>
+                  <p className="text-sm text-slate-500">Total Shops</p>
+                  <h3 className="text-3xl font-bold text-slate-800">{stats.total_shops}</h3>
                   <p className="text-xs text-green-600 font-bold">Active: {stats.active_shops}</p>
               </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
+          {/* Card: Users (แก้ไขให้โชว์ตัวเลขแล้ว) */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
               <div className="p-4 bg-blue-100 text-blue-600 rounded-full">
                   <Users size={32} />
               </div>
               <div>
-                  <p className="text-sm text-gray-500">Total Users</p>
-                  <h3 className="text-3xl font-bold text-gray-800">-</h3>
-                  <p className="text-xs text-gray-400">System wide</p>
+                  <p className="text-sm text-slate-500">Total Users</p>
+                  {/* ✅ แก้ไข: แสดงตัวเลขจริง */}
+                  <h3 className="text-3xl font-bold text-slate-800">{stats.total_users.toLocaleString()}</h3>
+                  <p className="text-xs text-slate-400">System wide</p>
               </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
+          {/* Card: Status */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
               <div className="p-4 bg-green-100 text-green-600 rounded-full">
                   <ShieldCheck size={32} />
               </div>
               <div>
-                  <p className="text-sm text-gray-500">System Status</p>
+                  <p className="text-sm text-slate-500">System Status</p>
                   <h3 className="text-3xl font-bold text-green-600">Online</h3>
-                  <p className="text-xs text-gray-400">Server is running</p>
+                  <p className="text-xs text-slate-400">Server is running</p>
               </div>
           </div>
       </div>
       
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
-          <p className="font-bold text-yellow-800">⚠️ Maintenance Mode</p>
-          <p className="text-sm text-yellow-700">ระบบทำงานปกติ (ส่วนนี้เอาไว้กดปิดปรับปรุงระบบในอนาคต)</p>
+      {/* --- Section 2: Shop Performance Table (แทนที่ Maintenance Mode) --- */}
+      <div className="mt-8 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <Store className="text-amber-500" /> สรุปยอดขายรายร้าน (วันนี้)
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                    ข้อมูล Realtime ประจำวันที่ {new Date().toLocaleDateString('th-TH')}
+                </p>
+            </div>
+            <span className="text-xs bg-amber-50 text-amber-700 px-3 py-1 rounded-full font-bold border border-amber-100 animate-pulse">
+                Live Update
+            </span>
+        </div>
+        
+        <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-xs">
+                    <tr>
+                        <th className="p-4 pl-6">ร้านค้า</th>
+                        <th className="p-4 text-right">ยอดขาย</th>
+                        <th className="p-4 text-right">จ่ายรางวัล</th>
+                        <th className="p-4 text-right">กำไร/ขาดทุน</th>
+                        <th className="p-4 text-center">สถานะ</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {shopStats.length === 0 ? (
+                        <tr>
+                            <td colSpan={5} className="p-8 text-center text-slate-400 italic">
+                                ยังไม่มีข้อมูลการขายในวันนี้
+                            </td>
+                        </tr>
+                    ) : (
+                        shopStats.map((shop) => (
+                            <tr key={shop.id} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="p-4 pl-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 font-bold overflow-hidden">
+                                            {shop.logo_url ? (
+                                                <img src={shop.logo_url} className="w-full h-full object-cover" />
+                                            ) : (
+                                                shop.name[0]
+                                            )}
+                                        </div>
+                                        <div>
+                                            <div className="font-bold text-slate-800">{shop.name}</div>
+                                            <div className="text-xs text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded inline-block mt-0.5">
+                                                {shop.code}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="p-4 text-right font-bold text-blue-600 text-base">
+                                    {Number(shop.sales).toLocaleString()}
+                                </td>
+                                <td className="p-4 text-right text-red-500 font-medium">
+                                    {Number(shop.payout) > 0 ? Number(shop.payout).toLocaleString() : '-'}
+                                </td>
+                                <td className={`p-4 text-right font-black text-base ${shop.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                    {shop.profit > 0 ? '+' : ''}{Number(shop.profit).toLocaleString()}
+                                </td>
+                                <td className="p-4 text-center">
+                                    <span className={`w-2.5 h-2.5 rounded-full inline-block ${shop.is_active ? 'bg-emerald-500' : 'bg-slate-300'}`} title={shop.is_active ? 'Online' : 'Offline'}></span>
+                                </td>
+                            </tr>
+                        ))
+                    )}
+                </tbody>
+            </table>
+        </div>
       </div>
 
+      {/* --- Danger Zone --- */}
       <div className="mt-8">
           <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-red-600">
               <AlertTriangle /> Danger Zone
           </h3>
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex justify-between items-center">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col md:flex-row justify-between items-center gap-4">
               <div>
                   <h4 className="font-bold text-red-800">ล้างข้อมูลธุรกรรมทั้งหมด (Global Cleanup)</h4>
                   <p className="text-sm text-red-600 mt-1">
@@ -107,7 +193,7 @@ export default function SuperDashboard() {
               </div>
               <button 
                 onClick={handleGlobalCleanup}
-                className="bg-red-600 text-white px-6 py-3 rounded-lg font-bold shadow hover:bg-red-700 transition-colors flex items-center gap-2"
+                className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-colors flex items-center gap-2 whitespace-nowrap"
               >
                   <Trash2 size={20} /> ล้างข้อมูลเดี๋ยวนี้
               </button>

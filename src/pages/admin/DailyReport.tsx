@@ -14,7 +14,13 @@ import {
 
 export default function DailyReport() {
   const [stats, setStats] = useState<any[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    // วิธีดึงวันที่ตามเวลาเครื่องผู้ใช้งาน (Local Time) ไม่ใช่ UTC
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    d.setMinutes(d.getMinutes() - offset);
+    return d.toISOString().split('T')[0];
+    });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
