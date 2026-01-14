@@ -1,14 +1,18 @@
 // src/pages/Login.tsx
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { loginApi, fetchMeApi } from '../api/auth'; // ✅ ดึง API แยกมาใช้
+import { useShop } from '../hooks/useShop'; // ✅ [1] เพิ่มบรรทัดนี้
+import { loginApi, fetchMeApi } from '../api/auth';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { 
-  Loader2, User, Lock, Eye, EyeOff, ShieldCheck 
+  Loader2, User, Lock, Eye, EyeOff, ShieldCheck, Store 
 } from 'lucide-react';
 
 export default function Login() {
+  // ✅ [2] เรียกใช้ Hook เพื่อดึงข้อมูลร้าน (ถ้ามี)
+  const { shop } = useShop(); 
+  
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -25,31 +29,29 @@ export default function Login() {
     const toastId = toast.loading('กำลังตรวจสอบ...', { position: 'bottom-center' });
 
     try {
-      // 1. เตรียมข้อมูล
       const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
 
-      // 2. ยิง API Login เพื่อขอ Token
+      // ยิง API Login
       const data = await loginApi(formData);
       
-      // [สำคัญ] เก็บ Token ลง LocalStorage ก่อน เพื่อให้ fetchMeApi มี Token แนบไป
       localStorage.setItem('token', data.access_token);
 
-      // 3. [จุดที่ชัวร์ที่สุด] ยิงขอข้อมูล User ทันทีเพื่อเช็ค Role
-      // เราไม่รอ useAuth().user เพราะมันเป็น Asynchronous state (อาจจะมาไม่ทัน)
+      // ดึงข้อมูล User เพื่อเช็ค Role
       const userData = await fetchMeApi(); 
       
-      // 4. สั่ง Context ให้ Update State (เพื่อให้ส่วนอื่นของแอปรู้ว่า Login แล้ว)
-      // (Context จะ fetchMe อีกรอบก็ไม่เป็นไร หรือจะปรับ Context ให้รับ User ไปเลยก็ได้)
-      await login(data.access_token);
+      // ✅ [3] (Optional) เช็คว่า User อยู่ถูกร้านไหม?
+      // ถ้าเข้าผ่านลิงก์ร้าน (shop มีค่า) แต่ User ไม่ได้สังกัดร้านนี้ (และไม่ใช่ Superadmin)
+      // อาจจะแจ้งเตือนหรือ Block ก็ได้ (แต่ในที่นี้ปล่อยผ่านไปก่อน ให้ Backend จัดการ)
 
+      await login(data.access_token);
       toast.success(`ยินดีต้อนรับ ${userData.username}`, { id: toastId });
 
-      // 5. Redirect ตาม Role ที่ได้จาก API สดๆ
+      // Redirect ตาม Role
       switch (userData.role) {
         case 'superadmin':
-          navigate('/super/shops');
+          navigate('/super/dashboard'); // แก้ให้ไป Dashboard จะสวยกว่า
           break;
         case 'admin':
           navigate('/admin/dashboard');
@@ -64,26 +66,58 @@ export default function Login() {
     } catch (err: any) {
       console.error(err);
       toast.error('เข้าสู่ระบบไม่สำเร็จ: ' + (err.response?.data?.detail || 'รหัสผ่านผิด'), { id: toastId });
-      localStorage.removeItem('token'); // ลบ Token ทิ้งถ้า Login ไม่ผ่าน
+      localStorage.removeItem('token');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    // ... (ส่วน UI เหมือนเดิมเป๊ะ ไม่ต้องแก้) ...
-    <div className="min-h-screen bg-[#0f172a] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-6">
-        <h1 className="text-3xl font-black text-white tracking-tight">SHOP SYSTEMS</h1>
-        <p className="mt-2 text-sm text-slate-400">ระบบจัดการร้านค้าออนไลน์</p>
+    <div className="min-h-screen bg-[#0f172a] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
+      
+      {/* Background Effect */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+          <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] rounded-full bg-blue-600/10 blur-[100px]"></div>
+          <div className="absolute top-[20%] -right-[10%] w-[40%] h-[40%] rounded-full bg-purple-600/10 blur-[100px]"></div>
       </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
-        <div className="bg-white py-8 px-6 shadow-xl rounded-2xl sm:px-8 border border-slate-200">
+      {/* --- ส่วน Header ที่ปรับปรุงใหม่ --- */}
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8 relative z-10">
+        
+        {/* โชว์โลโก้ หรือ ไอคอน */}
+        <div className={`w-20 h-20 mx-auto rounded-2xl flex items-center justify-center mb-4 shadow-2xl ${shop ? 'bg-white p-1' : 'bg-slate-800 text-white border border-slate-700'}`}>
+            {shop?.logo_url ? (
+                <img src={shop.logo_url} className="w-full h-full object-cover rounded-xl" alt="Shop Logo" />
+            ) : shop ? (
+                <Store size={40} className="text-blue-600" />
+            ) : (
+                <ShieldCheck size={40} />
+            )}
+        </div>
+
+        {/* โชว์ชื่อร้าน (Dynamic) */}
+        {shop ? (
+            <>
+                <h1 className="text-3xl font-black text-white tracking-tight">{shop.name}</h1>
+                <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200 text-xs font-mono">
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                    {shop.subdomain}.yoursite.com
+                </div>
+            </>
+        ) : (
+            <>
+                <h1 className="text-3xl font-black text-white tracking-tight">SYSTEM ADMIN</h1>
+                <p className="mt-2 text-sm text-slate-400">ระบบจัดการสำหรับผู้ดูแลระบบสูงสุด</p>
+            </>
+        )}
+      </div>
+
+      <div className="sm:mx-auto sm:w-full sm:max-w-sm relative z-10">
+        <div className="bg-white/95 backdrop-blur-xl py-8 px-6 shadow-2xl rounded-2xl sm:px-8 border border-white/10">
             <form onSubmit={handleSubmit} className="space-y-5">
               {/* Username */}
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1 uppercase">ชื่อผู้ใช้</label>
+                <label className="block text-xs font-bold text-slate-600 mb-1 ml-1 uppercase">ชื่อผู้ใช้</label>
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <User className="h-5 w-5 text-slate-400" />
@@ -91,7 +125,7 @@ export default function Login() {
                     <input 
                         value={username} 
                         onChange={e => setUsername(e.target.value)}
-                        className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 font-medium placeholder-slate-400"
+                        className="w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 font-bold placeholder-slate-300 bg-slate-50 focus:bg-white"
                         placeholder="Username"
                         disabled={isSubmitting}
                         autoFocus
@@ -101,7 +135,7 @@ export default function Login() {
 
               {/* Password */}
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1 uppercase">รหัสผ่าน</label>
+                <label className="block text-xs font-bold text-slate-600 mb-1 ml-1 uppercase">รหัสผ่าน</label>
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Lock className="h-5 w-5 text-slate-400" />
@@ -110,7 +144,7 @@ export default function Login() {
                         type={showPassword ? "text" : "password"}
                         value={password} 
                         onChange={e => setPassword(e.target.value)}
-                        className="w-full pl-10 pr-10 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 font-medium placeholder-slate-400"
+                        className="w-full pl-10 pr-10 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 font-bold placeholder-slate-300 bg-slate-50 focus:bg-white"
                         placeholder="Password"
                         disabled={isSubmitting}
                     />
@@ -127,7 +161,9 @@ export default function Login() {
               <button 
                 type="submit" 
                 disabled={isSubmitting}
-                className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl shadow-md hover:bg-black hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                className={`w-full text-white font-bold py-3.5 rounded-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed
+                    ${shop ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30' : 'bg-slate-800 hover:bg-black shadow-slate-900/30'}
+                `}
               >
                 {isSubmitting ? (
                     <Loader2 className="animate-spin" size={20} />
@@ -137,10 +173,10 @@ export default function Login() {
               </button>
             </form>
 
-            <div className="mt-6 flex justify-center">
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
-                    <ShieldCheck size={12} className="text-green-500" />
-                    <span>TEAMZENT CONTEXT</span>
+            <div className="mt-8 pt-6 border-t border-slate-100 flex justify-center">
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                    <ShieldCheck size={12} className={shop ? "text-blue-500" : "text-slate-500"} />
+                    <span>SECURE CONTEXT: {shop ? 'SHOP TENANT' : 'GLOBAL SYSTEM'}</span>
                 </div>
             </div>
         </div>

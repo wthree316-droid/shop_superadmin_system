@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 import client from '../../api/client';
 import { 
     Store, UserPlus, Plus, Users, Trash2, X, Eraser, 
-    Search, CheckCircle, Loader2, Building2, LogIn
+    Search, CheckCircle, Loader2, Building2, LogIn, Globe
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext'; // เรียกใช้ Auth Context
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function SuperShopManagement() {
   const [shops, setShops] = useState<any[]>([]);
-  const { login } = useAuth(); // ดึงฟังก์ชัน login มาใช้ (เพื่อ set token ใหม่)
+  const { login } = useAuth();
 
   // Modal States
   const [showShopModal, setShowShopModal] = useState(false);
@@ -19,9 +19,11 @@ export default function SuperShopManagement() {
   const [selectedShopId, setSelectedShopId] = useState<string>('');
   const [selectedShopName, setSelectedShopName] = useState<string>('');
   const [shopAdmins, setShopAdmins] = useState<any[]>([]);
+  const [isEditMode, setIsEditMode] = useState(false); // ✅ เช็คว่ากำลังแก้ไขหรือไม่
 
   // Form States
-  const [newShop, setNewShop] = useState({ name: '', code: '' });
+  // ✅ [เพิ่ม] subdomain ใน state
+  const [newShop, setNewShop] = useState({ name: '', code: '', subdomain: '' });
   const [newAdmin, setNewAdmin] = useState({ username: '', password: '', full_name: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,19 +39,29 @@ export default function SuperShopManagement() {
     } catch (err) { console.error(err); }
   };
 
-  const handleCreateShop = async (e: React.FormEvent) => {
+  // ✅ [ปรับปรุง] รองรับทั้งสร้างและแก้ไข
+  const handleSaveShop = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const res = await client.post('/shops/', newShop);
-      // alert('สร้างร้านค้าสำเร็จ! กรุณาสร้าง Admin ประจำร้านต่อเลย');
-      
-      setSelectedShopId(res.data.id);
-      setSelectedShopName(res.data.name);
-      
-      setShowShopModal(false);
-      setShowAdminModal(true); 
-      fetchShops();
+      if (isEditMode) {
+          // --- กรณีแก้ไข (PUT) ---
+          await client.put(`/shops/${selectedShopId}`, newShop);
+          alert('แก้ไขข้อมูลร้านสำเร็จ');
+          setShowShopModal(false);
+          fetchShops();
+      } else {
+          // --- กรณีสร้างใหม่ (POST) ---
+          const res = await client.post('/shops/', newShop);
+          
+          setSelectedShopId(res.data.id);
+          setSelectedShopName(res.data.name);
+          
+          setShowShopModal(false);
+          // หลังสร้างเสร็จ ให้เปิดหน้าสร้าง Admin ต่อทันที
+          setShowAdminModal(true); 
+          fetchShops();
+      }
     } catch (err: any) {
       alert(`Error: ${err.response?.data?.detail}`);
     } finally {
@@ -73,6 +85,25 @@ export default function SuperShopManagement() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // ✅ ฟังก์ชันเปิด Modal สร้างใหม่
+  const openCreateModal = () => {
+      setNewShop({ name: '', code: '', subdomain: '' });
+      setIsEditMode(false);
+      setShowShopModal(true);
+  };
+
+  // ✅ ฟังก์ชันเปิด Modal แก้ไข (ดึงข้อมูลเก่ามาใส่)
+  const openEditModal = (shop: any) => {
+      setNewShop({ 
+          name: shop.name, 
+          code: shop.code, 
+          subdomain: shop.subdomain || '' 
+      });
+      setSelectedShopId(shop.id);
+      setIsEditMode(true);
+      setShowShopModal(true);
   };
 
   const openAddAdminModal = (shop: any) => {
@@ -123,19 +154,16 @@ export default function SuperShopManagement() {
   // Filter Search
   const filteredShops = shops.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    s.code.toLowerCase().includes(searchTerm.toLowerCase())
+    s.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.subdomain && s.subdomain.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-// [ใหม่] ฟังก์ชันกดเปลี่ยนสถานะร้าน (Active/Inactive)
   const toggleShopStatus = async (shopId: string, currentStatus: boolean) => {
     const action = currentStatus ? 'ระงับ' : 'เปิดใช้งาน';
     if (!confirm(`คุณต้องการ "${action}" ร้านค้านี้ใช่หรือไม่?`)) return;
 
     try {
-        // เรียก API ที่มีอยู่ใน shops.py แล้ว
         await client.patch(`/shops/${shopId}/toggle_status`);
-        
-        // อัปเดตหน้าจอทันที
         setShops(shops.map(s => 
             s.id === shopId ? { ...s, is_active: !currentStatus } : s
         ));
@@ -144,26 +172,16 @@ export default function SuperShopManagement() {
     }
   };
 
-  // [แก้ไข] ฟังก์ชันกดเข้าร้าน (เพิ่มการเก็บ Token สำรอง)
   const handleImpersonate = async (shopId: string) => {
       if(!confirm('คุณต้องการเข้าสู่ระบบในฐานะแอดมินของร้านนี้ใช่ไหม?')) return;
-      
       try {
-          // 1. [สำคัญ] เก็บ Token ของ Superadmin ไว้ก่อน เพื่อให้กดกลับมาได้
           const currentToken = localStorage.getItem('token');
           if (currentToken) {
               localStorage.setItem('super_backup_token', currentToken);
           }
-
-          // 2. เรียก API เพื่อขอ Token ของร้านนั้น
           const res = await client.post(`/users/impersonate/${shopId}`);
-          
-          // 3. สั่ง Login ด้วย Token ใหม่
           await login(res.data.access_token);
-          
-          // 4. บังคับโหลดหน้าใหม่เพื่อเข้าสู่ Dashboard ร้าน
           window.location.href = '/admin/dashboard';
-          
       } catch(err: any) {
           alert(err.response?.data?.detail || 'เข้าระบบไม่ได้ (ร้านอาจยังไม่มี Admin)');
       }
@@ -196,7 +214,7 @@ export default function SuperShopManagement() {
                 />
             </div>
             <button 
-                onClick={() => { setShowShopModal(true); setNewShop({ name: '', code: '' }); }}
+                onClick={openCreateModal}
                 className="bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold shadow-lg hover:bg-black hover:scale-105 transition-all flex items-center gap-2 whitespace-nowrap"
             >
                 <Plus size={18} /> <span className="hidden sm:inline">สร้างร้านใหม่</span>
@@ -204,12 +222,13 @@ export default function SuperShopManagement() {
         </div>
       </div>
 
-      {/* --- Desktop Table View (ซ่อนบนมือถือ) --- */}
+      {/* --- Desktop Table View --- */}
     <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
       <table className="w-full text-left">
         <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-xs tracking-wider">
           <tr>
             <th className="p-5">ข้อมูลร้านค้า</th>
+            <th className="p-5 text-center">Subdomain</th>
             <th className="p-5 text-center">สถานะ</th>
             <th className="p-5 text-center">เข้าใช้งาน</th>
             <th className="p-5 text-center">Admin Tools</th>
@@ -230,6 +249,15 @@ export default function SuperShopManagement() {
                   </div>
               </td>
               <td className="p-5 text-center">
+                  {shop.subdomain ? (
+                      <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100">
+                          {shop.subdomain}
+                      </span>
+                  ) : (
+                      <span className="text-xs text-slate-300">-</span>
+                  )}
+              </td>
+              <td className="p-5 text-center">
                 <button 
                     onClick={() => toggleShopStatus(shop.id, shop.is_active)}
                     className={`px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm active:scale-95 ${
@@ -237,46 +265,35 @@ export default function SuperShopManagement() {
                         ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' 
                         : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
                     }`}
-                    title="คลิกเพื่อเปลี่ยนสถานะ"
                 >
                     {shop.is_active ? 'Active' : 'Inactive'}
                 </button>
               </td>
               <td className="p-5 text-center">
-                  {/* ✅ [แก้ไข] ปุ่มนี้เรียก handleImpersonate เพื่อเข้าร้าน */}
                   <button 
                       onClick={() => handleImpersonate(shop.id)}
                       className="text-indigo-600 hover:text-white hover:bg-indigo-600 border border-indigo-200 font-bold text-xs flex items-center justify-center gap-1.5 mx-auto px-4 py-2 rounded-lg transition-all shadow-sm"
                   >
-                      <LogIn size={14} /> เข้าร้าน (Login)
+                      <LogIn size={14} /> เข้าร้าน
                   </button>
               </td>
               <td className="p-5 text-center">
                   <div className="flex justify-center gap-2">
-                      {/* ปุ่มแก้ไขข้อมูลร้าน */}
+                      {/* ✅ [เพิ่ม] ปุ่มแก้ไขร้าน (Eraser/Pencil) */}
                       <button 
-                        onClick={() => {
-                            setNewShop({ name: shop.name, code: shop.code });
-                            setSelectedShopId(shop.id);
-                            setShowShopModal(true);
-                        }} 
-                        className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-blue-600 bg-slate-50 hover:bg-blue-100 rounded-lg transition-colors border border-slate-200" 
-                        title="แก้ไขร้าน"
+                        onClick={() => openEditModal(shop)}
+                        className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-blue-600 bg-slate-50 hover:bg-blue-100 rounded-lg transition-colors border border-slate-200"
+                        title="แก้ไขข้อมูลร้าน"
                       >
-                          <Eraser size={16} /> {/* หรือใช้ไอคอน Pencil */}
+                          <Eraser size={16} />
                       </button>
 
-                      {/* ปุ่มดู Admin */}
                       <button onClick={() => openAdminListModal(shop)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-amber-600 bg-slate-50 hover:bg-amber-100 rounded-lg transition-colors border border-slate-200" title="ดู Admin">
                           <Users size={16} />
                       </button>
-
-                      {/* ปุ่มเพิ่ม Admin */}
                       <button onClick={() => openAddAdminModal(shop)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-green-600 bg-slate-50 hover:bg-green-100 rounded-lg transition-colors border border-slate-200" title="เพิ่ม Admin">
                           <UserPlus size={16} />
                       </button>
-                      
-                      {/* ปุ่มล้างข้อมูล */}
                       <button onClick={() => handleCleanupShop(shop.id, shop.name)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-600 bg-slate-50 hover:bg-red-100 rounded-lg transition-colors border border-slate-200" title="ล้างข้อมูล">
                           <Trash2 size={16} />
                       </button>
@@ -289,7 +306,7 @@ export default function SuperShopManagement() {
       {filteredShops.length === 0 && <div className="p-12 text-center text-slate-400 flex flex-col items-center"><Store size={48} className="opacity-20 mb-2" />ไม่พบร้านค้าในระบบ</div>}
     </div>
 
-    {/* --- Mobile Card View (แสดงบนมือถือ) --- */}
+    {/* --- Mobile Card View --- */}
     <div className="md:hidden grid grid-cols-1 gap-4">
         {filteredShops.map((shop) => (
             <div key={shop.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden">
@@ -300,66 +317,61 @@ export default function SuperShopManagement() {
                         </div>
                         <div>
                             <h3 className="font-bold text-lg text-slate-800">{shop.name}</h3>
-                            <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">#{shop.code}</span>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">#{shop.code}</span>
+                                {shop.subdomain && <span className="text-xs font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">{shop.subdomain}</span>}
+                            </div>
                         </div>
                     </div>
-                    {/* แก้ไขปุ่มสถานะตรงนี้ */}
                     <button 
                         onClick={() => toggleShopStatus(shop.id, shop.is_active)}
                         className={`w-3 h-3 rounded-full ${shop.is_active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`}
-                        title="แตะเพื่อเปลี่ยนสถานะ"
                     ></button>
                 </div>
                 
-                {/* ปุ่มหลักบนมือถือ */}
                 <div className="grid grid-cols-2 gap-3 mb-4">
-                    {/* ✅ [แก้ไข] ปุ่มนี้เรียก handleImpersonate */}
                     <button 
                       onClick={() => handleImpersonate(shop.id)}
                       className="col-span-2 flex items-center justify-center gap-2 py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-sm border border-indigo-100 hover:bg-indigo-100 active:scale-95 transition-all shadow-sm"
                     >
                         <LogIn size={18} /> เข้าสู่ระบบร้านค้า
                     </button>
-
+                    {/* ปุ่มแก้ไขในมือถือ */}
                     <button 
-                      onClick={() => openAdminListModal(shop)}
-                      className="flex items-center justify-center gap-2 py-2 bg-slate-50 text-slate-600 rounded-xl font-medium text-xs border border-slate-100 active:bg-slate-200"
+                        onClick={() => openEditModal(shop)} 
+                        className="flex items-center justify-center gap-2 py-2 bg-slate-50 text-slate-600 rounded-xl font-medium text-xs border border-slate-100 active:bg-slate-200"
                     >
-                        <Users size={14} /> รายชื่อ Admin
+                        <Eraser size={14} /> แก้ไขร้าน
                     </button>
-                     <button 
-                      onClick={() => openAddAdminModal(shop)}
-                      className="flex items-center justify-center gap-2 py-2 bg-slate-50 text-slate-600 rounded-xl font-medium text-xs border border-slate-100 active:bg-slate-200"
-                    >
-                        <UserPlus size={14} /> เพิ่ม Admin
-                    </button>
+                    <button onClick={() => openAdminListModal(shop)} className="flex items-center justify-center gap-2 py-2 bg-slate-50 text-slate-600 rounded-xl font-medium text-xs border border-slate-100 active:bg-slate-200"><Users size={14} /> รายชื่อ Admin</button>
+                    <button onClick={() => openAddAdminModal(shop)} className="col-span-2 flex items-center justify-center gap-2 py-2 bg-slate-50 text-slate-600 rounded-xl font-medium text-xs border border-slate-100 active:bg-slate-200"><UserPlus size={14} /> เพิ่ม Admin</button>
                 </div>
 
                 <div className="border-t border-slate-100 pt-3 flex justify-between items-center">
                     <span className="text-xs text-slate-400 font-medium">Danger Zone</span>
-                    <button 
-                      onClick={() => handleCleanupShop(shop.id, shop.name)}
-                      className="flex items-center gap-1 text-red-400 text-xs font-bold hover:text-red-600 bg-red-50 px-3 py-1.5 rounded-lg"
-                    >
-                        <Trash2 size={14} /> ล้างข้อมูล
-                    </button>
+                    <button onClick={() => handleCleanupShop(shop.id, shop.name)} className="flex items-center gap-1 text-red-400 text-xs font-bold hover:text-red-600 bg-red-50 px-3 py-1.5 rounded-lg"><Trash2 size={14} /> ล้างข้อมูล</button>
                 </div>
             </div>
         ))}
-        {filteredShops.length === 0 && <div className="text-center py-10 text-slate-400">ไม่พบข้อมูลร้านค้า</div>}
     </div>
 
-
-      {/* --- Modal 1: สร้างร้าน --- */}
+      {/* --- Modal 1: สร้าง/แก้ไขร้าน --- */}
       {showShopModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 bg-linear-to-r from-slate-800 to-slate-900 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full blur-xl -mr-6 -mt-6"></div>
-                <h3 className="text-xl font-bold flex items-center gap-2"><Building2 size={22} className="text-amber-400"/> สร้างร้านค้าใหม่</h3>
-                <p className="text-slate-300 text-xs mt-1">Step 1: กำหนดข้อมูลพื้นฐานของร้าน</p>
+                {/* เปลี่ยนหัวข้อตามสถานะ */}
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                    <Building2 size={22} className="text-amber-400"/> 
+                    {isEditMode ? 'แก้ไขข้อมูลร้านค้า' : 'สร้างร้านค้าใหม่'}
+                </h3>
+                <p className="text-slate-300 text-xs mt-1">
+                    {isEditMode ? 'อัปเดตข้อมูลและ Subdomain' : 'Step 1: กำหนดข้อมูลพื้นฐานและ Subdomain'}
+                </p>
             </div>
-            <form onSubmit={handleCreateShop} className="p-6 space-y-4">
+            
+            <form onSubmit={handleSaveShop} className="p-6 space-y-4">
               <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">ชื่อร้าน</label>
                   <input 
@@ -368,18 +380,39 @@ export default function SuperShopManagement() {
                     value={newShop.name} onChange={e => setNewShop({...newShop, name: e.target.value})} required
                   />
               </div>
-              <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">รหัสร้าน (Code)</label>
-                  <input 
-                    placeholder="เช่น HENG01" 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 uppercase font-mono focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
-                    value={newShop.code} onChange={e => setNewShop({...newShop, code: e.target.value})} required
-                  />
+              
+              <div className="grid grid-cols-2 gap-3">
+                  <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">รหัสร้าน</label>
+                      <input 
+                        placeholder="HENG01" 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 uppercase font-mono focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
+                        value={newShop.code} 
+                        onChange={e => setNewShop({...newShop, code: e.target.value})} 
+                        required
+                        disabled={isEditMode} // ห้ามแก้รหัสร้านตอน Edit (เพื่อความปลอดภัย)
+                      />
+                  </div>
+                  
+                  {/* ✅ [เพิ่ม] ช่องกรอก Subdomain */}
+                  <div>
+                      <label className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <Globe size={12}/> Subdomain
+                      </label>
+                      <input 
+                        placeholder="heng168" 
+                        className="w-full bg-blue-50 border border-blue-200 rounded-xl p-3 font-mono text-blue-800 focus:ring-2 focus:ring-blue-100 outline-none transition-all placeholder-blue-300"
+                        value={newShop.subdomain} 
+                        // บังคับพิมพ์เล็ก+ตัวเลขเท่านั้น
+                        onChange={e => setNewShop({...newShop, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')})}
+                      />
+                  </div>
               </div>
+              
               <div className="flex gap-3 mt-6 pt-2">
                 <button type="button" onClick={() => setShowShopModal(false)} className="flex-1 py-3 text-slate-500 hover:bg-slate-100 rounded-xl font-bold transition-colors">ยกเลิก</button>
                 <button type="submit" disabled={isSubmitting} className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-black shadow-lg shadow-slate-300 transition-all flex justify-center items-center gap-2 disabled:opacity-70">
-                    {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <span>ถัดไป &rarr;</span>}
+                    {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <span>{isEditMode ? 'บันทึกแก้ไข' : 'ถัดไป &rarr;'}</span>}
                 </button>
               </div>
             </form>
