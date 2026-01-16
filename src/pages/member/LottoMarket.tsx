@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import client from '../../api/client';
 import { 
-  Clock, TrendingUp, Sparkles, AlertCircle, 
-  Search, Timer, ChevronRight 
+  Sparkles, Search
 } from 'lucide-react';
 
 // --- Helper Functions ---
@@ -26,10 +25,11 @@ const getTimeRemaining = (closeDate: Date, now: Date) => {
 
 const CATEGORIES = [
   { id: 'ALL', label: 'ทั้งหมด', icon: '🔥' },
-  { id: 'THAI', label: 'รัฐบาลไทย', icon: '🇹🇭' },
-  { id: 'LAOS', label: 'หวยลาว', icon: '🇱🇦' },
-  { id: 'HANOI', label: 'หวยฮานอย', icon: '🇻🇳' },
+  { id: 'THAI', label: 'รัฐบาลไทย', icon: '' },
+  { id: 'LAOS', label: 'หวยลาว', icon: '' },
+  { id: 'HANOI', label: 'หวยฮานอย', icon: '' },
   { id: 'STOCKS', label: 'หวยหุ้น', icon: '📈' },
+  { id: 'STOCKSVIP', label: 'หวยหุ้นVIP', icon: '📈' },
   { id: 'YIKI', label: 'ยี่กี', icon: '🎱' },
   { id: 'OTHERS', label: 'อื่นๆ', icon: '🌐' },
 ];
@@ -47,7 +47,6 @@ export default function LottoMarket() {
     return () => clearInterval(timer);
   }, []);
 
-  // ฟังก์ชันกรองพื้นฐาน
   const getFilteredLottos = (category: string) => {
     return lottos.filter(l => {
       const catMatch = category === 'ALL' || (l.category || 'OTHERS') === category;
@@ -56,97 +55,76 @@ export default function LottoMarket() {
     });
   };
 
-  // --- New Card Component (การ์ดแบบโปสเตอร์เต็มใบ) ---
+  // --- [UPDATED] LottoCard Layout แบบ Dashboard ---
   const LottoCard = ({ lotto }: { lotto: any }) => {
       const closeDate = getCloseDate(lotto.close_time);
       const timeLeft = closeDate ? getTimeRemaining(closeDate, now) : null;
       const isClosed = !timeLeft; 
-      const isUrgent = timeLeft && closeDate && (closeDate.getTime() - now.getTime() < 30 * 60 * 1000);
 
       return (
         <div 
           onClick={() => !isClosed && navigate(`/play/${lotto.id}`)}
           className={`
-            relative rounded-2xl overflow-hidden group transition-all duration-300 aspect-5/3
-            ${isClosed 
-              ? 'cursor-not-allowed grayscale opacity-70' 
-              : 'cursor-pointer hover:shadow-2xl hover:scale-[1.02]'
+            relative p-3 rounded-sm shadow-sm border transition-all duration-200 overflow-hidden cursor-pointer
+            ${!isClosed 
+                ? 'bg-[#00B900] border-[#00A000] hover:scale-[1.02] hover:shadow-md text-white' 
+                : 'bg-white border-gray-200 opacity-80 text-gray-700 grayscale'
             }
           `}
         >
-            {/* 1. Background Image Layer */}
-            <div className="absolute inset-0 z-0">
-                {lotto.img_url ? (
-                    <img 
-                        src={lotto.img_url} 
-                        alt={lotto.name} 
-                        loading="lazy" 
-                        decoding="async" // แนะนำให้ใส่
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.src = 'https://placehold.co/400x300?text=No+Image'; // รูปสำรอง
-                            target.onerror = null; // ป้องกัน Loop นรก
-                        }}
-                    />
-                ) : (
-                    <div className="w-full h-full bg-linear-to-br from-slate-700 to-slate-900 flex items-center justify-center">
-                        <span className="text-white/50 font-bold text-xl">No Image</span>
-                    </div>
-                )}
+            {/* Header: Flag & Name */}
+            <div className="flex justify-between items-start mb-2">
+                {/* Flag Image */}
+                <div className="w-14 h-9 bg-white/20 rounded-sm overflow-hidden shrink-0 border border-white/10 shadow-sm">
+                    {lotto.img_url ? (
+                        <img 
+                            src={lotto.img_url} 
+                            alt={lotto.name} 
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                                (e.target as HTMLImageElement).src = 'https://placehold.co/60x40?text=Lotto';
+                            }}
+                        />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[10px] font-bold">LOGO</div>
+                    )}
+                </div>
+
+                {/* Name & Status */}
+                <div className="text-right flex flex-col items-end flex-1 pl-2">
+                    <h3 className={`font-bold text-xs leading-tight line-clamp-1 ${!isClosed ? 'text-white' : 'text-gray-800'}`}>
+                        {lotto.name}
+                    </h3>
+                    <span className={`text-[10px] font-bold mt-0.5 ${!isClosed ? 'text-white/90' : 'text-gray-500'}`}>
+                        {isClosed ? 'ปิดรับ' : 'เปิดรับ'}
+                    </span>
+                </div>
             </div>
 
-            {/* 2. Gradient Overlay Layer */}
-            <div className={`absolute inset-0 z-10 bg-linear-to-t ${isClosed ? 'from-gray-900/90 via-gray-900/50' : 'from-slate-900/90 via-slate-900/40'} to-transparent`}></div>
-
-            {/* 3. Content Layer */}
-            <div className="absolute inset-0 z-20 p-4 flex flex-col justify-between">
-                
-                {/* Top: Status Badge */}
-                <div className="flex justify-end">
-                    {isClosed ? (
-                        <span className="backdrop-blur-md bg-black/50 text-white text-[10px] px-2.5 py-1 rounded-full font-bold border border-white/20 flex items-center gap-1">
-                          <AlertCircle size={12} /> ปิดรับ
-                        </span>
-                      ) : (
-                        <span className={`
-                          text-[10px] px-2.5 py-1 rounded-full font-bold border flex items-center gap-1 backdrop-blur-md shadow-sm
-                          ${isUrgent 
-                            ? 'bg-orange-500/80 text-white border-orange-400/50 animate-pulse' 
-                            : 'bg-green-500/80 text-white border-green-400/50'
-                          }
-                        `}>
-                          <span className={`w-1.5 h-1.5 rounded-full bg-white animate-ping`}></span>
-                          {isUrgent ? 'ใกล้ปิด!' : 'เปิดรับ'}
-                        </span>
-                      )}
+            {/* Info Rows */}
+            <div className={`text-[10px] space-y-0.5 font-medium ${!isClosed ? 'text-white/90' : 'text-gray-500'}`}>
+                {/* เวลาปิด */}
+                <div className="flex justify-between border-b border-white/10 pb-0">
+                    <span>เวลาปิด</span>
+                    <span className="font-bold">{lotto.close_time || '-'}</span>
                 </div>
                 
-                {/* Bottom: Info & Timer */}
-                <div>
-                    <h3 className="text-white font-bold text-lg leading-tight mb-2 drop-shadow-sm">
-                      {lotto.name}
-                    </h3>
-                    
-                    {/* Timer Bar */}
-                    <div className="bg-black/40 backdrop-blur-sm rounded-xl p-2 border border-white/10 flex items-center justify-between">
-                        {isClosed ? (
-                           <div className="flex items-center gap-1.5 text-xs text-gray-300 font-mono">
-                              <Clock size={14} /> <span>ปิดแล้ว</span>
-                           </div>
-                        ) : (
-                           <div className={`flex items-center gap-1.5 text-xs font-mono ${isUrgent ? 'text-orange-300' : 'text-blue-300'}`}>
-                              <Timer size={14} className={isUrgent ? 'animate-bounce' : ''} />
-                              <span className="font-bold tracking-wider">{timeLeft}</span>
-                           </div>
-                        )}
-                        
-                        {!isClosed && (
-                            <div className="bg-white/20 p-1 rounded-full text-white opacity-70 group-hover:opacity-100 group-hover:bg-blue-500 transition-all">
-                                <ChevronRight size={14} />
-                            </div>
-                        )}
-                    </div>
+                {/* ออกผล */}
+                <div className="flex justify-between border-b border-white/10 pb-0">
+                    <span>ออกผล</span>
+                    <span className="font-bold">{lotto.result_time || '-'}</span>
+                </div>
+
+                {/* สถานะ / Countdown */}
+                <div className="flex justify-between items-center pt-0">
+                    <span>สถานะ</span>
+                    {isClosed ? (
+                        <span>-</span>
+                    ) : (
+                        <span className="font-bold bg-black/20 px-1.5 py-0 rounded text-[9px] whitespace-nowrap">
+                           ปิดรับใน {timeLeft}
+                        </span>
+                    )}
                 </div>
             </div>
         </div>
@@ -155,50 +133,44 @@ export default function LottoMarket() {
 
   // --- Main Render ---
   return (
-    <div className="min-h-screen bg-[#f8fafc] pb-24 font-sans">
+    <div className="min-h-screen bg-[#f1f5f9] pb-24 font-sans">
       
       {/* Header */}
-      <div className="bg-linear-to-r from-slate-900 to-blue-900 text-white pt-6 pb-12 px-6 rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
-        <div className="relative z-10">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <Sparkles className="text-yellow-400" fill="currentColor" /> Lotto Market
-              </h1>
-              <p className="text-slate-300 text-xs mt-1 font-mono opacity-80">
-                {now.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
-              </p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md p-2 rounded-xl border border-white/10 shadow-lg">
-               <TrendingUp className="text-green-400" />
+      <div className="bg-white text-gray-800 pt-4 pb-4 px-4 shadow-sm relative z-20">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-xl font-bold flex items-center gap-2 text-[#1e293b]">
+              <Sparkles className="text-blue-600" size={20} /> รายการหวย
+            </h1>
+            <div className="text-xs text-gray-500">
+               {now.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' })}
             </div>
           </div>
+          
+          {/* Search Bar */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input 
               type="text" 
-              placeholder="ค้นหาหวย..." 
+              placeholder="ค้นหา..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white/10 border border-white/10 text-white placeholder-slate-300 pl-10 pr-4 py-3 rounded-xl focus:outline-none focus:bg-white/20 focus:border-white/30 transition-all backdrop-blur-sm"
+              className="w-full bg-gray-100 border border-gray-200 text-gray-700 placeholder-gray-400 pl-9 pr-4 py-2 rounded-lg focus:outline-none focus:bg-white focus:border-blue-500 text-sm transition-all"
             />
           </div>
-        </div>
       </div>
 
-      {/* Category Tabs (Sticky) */}
-      <div className="sticky top-0 z-30 bg-[#f8fafc]/95 backdrop-blur-md py-3 px-4 shadow-sm border-b border-slate-100">
-        <div className="flex overflow-x-auto gap-2 scrollbar-hide">
+      {/* Category Tabs */}
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 py-2 px-4 shadow-sm overflow-x-auto">
+        <div className="flex gap-2 min-w-max">
           {CATEGORIES.map(cat => (
             <button
               key={cat.id}
               onClick={() => setFilter(cat.id)}
               className={`
-                whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 transition-all duration-200
+                whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 transition-all
                 ${filter === cat.id 
-                  ? 'bg-slate-800 text-white shadow-md transform scale-105' 
-                  : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-400'
+                  ? 'bg-blue-600 text-white shadow-sm' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }
               `}
             >
@@ -208,27 +180,20 @@ export default function LottoMarket() {
         </div>
       </div>
 
-      {/* Content Area with Separators */}
-      <div className="px-4 mt-4 mb-8">
-        
-        {/* กรณีเลือก "ทั้งหมด" ให้แสดงแบบแยกหมวดหมู่ */}
+      {/* Grid Content */}
+      <div className="p-4">
         {filter === 'ALL' && searchTerm === '' ? (
-            <div className="space-y-8">
+            <div className="space-y-6">
                 {CATEGORIES.slice(1).map(cat => {
                     const catLottos = getFilteredLottos(cat.id);
                     if (catLottos.length === 0) return null;
 
                     return (
                         <div key={cat.id}>
-                            {/* --- จุดที่แก้ไข: ปิด tag ให้ถูกต้อง --- */}
-                            <div className="flex items-center gap-3 mb-4">
-                                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 whitespace-nowrap">
-                                    <span className="text-xl">{cat.icon}</span> {cat.label}
-                                </h2>
-                                <div className="h-1px bg-slate-200 w-full"></div>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <h2 className="text-sm font-bold text-gray-700 mb-3 pl-1 border-l-4 border-blue-500 flex items-center gap-2">
+                                {cat.icon} {cat.label}
+                            </h2>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                 {catLottos.map(lotto => <LottoCard key={lotto.id} lotto={lotto} />)}
                             </div>
                         </div>
@@ -236,17 +201,15 @@ export default function LottoMarket() {
                 })}
             </div>
         ) : (
-            // กรณีเลือก Filter หรือ Search
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {getFilteredLottos(filter).map(lotto => <LottoCard key={lotto.id} lotto={lotto} />)}
             </div>
         )}
 
-        {/* Empty State */}
         {getFilteredLottos(filter).length === 0 && (
-            <div className="text-center py-20 text-gray-400">
-                <Search className="mx-auto mb-2 opacity-50" size={40} />
-                <p>ไม่พบรายการหวย</p>
+            <div className="text-center py-20 text-gray-400 text-sm">
+                <Search className="mx-auto mb-2 opacity-50" size={32} />
+                <p>ไม่พบรายการ</p>
             </div>
         )}
       </div>
