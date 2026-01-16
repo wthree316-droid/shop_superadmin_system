@@ -4,11 +4,13 @@ import client from '../../api/client';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   Trash2, Loader2, 
-  Save, // ลบ Camera ออกตามแจ้งเตือน
-  Settings2, ArrowLeft
+  Save, 
+  Settings2, ArrowLeft,
+  Calculator, 
+  Delete 
 } from 'lucide-react';
 import { type CartItem } from '../../types/lotto';
-import { generateNumbers } from '../../types/lottoLogic';
+import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '../../types/lottoLogic';
 import toast from 'react-hot-toast';
 
 // --- Types & Helpers ---
@@ -22,16 +24,57 @@ type GroupedCartItem = {
   priceLabel: string;
 };
 
-const reverseNumber = (num: string) => {
-    if (num.length === 2) return num.split('').reverse().join('');
-    return num;
+// --- Sub-Component: ตัวนับถอยหลัง ---
+const CountDownTimer = ({ closeTime }: { closeTime: string }) => {
+  const [timeLeft, setTimeLeft] = useState('00:00:00:00');
+
+  useEffect(() => {
+    if (!closeTime) return;
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const [hours, minutes] = closeTime.split(':').map(Number);
+      
+      // ตั้งเวลาเป้าหมายเป็น วันนี้ เวลาตาม close_time
+      const target = new Date();
+      target.setHours(hours, minutes, 0);
+
+      const diff = target.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setTimeLeft("00:00:00:00");
+        clearInterval(interval);
+        return;
+      }
+
+      // คำนวณเวลา
+      const h = Math.floor((diff / (1000 * 60 * 60)));
+      const m = Math.floor((diff / (1000 * 60)) % 60);
+      const s = Math.floor((diff / 1000) % 60);
+    //   const ms = Math.floor((diff % 1000) / 10); // เอาแค่ 2 หลัก
+
+      // จัด Format 2 หลัก
+      const strH = h.toString().padStart(2, '0');
+      const strM = m.toString().padStart(2, '0');
+      const strS = s.toString().padStart(2, '0');
+    //   const strMs = ms.toString().padStart(2, '0');
+
+      setTimeLeft(`${strH}:${strM}:${strS}`); //:${strMs}
+    }, 10); // อัปเดตทุก 10ms เพื่อความลื่นไหล
+
+    return () => clearInterval(interval);
+  }, [closeTime]);
+
+  return (
+    <div className="text-red-500 font-bold text-xl animate-pulse">
+      เหลือเวลา {timeLeft}
+    </div>
+  );
 };
 
-// Helper ดึงค่าเรท
+
 const getRateVal = (rateObj: any, field: 'pay' | 'min' | 'max') => {
     if (!rateObj) return field === 'min' ? 1 : (field === 'max' ? '-' : 0);
-    
-    // กรณีเป็น Object
     if (typeof rateObj === 'object') {
         const val = rateObj[field];
         if (field === 'pay') return val || 0;
@@ -39,7 +82,6 @@ const getRateVal = (rateObj: any, field: 'pay' | 'min' | 'max') => {
         if (field === 'max') return val || '-';
         return val;
     }
-    // กรณีเป็นตัวเลข (Legacy)
     if (field === 'pay') return Number(rateObj);
     if (field === 'min') return 1;
     return '-';
@@ -60,10 +102,9 @@ export default function BettingRoom() {
   
   // Betting Logic State
   const [currentInput, setCurrentInput] = useState('');
-  const [bufferNumbers, setBufferNumbers] = useState<string[]>([]);
+  const [bufferNumbers, setBufferNumbers] = useState<string[]>([]); // เก็บเลขที่เลือกไว้
   const [priceTop, setPriceTop] = useState('');    
   const [priceBottom, setPriceBottom] = useState(''); 
-  const [isReverse, setIsReverse] = useState(false); 
 
   // Cart & Note
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -80,7 +121,6 @@ export default function BettingRoom() {
                 client.get(`/play/lottos/${id}`), 
                 client.get(`/play/risks/${id}`)
             ]);
-            
             setLotto(resLotto.data);
             setRisks(resRisks.data);
         } catch (err) { 
@@ -100,7 +140,6 @@ export default function BettingRoom() {
       setCurrentInput('');
       setPriceTop('');
       setPriceBottom('');
-      setIsReverse(false);
   }, [tab, winMode]);
 
   // --- Functions ---
@@ -135,6 +174,7 @@ export default function BettingRoom() {
       const newNumbers = numbersToAdd.filter(n => !bufferNumbers.includes(n));
       if(newNumbers.length === 0 && numbersToAdd.length > 0) {
            setCurrentInput('');
+           if (!manualNum) toast("เลขนี้มีอยู่แล้ว หรือเพิ่มไม่ได้");
            return;
       }
       
@@ -150,132 +190,100 @@ export default function BettingRoom() {
   }, [currentInput, tab]);
 
   const handleQuickOption = (type: string) => {
-      let list: string[] = [];
+      // เรียกใช้ฟังก์ชันจาก lottoLogic โดยตรง ไม่ต้องเขียน Loop เองแล้ว
+      // (ระบบจะไปดึง logic การสร้างเลขพี่น้อง/เบิ้ล/ตอง มาจากไฟล์นั้นเลย)
+      const list = generateSpecialNumbers(type as any);
       
-      if (tab === '2' || tab === '19') {
-          if (type === 'double') { 
-             for(let i=0; i<10; i++) list.push(`${i}${i}`);
-          }
-          if (type === 'sibling' && tab === '2') { 
-             const siblings = ['01','12','23','34','45','56','67','78','89','90','09','98','87','76','65','54','43','32','21','10'];
-             list = [...siblings];
-          }
-      }
-
-      if (tab === '3') {
-          if (type === 'triple') { 
-              for(let i=0; i<10; i++) list.push(`${i}${i}${i}`);
-          }
-          if (type === 'double_front') {
-              for(let i=0; i<10; i++) for(let j=0; j<10; j++) if (i !== j) list.push(`${i}${i}${j}`);
-          }
-          if (type === 'double_back') {
-              for(let i=0; i<10; i++) for(let j=0; j<10; j++) if (i !== j) list.push(`${i}${j}${j}`);
-          }
-          if (type === 'sandwich') {
-              for(let i=0; i<10; i++) for(let j=0; j<10; j++) if (i !== j) list.push(`${i}${j}${i}`);
-          }
-      }
-
       if (list.length > 0) {
+          // กรองเลขซ้ำใน buffer ออก
           const newNumbers = list.filter(n => !bufferNumbers.includes(n));
-          setBufferNumbers(prev => [...prev, ...newNumbers]);
-          toast.success(`เพิ่ม ${newNumbers.length} รายการ`);
+          
+          if (newNumbers.length > 0) {
+              setBufferNumbers(prev => [...prev, ...newNumbers]);
+              toast.success(`เพิ่ม ${newNumbers.length} รายการ`);
+          } else {
+             toast("เลขชุดนี้ถูกเลือกไว้หมดแล้ว");
+          }
       }
+  };
+
+  // --- [FIXED] ฟังก์ชันกดปุ่ม "กลับเลข" แล้วแตกตัวเลขลง Buffer ทันที ---
+  const handleReverseBuffer = () => {
+      if (bufferNumbers.length === 0) return;
+      
+      let newSet: string[] = [];
+      bufferNumbers.forEach(num => {
+          // แก้ตรงนี้: เรียกใช้จาก lottoLogic แทน
+          const perms = generateReturnNumbers(num); 
+          newSet.push(...perms);
+      });
+
+      const uniqueNumbers = [...new Set(newSet)];
+      setBufferNumbers(uniqueNumbers);
+      toast.success(`กลับเลขเรียบร้อย (รวม ${uniqueNumbers.length} รายการ)`);
   };
 
   // --- Add to Cart Logic ---
   const handleAddBill = () => {
+      // 1. Process Input ค้าง
       if (currentInput && currentInput.length >= getInputConfig().min) {
           handleAddNumberToBuffer();
       }
 
-      let finalNumbers = [...bufferNumbers];
+      // 2. Win Mode Input ค้าง
+      let finalNumbersToProcess = [...bufferNumbers]; 
+      
+      // กรณี Win มี input ค้าง และกดเพิ่มบิลเลย (ยังไม่ได้กดกลับเลข)
       if (currentInput && currentInput.length >= getInputConfig().min && tab === 'win') {
            const mode = winMode === '2' ? 'win2' : 'win3';
            const generated = generateNumbers(currentInput, mode);
-           finalNumbers = [...finalNumbers, ...generated];
+           finalNumbersToProcess = [...finalNumbersToProcess, ...generated];
            setCurrentInput('');
       } 
       
-      if (finalNumbers.length === 0) return toast.error("กรุณาระบุตัวเลข");
+      // ตัดเลขซ้ำ
+      finalNumbersToProcess = Array.from(new Set(finalNumbersToProcess));
+
+      if (finalNumbersToProcess.length === 0) return toast.error("กรุณาระบุตัวเลข");
       if (!priceTop && !priceBottom) return toast.error("กรุณาระบุราคาอย่างน้อย 1 ช่อง");
 
       const pTop = Number(priceTop) || 0;
       const pBottom = Number(priceBottom) || 0;
       const newItems: CartItem[] = [];
-
-      // [FIX] เตรียม Rate สำหรับ lookup
       const currentRates = lotto?.rates || {};
 
-      finalNumbers.forEach(num => {
+      finalNumbersToProcess.forEach(num => {
           const isClosed = risks.find(r => r.number === num && r.risk_type === 'CLOSE');
           if (isClosed) return;
 
-          const numsToProcess = (isReverse && tab === '2') 
-            ? Array.from(new Set([num, reverseNumber(num)])) 
-            : [num];
-
-          numsToProcess.forEach(n => {
-             if (tab === '2' || tab === '19' || (tab === 'win' && winMode === '2')) {
-                 if (pTop > 0) newItems.push({ 
-                    temp_id: uuidv4(), 
-                    number: n, 
-                    bet_type: '2up', 
-                    amount: pTop, 
-                    display_text: n,
-                    // [FIX 1] ใส่ rate_pay
-                    rate_pay: Number(getRateVal(currentRates['2up'], 'pay'))
-                 });
-                 if (pBottom > 0) newItems.push({ 
-                    temp_id: uuidv4(), 
-                    number: n, 
-                    bet_type: '2down', 
-                    amount: pBottom, 
-                    display_text: n,
-                    // [FIX 1] ใส่ rate_pay
-                    rate_pay: Number(getRateVal(currentRates['2down'], 'pay'))
-                 });
-             } else if (tab === '3' || (tab === 'win' && winMode === '3')) {
-                 if (pTop > 0) newItems.push({ 
-                    temp_id: uuidv4(), 
-                    number: n, 
-                    bet_type: '3top', 
-                    amount: pTop, 
-                    display_text: n,
-                    // [FIX 1] ใส่ rate_pay
-                    rate_pay: Number(getRateVal(currentRates['3top'], 'pay'))
-                 });
-                 if (pBottom > 0) newItems.push({ 
-                    temp_id: uuidv4(), 
-                    number: n, 
-                    bet_type: '3tod', 
-                    amount: pBottom, 
-                    display_text: n,
-                    // [FIX 1] ใส่ rate_pay
-                    rate_pay: Number(getRateVal(currentRates['3tod'], 'pay'))
-                 });
-             } else if (tab === 'run') {
-                 if (pTop > 0) newItems.push({ 
-                    temp_id: uuidv4(), 
-                    number: n, 
-                    bet_type: 'run_up', 
-                    amount: pTop, 
-                    display_text: n,
-                    // [FIX 1] ใส่ rate_pay
-                    rate_pay: Number(getRateVal(currentRates['run_up'], 'pay'))
-                 });
-                 if (pBottom > 0) newItems.push({ 
-                    temp_id: uuidv4(), 
-                    number: n, 
-                    bet_type: 'run_down', 
-                    amount: pBottom, 
-                    display_text: n,
-                    // [FIX 1] ใส่ rate_pay
-                    rate_pay: Number(getRateVal(currentRates['run_down'], 'pay'))
-                 });
-             }
-          });
+          if (tab === '2' || tab === '19' || (tab === 'win' && winMode === '2')) {
+               if (pTop > 0) newItems.push({ 
+                  temp_id: uuidv4(), number: num, bet_type: '2up', amount: pTop, display_text: num,
+                  rate_pay: Number(getRateVal(currentRates['2up'], 'pay'))
+               });
+               if (pBottom > 0) newItems.push({ 
+                  temp_id: uuidv4(), number: num, bet_type: '2down', amount: pBottom, display_text: num,
+                  rate_pay: Number(getRateVal(currentRates['2down'], 'pay'))
+               });
+          } else if (tab === '3' || (tab === 'win' && winMode === '3')) {
+               if (pTop > 0) newItems.push({ 
+                  temp_id: uuidv4(), number: num, bet_type: '3top', amount: pTop, display_text: num,
+                  rate_pay: Number(getRateVal(currentRates['3top'], 'pay'))
+               });
+               if (pBottom > 0) newItems.push({ 
+                  temp_id: uuidv4(), number: num, bet_type: '3tod', amount: pBottom, display_text: num,
+                  rate_pay: Number(getRateVal(currentRates['3tod'], 'pay'))
+               });
+          } else if (tab === 'run') {
+               if (pTop > 0) newItems.push({ 
+                  temp_id: uuidv4(), number: num, bet_type: 'run_up', amount: pTop, display_text: num,
+                  rate_pay: Number(getRateVal(currentRates['run_up'], 'pay'))
+               });
+               if (pBottom > 0) newItems.push({ 
+                  temp_id: uuidv4(), number: num, bet_type: 'run_down', amount: pBottom, display_text: num,
+                  rate_pay: Number(getRateVal(currentRates['run_down'], 'pay'))
+               });
+          }
       });
 
       if(newItems.length === 0) {
@@ -286,82 +294,50 @@ export default function BettingRoom() {
       setBufferNumbers([]);
       setPriceTop('');
       setPriceBottom('');
-      setIsReverse(false);
-      if (currentInput && tab === 'win') setCurrentInput('');
-
+      
       toast.success(`เพิ่ม ${newItems.length} รายการ`);
   };
 
   // --- Grouping Logic ---
   const getGroupedCartItems = (): GroupedCartItem[] => {
       const groupedByNum = new Map<string, {type: string, amount: number}[]>();
-      
       cart.forEach(item => {
           if (!groupedByNum.has(item.number)) groupedByNum.set(item.number, []);
           groupedByNum.get(item.number)?.push({ type: item.bet_type, amount: item.amount });
       });
-
       const finalGroups = new Map<string, GroupedCartItem>();
-
       groupedByNum.forEach((bets, num) => {
           const mergedBetsMap = new Map<string, number>();
-          bets.forEach(b => {
-              mergedBetsMap.set(b.type, (mergedBetsMap.get(b.type) || 0) + b.amount);
-          });
-          
+          bets.forEach(b => mergedBetsMap.set(b.type, (mergedBetsMap.get(b.type) || 0) + b.amount));
           const mergedBets: {type: string, amount: number}[] = [];
-          mergedBetsMap.forEach((amt, type) => {
-              mergedBets.push({ type, amount: amt });
-          });
+          mergedBetsMap.forEach((amt, type) => mergedBets.push({ type, amount: amt }));
           mergedBets.sort((a, b) => a.type.localeCompare(b.type));
-          
           const sig = mergedBets.map(b => `${b.type}-${b.amount}`).join('|');
-          
           if (!finalGroups.has(sig)) {
               const typesArr: string[] = [];
               const pricesArr: number[] = [];
               let labelGroup = "หวย";
-
-              mergedBets.forEach(b => {
-                 typesArr.push(b.type);
-                 pricesArr.push(b.amount);
-              });
-
+              mergedBets.forEach(b => { typesArr.push(b.type); pricesArr.push(b.amount); });
               if (typesArr.some(t => t.includes('2') || t.includes('19'))) labelGroup = "2 ตัว";
               else if (typesArr.some(t => t.includes('3'))) labelGroup = "3 ตัว";
               else if (typesArr.some(t => t.includes('run'))) labelGroup = "เลขวิ่ง";
-
+              
               const typeLabels = typesArr.map(t => {
-                  if(t === '2up') return 'บน';
-                  if(t === '2down') return 'ล่าง';
-                  if(t === '3top') return '3บน';
-                  if(t === '3tod') return '3โต๊ด';
-                  if(t === 'run_up') return 'วิ่งบน';
-                  if(t === 'run_down') return 'วิ่งล่าง';
+                  if(t === '2up') return 'บน'; if(t === '2down') return 'ล่าง';
+                  if(t === '3top') return '3บน'; if(t === '3tod') return '3โต๊ด';
+                  if(t === 'run_up') return 'วิ่งบน'; if(t === 'run_down') return 'วิ่งล่าง';
                   return t;
               });
-              
               const priceLabelStr = `${typeLabels.join(' + ')}\n${pricesArr.join(' + ')}`;
-              const totalPerNum = pricesArr.reduce((a,b)=>a+b, 0);
-
               finalGroups.set(sig, {
-                  id: sig,
-                  numbers: [num],
-                  types: typesArr,
-                  prices: pricesArr,
-                  totalAmount: totalPerNum, 
-                  label: labelGroup,
-                  priceLabel: priceLabelStr
+                  id: sig, numbers: [num], types: typesArr, prices: pricesArr,
+                  totalAmount: pricesArr.reduce((a,b)=>a+b, 0), label: labelGroup, priceLabel: priceLabelStr
               });
           } else {
               finalGroups.get(sig)?.numbers.push(num);
           }
       });
-
-      return Array.from(finalGroups.values()).map(g => ({
-          ...g,
-          totalAmount: g.totalAmount * g.numbers.length
-      }));
+      return Array.from(finalGroups.values()).map(g => ({ ...g, totalAmount: g.totalAmount * g.numbers.length }));
   };
 
   const deleteGroup = (group: GroupedCartItem) => {
@@ -381,11 +357,7 @@ export default function BettingRoom() {
         const payload = {
             lotto_type_id: lotto.id,
             note: note,
-            items: cart.map(item => ({
-                number: item.number,
-                bet_type: item.bet_type,
-                amount: item.amount
-            }))
+            items: cart.map(item => ({ number: item.number, bet_type: item.bet_type, amount: item.amount }))
         };
         const res = await client.post('/play/submit_ticket', payload);
         toast.dismiss(toastId);
@@ -405,28 +377,26 @@ export default function BettingRoom() {
   const totalAmount = cart.reduce((sum, item) => sum + item.amount, 0);
   const groupedItems = getGroupedCartItems();
   const labels = tab === '3' ? { top: '3 ตัวบน', bottom: '3 ตัวโต๊ด' } : (tab === 'run' ? { top: 'วิ่งบน', bottom: 'วิ่งล่าง' } : { top: 'บน', bottom: 'ล่าง' });
+  const activeRates = lotto?.rates || {};
 
   if(loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-500 w-10 h-10"/></div>;
   if(!lotto) return null;
 
-  // [FIX 2] ลบ fallback ของ rateProfile ออก เพราะใช้ lotto.rates โดยตรงแล้ว
-  const activeRates = lotto.rates || {};
-
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden font-sans">
-      
-      <div className="flex flex-1 overflow-hidden relative">
+        <div className="mt-1 mx-4">
+            <CountDownTimer closeTime={lotto.close_time || "00:00"} />
+        </div>
+        <div className="flex flex-1 overflow-hidden relative">
           
           {/* ================= CENTER COLUMN ================= */}
           <div className="flex-1 overflow-y-auto pb-20 bg-white"> 
              <div className="p-4 max-w-4xl mx-auto space-y-4">
                 
-                {/* Header Navigation */}
+                {/* Header */}
                 <button onClick={() => navigate('/play')} className="flex items-center gap-1 text-gray-500 hover:text-gray-800 text-sm mb-2">
                     <ArrowLeft size={16} /> กลับไปหน้าตลาด
                 </button>
-
-                {/* Header Info Card */}
                 <div className="bg-[#E0F7FA] border border-[#B2DFDB] rounded-lg p-3 flex justify-between items-center shadow-sm">
                     <div>
                         <h2 className="font-bold text-gray-800 text-lg">{lotto.name}</h2>
@@ -443,22 +413,8 @@ export default function BettingRoom() {
                     
                     {/* Tabs */}
                     <div className="flex flex-wrap gap-2 mb-4">
-                        {[
-                            { id: '2', label: '2 ตัว' },
-                            { id: '3', label: '3 ตัว' },
-                            { id: '19', label: '19 ประตู' },
-                            { id: 'run', label: 'เลขวิ่ง' },
-                            { id: 'win', label: 'วินเลข' }
-                        ].map((t) => (
-                            <button 
-                                key={t.id}
-                                onClick={() => setTab(t.id as any)}
-                                className={`px-4 py-1.5 rounded-md text-sm font-bold border transition-colors ${
-                                    tab === t.id 
-                                    ? 'bg-[#2ECC71] text-white border-[#27AE60] shadow-sm' 
-                                    : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'
-                                }`}
-                            >
+                        {[{ id: '2', label: '2 ตัว' }, { id: '3', label: '3 ตัว' }, { id: '19', label: '19 ประตู' }, { id: 'run', label: 'เลขวิ่ง' }, { id: 'win', label: 'วินเลข' }].map((t) => (
+                            <button key={t.id} onClick={() => setTab(t.id as any)} className={`px-4 py-1.5 rounded-md text-sm font-bold border transition-colors ${tab === t.id ? 'bg-[#2ECC71] text-white border-[#27AE60] shadow-sm' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'}`}>
                                 {t.label}
                             </button>
                         ))}
@@ -467,42 +423,29 @@ export default function BettingRoom() {
                     {/* Mode Selector for Win */}
                     {tab === 'win' && (
                         <div className="flex gap-1 mb-4 bg-white p-1 rounded-md border border-green-200 w-fit">
-                            <button
-                                onClick={() => setWinMode('2')}
-                                className={`px-4 py-1 rounded text-xs font-bold transition-all ${
-                                    winMode === '2' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'
-                                }`}
-                            >
-                                วิน 2 ตัว
-                            </button>
-                            <button
-                                onClick={() => setWinMode('3')}
-                                className={`px-4 py-1 rounded text-xs font-bold transition-all ${
-                                    winMode === '3' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'
-                                }`}
-                            >
-                                วิน 3 ตัว
-                            </button>
+                            <button onClick={() => setWinMode('2')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '2' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>วิน 2 ตัว</button>
+                            <button onClick={() => setWinMode('3')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '3' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>วิน 3 ตัว</button>
                         </div>
                     )}
 
-                    {/* ปุ่มยกเลิก Buffer */}
-                    <div className="flex justify-end mb-2">
-                        <button 
-                            onClick={() => setBufferNumbers([])}
-                            disabled={bufferNumbers.length === 0}
-                            className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition-colors disabled:opacity-50"
-                        >
+                    {/* Buffer Control */}
+                    <div className="flex justify-end gap-2 mb-2">
+                        <button onClick={() => setBufferNumbers([])} disabled={bufferNumbers.length === 0} className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition-colors disabled:opacity-50">
                             <Trash2 size={14} /> ล้างเลขที่เลือก
                         </button>
                     </div>
 
-                    {/* Buffer Area */}
+                    {/* Buffer Display */}
                     {bufferNumbers.length > 0 && (
                         <div className="bg-white rounded-lg p-3 mb-3 border border-gray-200 min-h-12 max-h-32 overflow-y-auto">
                             <div className="flex flex-wrap gap-2">
                                 {bufferNumbers.map((n, idx) => (
-                                    <span key={idx} className="bg-[#2ECC71] text-white px-2 py-1 rounded text-sm font-bold shadow-sm">
+                                    <span 
+                                        key={idx} 
+                                        onClick={() => setBufferNumbers(prev => prev.filter(item => item !== n))}
+                                        className="bg-[#2ECC71] text-white px-2 py-1 rounded text-sm font-bold shadow-sm cursor-pointer hover:bg-red-500 transition-colors select-none"
+                                        title="กดเพื่อลบเลขนี้"
+                                    >
                                         {n}
                                     </span>
                                 ))}
@@ -510,26 +453,79 @@ export default function BettingRoom() {
                         </div>
                     )}
 
-                    {/* Quick Options */}
-                    <div className="flex flex-wrap gap-2 mb-4">
-                         {tab === '2' && (
-                            <>
-                                <button onClick={() => handleQuickOption('double')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#27AE60]">+ เลขเบิ้ล</button>
-                                <button onClick={() => handleQuickOption('sibling')} className="bg-[#E67E22] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#D35400]">+ พี่น้อง</button>
-                            </>
-                         )}
-                         {tab === '3' && (
-                            <>
-                                <button onClick={() => handleQuickOption('triple')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ ตอง</button>
-                                <button onClick={() => handleQuickOption('double_front')} className="bg-[#1E88E5] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ เบิ้ลหน้า</button>
-                                <button onClick={() => handleQuickOption('sandwich')} className="bg-[#8E24AA] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ หาม</button>
-                                <button onClick={() => handleQuickOption('double_back')} className="bg-[#00897B] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ เบิ้ลหลัง</button>
-                            </>
-                         )}
-                         {tab === '19' && (
-                            <button onClick={() => handleQuickOption('double')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#27AE60]">+ รูดเบิ้ล</button>
-                         )}
-                    </div>
+                    {/* Keypad for Win Mode [UPDATED] */}
+                    {tab === 'win' && (
+                        <div className="mb-4">
+                            <div className="grid grid-cols-5 gap-2 md:w-2/3 mx-auto">
+                                {[1,2,3,4,5,6,7,8,9,0].map(num => {
+                                    // ตรวจสอบว่าเลขนี้ถูกเลือกอยู่หรือเปล่า
+                                    const isSelected = currentInput.includes(num.toString());
+                                    return (
+                                        <button 
+                                            key={num}
+                                            onClick={() => setCurrentInput(prev => {
+                                                const strNum = num.toString();
+                                                // ถ้ามีอยู่แล้วให้ลบออก (Toggle)
+                                                if (prev.includes(strNum)) {
+                                                    return prev.replace(strNum, '');
+                                                }
+                                                // ถ้ายังไม่มีให้เพิ่มเข้าไป
+                                                if (prev.length >= 8) return prev; 
+                                                return prev + strNum;
+                                            })}
+                                            // ปรับเปลี่ยนสีปุ่มตามสถานะ isSelected
+                                            className={`
+                                                font-bold text-lg py-3 rounded-lg shadow-sm transition-all border
+                                                ${isSelected 
+                                                    ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700 active:bg-blue-800' // สถานะถูกเลือก
+                                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 active:bg-blue-200' // สถานะปกติ
+                                                }
+                                            `}
+                                        >
+                                            {num}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="flex justify-center mt-2 gap-2 md:w-2/3 mx-auto">
+                                <button 
+                                    onClick={() => setCurrentInput(prev => prev.slice(0, -1))}
+                                    className="flex-1 bg-red-100 text-red-600 py-2 rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-red-200"
+                                >
+                                    <Delete size={18}/> ลบ
+                                </button>
+                                <button 
+                                    onClick={() => handleAddNumberToBuffer()}
+                                    className="flex-2 bg-blue-600 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-blue-700 shadow-md"
+                                >
+                                    <Calculator size={18}/> คำนวณชุดเลข
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Quick Options (Tab 2,3,19) */}
+                    {tab !== 'win' && (
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {tab === '2' && (
+                                <>
+                                    <button onClick={() => handleQuickOption('double')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#27AE60]">+ เลขเบิ้ล</button>
+                                    <button onClick={() => handleQuickOption('sibling')} className="bg-[#E67E22] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#D35400]">+ พี่น้อง</button>
+                                </>
+                            )}
+                            {tab === '3' && (
+                                <>
+                                    <button onClick={() => handleQuickOption('triple')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ ตอง</button>
+                                    <button onClick={() => handleQuickOption('double_front')} className="bg-[#1E88E5] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ เบิ้ลหน้า</button>
+                                    <button onClick={() => handleQuickOption('sandwich')} className="bg-[#8E24AA] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ หาม</button>
+                                    <button onClick={() => handleQuickOption('double_back')} className="bg-[#00897B] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ เบิ้ลหลัง</button>
+                                </>
+                            )}
+                            {tab === '19' && (
+                                <button onClick={() => handleQuickOption('double')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#27AE60]">+ รูดเบิ้ล</button>
+                            )}
+                        </div>
+                    )}
                     
                     {/* Input Row */}
                     <div className="bg-[#DCF8C6] p-3 rounded-lg border border-[#C5E1A5] flex flex-col md:flex-row gap-2 items-center">
@@ -539,19 +535,21 @@ export default function BettingRoom() {
                                 type="tel" 
                                 value={currentInput}
                                 onChange={e => setCurrentInput(e.target.value.replace(/[^0-9]/g, ''))}
-                                placeholder={tab === 'win' ? "ใส่เลขวิน (กด + เพื่อรวม)" : "ใส่เลข"}
+                                placeholder={tab === 'win' ? "เลือกเลขวิน..." : "ใส่เลข"}
                                 className="w-full bg-[#E0F2F1] border-b-2 border-blue-400 text-center text-xl font-bold py-1 focus:outline-none focus:border-blue-600 text-gray-700 placeholder-blue-300"
                                 maxLength={getInputConfig().max}
-                                autoFocus
+                                // [UPDATED] ลบ readOnly ออกเพื่อให้พิมพ์เองได้
                             />
                         </div>
 
-                        {tab === '2' && (
+                        {/* 2. ปุ่มกลับเลข (ย้ายมาตรงนี้) */}
+                        {(tab === '2' || tab === '3' || tab === '19' || tab === 'win') && (
                             <button 
-                                onClick={() => setIsReverse(!isReverse)}
-                                className={`px-4 py-2 rounded-md text-white font-bold text-sm transition-colors w-full md:w-auto h-full ${isReverse ? 'bg-[#E67E22] shadow-inner' : 'bg-[#F39C12] hover:bg-[#E67E22]'}`}
+                                onClick={handleReverseBuffer}
+                                disabled={bufferNumbers.length === 0}
+                                className="bg-[#F39C12] hover:bg-[#E67E22] disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold px-4 py-2 rounded-md shadow-md transition-all flex items-center justify-center gap-1 w-full md:w-auto whitespace-nowrap h-full min-h-11"
                             >
-                                {isReverse ? 'กลับเลข (On)' : 'กลับเลข'}
+                                <Settings2 size={18} /> กลับเลข
                             </button>
                         )}
 
@@ -594,20 +592,14 @@ export default function BettingRoom() {
                         <div className="flex flex-col gap-3">
                             {groupedItems.map((group) => (
                                 <div key={group.id} className="bg-gray-50 rounded-md border border-gray-200 overflow-hidden flex shadow-sm">
-                                    {/* Left: Info */}
                                     <div className="w-28 md:w-36 bg-white border-r border-gray-200 p-3 flex flex-col justify-center items-center text-center shrink-0">
                                         <div className="font-bold text-gray-800 text-sm mb-1">{group.label}</div>
-                                        <div className="text-xs font-bold text-blue-600 whitespace-pre-line leading-relaxed">
-                                            {group.priceLabel}
-                                        </div>
+                                        <div className="text-xs font-bold text-blue-600 whitespace-pre-line leading-relaxed">{group.priceLabel}</div>
                                     </div>
-                                    
-                                    {/* Middle: Numbers */}
                                     <div className="flex-1 p-3 flex flex-wrap content-center gap-2 bg-white">
                                         {group.numbers.map((num, idx) => (
                                             <span key={idx} className="font-mono text-gray-800 text-sm font-bold bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 relative">
                                                 {num}
-                                                {/* Badge จ่ายครึ่ง */}
                                                 {risks.some(r => r.number === num && r.risk_type === 'HALF') && (
                                                     <span className="absolute -top-1 -right-1 flex h-2 w-2">
                                                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
@@ -617,13 +609,8 @@ export default function BettingRoom() {
                                             </span>
                                         ))}
                                     </div>
-                                    
-                                    {/* Right: Delete */}
                                     <div className="w-12 bg-white border-l border-gray-200 flex items-center justify-center shrink-0">
-                                        <button 
-                                            onClick={() => deleteGroup(group)}
-                                            className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors"
-                                        >
+                                        <button onClick={() => deleteGroup(group)} className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors">
                                             <Trash2 size={18} />
                                         </button>
                                     </div>
@@ -637,30 +624,13 @@ export default function BettingRoom() {
                 <div className="mt-8 mb-10">
                      <div className="flex items-center gap-2 mb-6">
                         <span className="font-bold text-gray-800 whitespace-nowrap">หมายเหตุ:</span>
-                        <input 
-                            type="text" 
-                            value={note}
-                            onChange={e => setNote(e.target.value)}
-                            placeholder="บันทึกช่วยจำ (ถ้ามี)"
-                            className="flex-1 border-b border-gray-300 focus:border-blue-500 outline-none px-2 py-1 bg-transparent text-sm"
-                        />
+                        <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="บันทึกช่วยจำ (ถ้ามี)" className="flex-1 border-b border-gray-300 focus:border-blue-500 outline-none px-2 py-1 bg-transparent text-sm"/>
                      </div>
-                     
                      <div className="text-center">
                         <h2 className="text-3xl font-bold text-gray-800 mb-6">รวม: {totalAmount.toLocaleString()} บาท</h2>
-                        
                         <div className="flex justify-center gap-3">
-                            <button 
-                                onClick={submitTicket}
-                                disabled={isSubmitting || cart.length === 0}
-                                className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg flex items-center gap-2 transition-all w-full md:w-auto justify-center ${
-                                    isSubmitting || cart.length === 0 
-                                    ? 'bg-gray-400 cursor-not-allowed' 
-                                    : 'bg-[#2962FF] hover:bg-blue-700 hover:scale-105 active:scale-95'
-                                }`}
-                            >
-                                {isSubmitting ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />}
-                                บันทึกโพย
+                            <button onClick={submitTicket} disabled={isSubmitting || cart.length === 0} className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg flex items-center gap-2 transition-all w-full md:w-auto justify-center ${isSubmitting || cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#2962FF] hover:bg-blue-700 hover:scale-105 active:scale-95'}`}>
+                                {isSubmitting ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />} บันทึกโพย
                             </button>
                         </div>
                      </div>
@@ -669,94 +639,50 @@ export default function BettingRoom() {
              </div>
           </div>
 
-          {/* ================= RIGHT COLUMN: RATES & RISKS ================= */}
+          {/* Right Column: Rates & Risks */}
           <div className="hidden lg:flex w-80 bg-[#1e293b] text-white border-l border-gray-700 flex-col shadow-xl z-10 overflow-y-auto">
-               
-               {/* Header */}
                <div className="p-4 bg-[#0f172a] border-b border-gray-700 flex justify-between items-center">
-                   <div>
-                       <h3 className="font-bold text-lg text-blue-400">อัตราจ่าย</h3>
-                   </div>
+                   <div><h3 className="font-bold text-lg text-blue-400">อัตราจ่าย</h3></div>
                </div>
-               
                <div className="p-3 space-y-6">
-                   
-                   {/* 1. ตารางเรทราคา */}
                    <div className="bg-[#1e293b] rounded-lg overflow-hidden border border-gray-700">
                        <table className="w-full text-xs text-center">
                            <thead className="bg-[#334155] text-white font-bold">
-                               <tr>
-                                   <th className="p-2 text-left pl-3">ประเภท</th>
-                                   <th className="p-2 text-green-400">จ่าย</th>
-                                   <th className="p-2 text-gray-300">ต่ำ</th>
-                                   <th className="p-2 text-blue-300">สูง</th>
-                               </tr>
+                               <tr><th className="p-2 text-left pl-3">ประเภท</th><th className="p-2 text-green-400">จ่าย</th><th className="p-2 text-gray-300">ต่ำ</th><th className="p-2 text-blue-300">สูง</th></tr>
                            </thead>
                            <tbody className="divide-y divide-gray-700">
-                               {[
-                                   { key: '3top', label: '3 ตัวบน' },
-                                   { key: '3tod', label: '3 ตัวโต๊ด' },
-                                   { key: '2up', label: '2 ตัวบน' },
-                                   { key: '2down', label: '2 ตัวล่าง' },
-                                   { key: 'run_up', label: 'วิ่งบน' },
-                                   { key: 'run_down', label: 'วิ่งล่าง' },
-                               ].map((t) => {
+                               {[{ key: '3top', label: '3 ตัวบน' }, { key: '3tod', label: '3 ตัวโต๊ด' }, { key: '2up', label: '2 ตัวบน' }, { key: '2down', label: '2 ตัวล่าง' }, { key: 'run_up', label: 'วิ่งบน' }, { key: 'run_down', label: 'วิ่งล่าง' }].map((t) => {
                                    const rate = activeRates[t.key];
-                                   const pay = getRateVal(rate, 'pay');
-                                   const min = getRateVal(rate, 'min');
-                                   const max = getRateVal(rate, 'max');
-
                                    return (
                                        <tr key={t.key} className="hover:bg-gray-800 transition-colors">
                                            <td className="p-2 text-left pl-3 text-gray-300 font-medium">{t.label}</td>
-                                           <td className="p-2 text-green-400 font-bold">{Number(pay).toLocaleString()}</td>
-                                           <td className="p-2 text-gray-400">{Number(min).toLocaleString()}</td>
-                                           <td className="p-2 text-blue-300">
-                                               {max !== '-' ? Number(max).toLocaleString() : '∞'}
-                                           </td>
+                                           <td className="p-2 text-green-400 font-bold">{Number(getRateVal(rate, 'pay')).toLocaleString()}</td>
+                                           <td className="p-2 text-gray-400">{Number(getRateVal(rate, 'min')).toLocaleString()}</td>
+                                           <td className="p-2 text-blue-300">{getRateVal(rate, 'max') !== '-' ? Number(getRateVal(rate, 'max')).toLocaleString() : '∞'}</td>
                                        </tr>
                                    );
                                })}
                            </tbody>
                        </table>
                    </div>
-
-                   {/* 2. เลขอั้น / เลขปิดรับ */}
                    <div>
-                       <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1">
-                           <Settings2 size={12}/> เลขอั้น / ปิดรับ
-                       </h4>
+                       <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1"><Settings2 size={12}/> เลขอั้น / ปิดรับ</h4>
                        <div className="bg-[#0f172a] rounded-lg border border-gray-700 p-3 min-h-25">
-                           {risks.length === 0 ? (
-                               <div className="text-center text-gray-500 text-xs py-4">
-                                   ✅ ไม่มีเลขอั้น
-                               </div>
-                           ) : (
+                           {risks.length === 0 ? <div className="text-center text-gray-500 text-xs py-4">✅ ไม่มีเลขอั้น</div> : (
                                <div className="space-y-3">
-                                   {/* เลขปิดรับ */}
                                    {risks.filter(r => r.risk_type === 'CLOSE').length > 0 && (
                                        <div>
                                            <div className="text-[10px] font-bold text-red-500 mb-1">⛔ ปิดรับ (ห้ามแทง)</div>
                                            <div className="flex flex-wrap gap-1">
-                                               {risks.filter(r => r.risk_type === 'CLOSE').map(r => (
-                                                   <span key={r.id} className="bg-red-500/10 text-red-500 border border-red-500/20 px-1.5 py-0.5 rounded text-[10px] font-mono">
-                                                       {r.number}
-                                                   </span>
-                                               ))}
+                                               {risks.filter(r => r.risk_type === 'CLOSE').map(r => <span key={r.id} className="bg-red-500/10 text-red-500 border border-red-500/20 px-1.5 py-0.5 rounded text-[10px] font-mono">{r.number}</span>)}
                                            </div>
                                        </div>
                                    )}
-
-                                   {/* เลขอั้น */}
                                    {risks.filter(r => r.risk_type !== 'CLOSE').length > 0 && (
                                        <div>
                                            <div className="text-[10px] font-bold text-orange-400 mb-1">⚠️ จ่ายครึ่ง / อั้น</div>
                                            <div className="flex flex-wrap gap-1">
-                                               {risks.filter(r => r.risk_type !== 'CLOSE').map(r => (
-                                                   <span key={r.id} className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded text-[10px] font-mono">
-                                                       {r.number}
-                                                   </span>
-                                               ))}
+                                               {risks.filter(r => r.risk_type !== 'CLOSE').map(r => <span key={r.id} className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded text-[10px] font-mono">{r.number}</span>)}
                                            </div>
                                        </div>
                                    )}
@@ -764,10 +690,9 @@ export default function BettingRoom() {
                            )}
                        </div>
                    </div>
-
                </div>
           </div>
-      </div>
+        </div>
     </div>
   );
 }

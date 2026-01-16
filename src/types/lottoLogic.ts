@@ -18,31 +18,30 @@ export const generateNumbers = (number: string, mode: '19gate' | 'win2' | 'win3'
       }
     }
     
-    // 2. วิน 2 ตัว (จับคู่ 2 ไม่รวมเบิ้ล)
+    // 2. วิน 2 ตัว (จับคู่ 2 ไม่รวมเบิ้ล และ **ไม่กลับเลข**)
     else if (mode === 'win2') {
-      // ตัดเลขซ้ำออกก่อน และจำกัดความยาวเพื่อประสิทธิภาพ
       const uniqueChars = Array.from(new Set(n.split(''))).slice(0, 8); 
       if (uniqueChars.length < 2) return [];
 
       for (let i = 0; i < uniqueChars.length; i++) {
-        for (let j = 0; j < uniqueChars.length; j++) {
-          if (i !== j) result.push(uniqueChars[i] + uniqueChars[j]);
+        // เริ่ม j ที่ i + 1 เพื่อไม่ให้จับคู่ย้อนหลัง (เช่นได้ 12 แต่จะไม่เอา 21)
+        for (let j = i + 1; j < uniqueChars.length; j++) {
+            result.push(uniqueChars[i] + uniqueChars[j]);
         }
       }
     }
   
-    // 3. วิน 3 ตัว (จับคู่ 3 ไม่รวมหาม/ตอง)
+    // 3. วิน 3 ตัว (จับคู่ 3 ไม่รวมหาม/ตอง และ **ไม่กลับเลข**)
     else if (mode === 'win3') {
       const uniqueChars = Array.from(new Set(n.split(''))).slice(0, 8);
       if (uniqueChars.length < 3) return [];
 
       for (let i = 0; i < uniqueChars.length; i++) {
-        for (let j = 0; j < uniqueChars.length; j++) {
-          for (let k = 0; k < uniqueChars.length; k++) {
-            // ต้องไม่มีตำแหน่งซ้ำกันเลย
-            if (i !== j && i !== k && j !== k) {
+        // เริ่ม j ที่ i + 1
+        for (let j = i + 1; j < uniqueChars.length; j++) {
+          // เริ่ม k ที่ j + 1
+          for (let k = j + 1; k < uniqueChars.length; k++) {
               result.push(uniqueChars[i] + uniqueChars[j] + uniqueChars[k]);
-            }
           }
         }
       }
@@ -58,6 +57,37 @@ export const generateNumbers = (number: string, mode: '19gate' | 'win2' | 'win3'
 };
 
 /**
+ * ฟังก์ชันสำหรับกลับเลข (Permutation)
+ * รองรับเลข 2 ตัว (ไป-กลับ) และ 3 ตัว (6 กลับ)
+ * @param number เลขที่ต้องการกลับ (เช่น "12", "123")
+ */
+export const generateReturnNumbers = (number: string): string[] => {
+    const n = number.trim();
+    if (n.length < 2) return [n]; // เลขตัวเดียวไม่ต้องกลับ
+
+    const results: string[] = [];
+
+    // ฟังก์ชัน Recursive สำหรับหา Permutation (ทุกรูปแบบการสลับ)
+    const permute = (arr: string[], m: string[] = []) => {
+        if (arr.length === 0) {
+            results.push(m.join(''));
+        } else {
+            for (let i = 0; i < arr.length; i++) {
+                const curr = arr.slice();
+                const next = curr.splice(i, 1);
+                permute(curr.slice(), m.concat(next));
+            }
+        }
+    }
+
+    permute(n.split(''));
+
+    // ตัดเลขซ้ำ (เผื่อกรอกเลขเบิ้ลมา เช่น 11 -> จะได้ 11 ตัวเดียว ไม่ใช่ 11, 11)
+    return [...new Set(results)];
+};
+
+
+/**
  * ฟังก์ชันสร้างเลขชุดพิเศษ (กดปุ่มแล้วได้เลขเลย)
  * @param type ประเภทเลขชุด
  */
@@ -71,14 +101,11 @@ export const generateSpecialNumbers = (type: 'double' | 'sibling' | 'triple' | '
         }
     }
 
-    // 2. เลขพี่น้อง (01, 12...90 และกลับด้วย) -> 20 เลข
+    // 2. เลขพี่น้อง (01, 12...90) -> 10 เลข [แก้ไข: ไม่กลับเลขแล้ว]
     else if (type === 'sibling') {
-        // คู่พี่น้อง: 01, 12, 23, 34, 45, 56, 67, 78, 89, 90
         const pairs = ['01', '12', '23', '34', '45', '56', '67', '78', '89', '90'];
-        pairs.forEach(p => {
-            results.push(p); // ตรง
-            results.push(p.split('').reverse().join('')); // กลับ
-        });
+        // ใส่เฉพาะเลขตรง ไม่ต้องสั่งกลับเลข
+        results.push(...pairs);
     }
 
     // 3. เลขตอง (000-999) -> 10 เลข
@@ -90,8 +117,8 @@ export const generateSpecialNumbers = (type: 'double' | 'sibling' | 'triple' | '
 
     // 4. เบิ้ลหน้า (AAX) -> 100 เลข
     else if (type === 'double_front') {
-        for (let i = 0; i < 10; i++) { // หน้า (เบิ้ล)
-            for (let j = 0; j < 10; j++) { // หลัง
+        for (let i = 0; i < 10; i++) { 
+            for (let j = 0; j < 10; j++) { 
                 results.push(`${i}${i}${j}`);
             }
         }
@@ -99,8 +126,8 @@ export const generateSpecialNumbers = (type: 'double' | 'sibling' | 'triple' | '
 
     // 5. เบิ้ลหลัง (XBB) -> 100 เลข
     else if (type === 'double_back') {
-        for (let i = 0; i < 10; i++) { // หน้า
-            for (let j = 0; j < 10; j++) { // หลัง (เบิ้ล)
+        for (let i = 0; i < 10; i++) { 
+            for (let j = 0; j < 10; j++) { 
                 results.push(`${i}${j}${j}`);
             }
         }
@@ -108,8 +135,8 @@ export const generateSpecialNumbers = (type: 'double' | 'sibling' | 'triple' | '
 
     // 6. เลขหาม (ABA) -> 100 เลข
     else if (type === 'sandwich') {
-        for (let i = 0; i < 10; i++) { // ริม
-            for (let j = 0; j < 10; j++) { // กลาง
+        for (let i = 0; i < 10; i++) { 
+            for (let j = 0; j < 10; j++) { 
                 results.push(`${i}${j}${i}`);
             }
         }
