@@ -119,7 +119,9 @@ export const generateSpecialNumbers = (type: 'double' | 'sibling' | 'triple' | '
     else if (type === 'double_front') {
         for (let i = 0; i < 10; i++) { 
             for (let j = 0; j < 10; j++) { 
-                results.push(`${i}${i}${j}`);
+                if (i !== j) { 
+                    results.push(`${i}${i}${j}`);
+                }
             }
         }
     }
@@ -128,7 +130,9 @@ export const generateSpecialNumbers = (type: 'double' | 'sibling' | 'triple' | '
     else if (type === 'double_back') {
         for (let i = 0; i < 10; i++) { 
             for (let j = 0; j < 10; j++) { 
-                results.push(`${i}${j}${j}`);
+                if (i !== j) {
+                    results.push(`${i}${j}${j}`);
+                }
             }
         }
     }
@@ -137,7 +141,9 @@ export const generateSpecialNumbers = (type: 'double' | 'sibling' | 'triple' | '
     else if (type === 'sandwich') {
         for (let i = 0; i < 10; i++) { 
             for (let j = 0; j < 10; j++) { 
-                results.push(`${i}${j}${i}`);
+                if (i !== j) { 
+                    results.push(`${i}${j}${i}`);
+                }
             }
         }
     }

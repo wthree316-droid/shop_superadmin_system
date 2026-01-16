@@ -7,7 +7,9 @@ import {
   Save, 
   Settings2, ArrowLeft,
   Calculator, 
-  Delete 
+  Delete,
+  History, // [เพิ่ม] ไอคอน History
+  FileText
 } from 'lucide-react';
 import { type CartItem } from '../../types/lotto';
 import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '../../types/lottoLogic';
@@ -35,7 +37,6 @@ const CountDownTimer = ({ closeTime }: { closeTime: string }) => {
       const now = new Date();
       const [hours, minutes] = closeTime.split(':').map(Number);
       
-      // ตั้งเวลาเป้าหมายเป็น วันนี้ เวลาตาม close_time
       const target = new Date();
       target.setHours(hours, minutes, 0);
 
@@ -47,20 +48,16 @@ const CountDownTimer = ({ closeTime }: { closeTime: string }) => {
         return;
       }
 
-      // คำนวณเวลา
       const h = Math.floor((diff / (1000 * 60 * 60)));
       const m = Math.floor((diff / (1000 * 60)) % 60);
       const s = Math.floor((diff / 1000) % 60);
-    //   const ms = Math.floor((diff % 1000) / 10); // เอาแค่ 2 หลัก
 
-      // จัด Format 2 หลัก
       const strH = h.toString().padStart(2, '0');
       const strM = m.toString().padStart(2, '0');
       const strS = s.toString().padStart(2, '0');
-    //   const strMs = ms.toString().padStart(2, '0');
 
-      setTimeLeft(`${strH}:${strM}:${strS}`); //:${strMs}
-    }, 10); // อัปเดตทุก 10ms เพื่อความลื่นไหล
+      setTimeLeft(`${strH}:${strM}:${strS}`);
+    }, 10);
 
     return () => clearInterval(interval);
   }, [closeTime]);
@@ -71,7 +68,6 @@ const CountDownTimer = ({ closeTime }: { closeTime: string }) => {
     </div>
   );
 };
-
 
 const getRateVal = (rateObj: any, field: 'pay' | 'min' | 'max') => {
     if (!rateObj) return field === 'min' ? 1 : (field === 'max' ? '-' : 0);
@@ -87,6 +83,16 @@ const getRateVal = (rateObj: any, field: 'pay' | 'min' | 'max') => {
     return '-';
 };
 
+// [เพิ่ม] Helper สำหรับแปลงสถานะเป็น Badge
+const getStatusBadge = (status: string) => {
+    switch(status) {
+        case 'WIN': return <span className="bg-green-500/20 text-green-400 text-[10px] px-1.5 py-0.5 rounded border border-green-500/30">ถูกรางวัล</span>;
+        case 'LOSE': return <span className="bg-red-500/10 text-red-400 text-[10px] px-1.5 py-0.5 rounded border border-red-500/20">ไม่ถูก</span>;
+        case 'CANCELLED': return <span className="bg-gray-500/20 text-gray-400 text-[10px] px-1.5 py-0.5 rounded border border-gray-500/30">ยกเลิก</span>;
+        default: return <span className="bg-yellow-500/20 text-yellow-400 text-[10px] px-1.5 py-0.5 rounded border border-yellow-500/30">รอผล</span>;
+    }
+};
+
 export default function BettingRoom() {
   const { id } = useParams(); 
   const navigate = useNavigate();
@@ -96,13 +102,16 @@ export default function BettingRoom() {
   const [risks, setRisks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // [เพิ่ม] History State
+  const [history, setHistory] = useState<any[]>([]);
+  
   // UI State
   const [tab, setTab] = useState<'2' | '3' | '19' | 'run' | 'win'>('2');
   const [winMode, setWinMode] = useState<'2' | '3'>('2'); 
   
   // Betting Logic State
   const [currentInput, setCurrentInput] = useState('');
-  const [bufferNumbers, setBufferNumbers] = useState<string[]>([]); // เก็บเลขที่เลือกไว้
+  const [bufferNumbers, setBufferNumbers] = useState<string[]>([]);
   const [priceTop, setPriceTop] = useState('');    
   const [priceBottom, setPriceBottom] = useState(''); 
 
@@ -112,25 +121,40 @@ export default function BettingRoom() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- 1. Fetch Data ---
-  useEffect(() => {
+  const fetchData = async () => {
     if(!id) return;
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const [resLotto, resRisks] = await Promise.all([
-                client.get(`/play/lottos/${id}`), 
-                client.get(`/play/risks/${id}`)
-            ]);
-            setLotto(resLotto.data);
-            setRisks(resRisks.data);
-        } catch (err) { 
-            console.error("Load data error", err);
-            toast.error("ไม่พบข้อมูลหวย");
-            navigate('/play');
-        } finally {
-            setLoading(false);
-        }
-    };
+    setLoading(true);
+    try {
+        const [resLotto, resRisks] = await Promise.all([
+            client.get(`/play/lottos/${id}`), 
+            client.get(`/play/risks/${id}`)
+        ]);
+        setLotto(resLotto.data);
+        setRisks(resRisks.data);
+        
+        // [เพิ่ม] เรียกฟังก์ชันดึงประวัติ
+        fetchHistory();
+
+    } catch (err) { 
+        console.error("Load data error", err);
+        toast.error("ไม่พบข้อมูลหวย");
+        navigate('/play');
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  // [เพิ่ม] ฟังก์ชันดึงประวัติ 15 รายการล่าสุด
+  const fetchHistory = async () => {
+    try {
+        const res = await client.get('/play/history?limit=15');
+        setHistory(res.data);
+    } catch (err) {
+        console.error("Fetch history error", err);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
   }, [id, navigate]);
 
@@ -142,7 +166,7 @@ export default function BettingRoom() {
       setPriceBottom('');
   }, [tab, winMode]);
 
-  // --- Functions ---
+  // ... (ส่วน Logic การคำนวณเลข เหมือนเดิม) ...
   const getInputConfig = () => {
       if (tab === 'win') return { max: 8, min: (winMode === '2' ? 2 : 3) };
       if (tab === '3') return { max: 3, min: 3 };
@@ -190,14 +214,9 @@ export default function BettingRoom() {
   }, [currentInput, tab]);
 
   const handleQuickOption = (type: string) => {
-      // เรียกใช้ฟังก์ชันจาก lottoLogic โดยตรง ไม่ต้องเขียน Loop เองแล้ว
-      // (ระบบจะไปดึง logic การสร้างเลขพี่น้อง/เบิ้ล/ตอง มาจากไฟล์นั้นเลย)
       const list = generateSpecialNumbers(type as any);
-      
       if (list.length > 0) {
-          // กรองเลขซ้ำใน buffer ออก
           const newNumbers = list.filter(n => !bufferNumbers.includes(n));
-          
           if (newNumbers.length > 0) {
               setBufferNumbers(prev => [...prev, ...newNumbers]);
               toast.success(`เพิ่ม ${newNumbers.length} รายการ`);
@@ -207,33 +226,41 @@ export default function BettingRoom() {
       }
   };
 
-  // --- [FIXED] ฟังก์ชันกดปุ่ม "กลับเลข" แล้วแตกตัวเลขลง Buffer ทันที ---
   const handleReverseBuffer = () => {
       if (bufferNumbers.length === 0) return;
-      
       let newSet: string[] = [];
       bufferNumbers.forEach(num => {
-          // แก้ตรงนี้: เรียกใช้จาก lottoLogic แทน
           const perms = generateReturnNumbers(num); 
           newSet.push(...perms);
       });
-
       const uniqueNumbers = [...new Set(newSet)];
       setBufferNumbers(uniqueNumbers);
       toast.success(`กลับเลขเรียบร้อย (รวม ${uniqueNumbers.length} รายการ)`);
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.code === 'Space') {
+            if (document.activeElement instanceof HTMLInputElement && document.activeElement.type === 'text') {
+                return;
+            }
+            e.preventDefault();
+            handleReverseBuffer();
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [bufferNumbers]);
+
+
   // --- Add to Cart Logic ---
   const handleAddBill = () => {
-      // 1. Process Input ค้าง
       if (currentInput && currentInput.length >= getInputConfig().min) {
           handleAddNumberToBuffer();
       }
 
-      // 2. Win Mode Input ค้าง
       let finalNumbersToProcess = [...bufferNumbers]; 
       
-      // กรณี Win มี input ค้าง และกดเพิ่มบิลเลย (ยังไม่ได้กดกลับเลข)
       if (currentInput && currentInput.length >= getInputConfig().min && tab === 'win') {
            const mode = winMode === '2' ? 'win2' : 'win3';
            const generated = generateNumbers(currentInput, mode);
@@ -241,7 +268,6 @@ export default function BettingRoom() {
            setCurrentInput('');
       } 
       
-      // ตัดเลขซ้ำ
       finalNumbersToProcess = Array.from(new Set(finalNumbersToProcess));
 
       if (finalNumbersToProcess.length === 0) return toast.error("กรุณาระบุตัวเลข");
@@ -364,7 +390,11 @@ export default function BettingRoom() {
         toast.success(`ส่งโพยสำเร็จ! รหัส: ${res.data.id.slice(0, 8)}`, { duration: 4000 });
         setCart([]);
         setNote('');
-        navigate('/history');
+        
+        // [เพิ่ม] โหลดประวัติใหม่หลังส่งโพยสำเร็จ
+        fetchHistory(); 
+        
+        // navigate('/history'); // [ถ้าต้องการให้อยู่หน้าเดิมดูประวัติ ก็ comment บรรทัดนี้ออก]
     } catch (err: any) {
         console.error(err);
         toast.dismiss(toastId);
@@ -391,6 +421,7 @@ export default function BettingRoom() {
           
           {/* ================= CENTER COLUMN ================= */}
           <div className="flex-1 overflow-y-auto pb-20 bg-white"> 
+             {/* ... (Center Column Content เหมือนเดิม) ... */}
              <div className="p-4 max-w-4xl mx-auto space-y-4">
                 
                 {/* Header */}
@@ -435,9 +466,9 @@ export default function BettingRoom() {
                         </button>
                     </div>
 
-                    {/* Buffer Display */}
+                    {/* Buffer Display (แก้ไขตามที่ขอให้ลบ scroll) */}
                     {bufferNumbers.length > 0 && (
-                        <div className="bg-white rounded-lg p-3 mb-3 border border-gray-200 min-h-12 max-h-32 overflow-y-auto">
+                        <div className="bg-white rounded-lg p-3 mb-3 border border-gray-200 min-h-12">
                             <div className="flex flex-wrap gap-2">
                                 {bufferNumbers.map((n, idx) => (
                                     <span 
@@ -453,32 +484,28 @@ export default function BettingRoom() {
                         </div>
                     )}
 
-                    {/* Keypad for Win Mode [UPDATED] */}
+                    {/* Keypad for Win Mode */}
                     {tab === 'win' && (
                         <div className="mb-4">
                             <div className="grid grid-cols-5 gap-2 md:w-2/3 mx-auto">
                                 {[1,2,3,4,5,6,7,8,9,0].map(num => {
-                                    // ตรวจสอบว่าเลขนี้ถูกเลือกอยู่หรือเปล่า
                                     const isSelected = currentInput.includes(num.toString());
                                     return (
                                         <button 
                                             key={num}
                                             onClick={() => setCurrentInput(prev => {
                                                 const strNum = num.toString();
-                                                // ถ้ามีอยู่แล้วให้ลบออก (Toggle)
                                                 if (prev.includes(strNum)) {
                                                     return prev.replace(strNum, '');
                                                 }
-                                                // ถ้ายังไม่มีให้เพิ่มเข้าไป
                                                 if (prev.length >= 8) return prev; 
                                                 return prev + strNum;
                                             })}
-                                            // ปรับเปลี่ยนสีปุ่มตามสถานะ isSelected
                                             className={`
                                                 font-bold text-lg py-3 rounded-lg shadow-sm transition-all border
                                                 ${isSelected 
-                                                    ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700 active:bg-blue-800' // สถานะถูกเลือก
-                                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 active:bg-blue-200' // สถานะปกติ
+                                                    ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700 active:bg-blue-800' 
+                                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 active:bg-blue-200' 
                                                 }
                                             `}
                                         >
@@ -504,7 +531,7 @@ export default function BettingRoom() {
                         </div>
                     )}
 
-                    {/* Quick Options (Tab 2,3,19) */}
+                    {/* Quick Options */}
                     {tab !== 'win' && (
                         <div className="flex flex-wrap gap-2 mb-4">
                             {tab === '2' && (
@@ -538,18 +565,17 @@ export default function BettingRoom() {
                                 placeholder={tab === 'win' ? "เลือกเลขวิน..." : "ใส่เลข"}
                                 className="w-full bg-[#E0F2F1] border-b-2 border-blue-400 text-center text-xl font-bold py-1 focus:outline-none focus:border-blue-600 text-gray-700 placeholder-blue-300"
                                 maxLength={getInputConfig().max}
-                                // [UPDATED] ลบ readOnly ออกเพื่อให้พิมพ์เองได้
                             />
                         </div>
 
-                        {/* 2. ปุ่มกลับเลข (ย้ายมาตรงนี้) */}
                         {(tab === '2' || tab === '3' || tab === '19' || tab === 'win') && (
                             <button 
                                 onClick={handleReverseBuffer}
                                 disabled={bufferNumbers.length === 0}
+                                title="กด Spacebar เพื่อกลับเลข"
                                 className="bg-[#F39C12] hover:bg-[#E67E22] disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold px-4 py-2 rounded-md shadow-md transition-all flex items-center justify-center gap-1 w-full md:w-auto whitespace-nowrap h-full min-h-11"
                             >
-                                <Settings2 size={18} /> กลับเลข
+                                <Settings2 size={18} /> กลับเลข (Space)
                             </button>
                         )}
 
@@ -665,6 +691,8 @@ export default function BettingRoom() {
                            </tbody>
                        </table>
                    </div>
+
+                   {/* Risk Section */}
                    <div>
                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1"><Settings2 size={12}/> เลขอั้น / ปิดรับ</h4>
                        <div className="bg-[#0f172a] rounded-lg border border-gray-700 p-3 min-h-25">
@@ -690,6 +718,43 @@ export default function BettingRoom() {
                            )}
                        </div>
                    </div>
+
+                   {/* [เพิ่มส่วนนี้] History Section */}
+                   <div>
+                       <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1"><History size={12}/> ประวัติโพยล่าสุด</h4>
+                       <div className="bg-[#0f172a] rounded-lg border border-gray-700 overflow-hidden">
+                           {history.length === 0 ? (
+                               <div className="text-center text-gray-500 text-xs py-4">ยังไม่มีประวัติ</div>
+                           ) : (
+                               <div className="divide-y divide-gray-800">
+                                   {history.map((ticket: any) => (
+                                       <div key={ticket.id} className="p-3 hover:bg-gray-800/50 transition-colors">
+                                           <div className="flex justify-between items-start mb-1">
+                                               <div>
+                                                   <div className="text-[10px] text-gray-400">
+                                                       {new Date(ticket.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })} {new Date(ticket.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute:'2-digit' })}
+                                                   </div>
+                                                   <div className="text-xs font-bold text-blue-300 truncate w-32">
+                                                       {ticket.lotto_type?.name || 'หวย'}
+                                                   </div>
+                                               </div>
+                                               <div className="text-right">
+                                                   <div className="text-xs font-bold text-white">{Number(ticket.total_amount).toLocaleString()}</div>
+                                                   <div>{getStatusBadge(ticket.status)}</div>
+                                               </div>
+                                           </div>
+                                           {ticket.note && (
+                                               <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-1 bg-gray-800/50 p-1 rounded">
+                                                   <FileText size={8} /> {ticket.note}
+                                               </div>
+                                           )}
+                                       </div>
+                                   ))}
+                               </div>
+                           )}
+                       </div>
+                   </div>
+
                </div>
           </div>
         </div>
