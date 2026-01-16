@@ -3,7 +3,7 @@ import client from '../../api/client';
 import { 
   Plus, X, ListFilter, Pencil, UploadCloud, Loader2,
   Clock, CheckCircle, AlertCircle, ChevronDown, Database,
-  Trash2
+  Trash2, Coins
 } from 'lucide-react';
 import type { LottoType, RateProfile } from '../../types/lotto';
 
@@ -117,6 +117,10 @@ export default function ManageLottos() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkRateId, setBulkRateId] = useState('');
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -227,6 +231,32 @@ export default function ManageLottos() {
     });
   };
 
+  // ฟังก์ชันอัปเดตเรทให้หวย 'ทุกตัว'
+  const handleBulkUpdate = async () => {
+    if (!bulkRateId) return alert("กรุณาเลือกเรทราคา");
+    
+    // ถามย้ำเพื่อความชัวร์
+    if (!confirm(`⚠️ คำเตือน: คุณต้องการเปลี่ยนเรทราคาของหวย "ทุกรายการ" เป็นเรทที่เลือกใช่หรือไม่?`)) return;
+
+    setIsBulkUpdating(true);
+    try {
+        // ยิง API แค่ครั้งเดียว จบงานทันที
+        const res = await client.put('/play/lottos/bulk-rate-update', {
+            rate_profile_id: bulkRateId
+        });
+
+        alert(`✅ อัปเดตสำเร็จ! เปลี่ยนเรทราคาให้หวยจำนวน ${res.data.updated_count} รายการเรียบร้อยแล้ว`);
+        setShowBulkModal(false);
+        fetchData(); // โหลดข้อมูลใหม่มาแสดง
+
+    } catch (err: any) {
+        console.error(err);
+        alert(`❌ เกิดข้อผิดพลาด: ${err.response?.data?.detail || 'Unknown error'}`);
+    } finally {
+        setIsBulkUpdating(false);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-8 animate-fade-in">
       
@@ -240,6 +270,13 @@ export default function ManageLottos() {
         </div>
         
         <div className="flex w-full md:w-auto gap-2">
+            {/* --- 1. เพิ่มปุ่ม "ปรับเรททั้งหมด" ตรงนี้ --- */}
+            <button
+              onClick={() => setShowBulkModal(true)}
+              className="flex-1 md:flex-none bg-indigo-50 text-indigo-600 border border-indigo-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-indigo-100 active:scale-95 transition-all"
+            >
+              <Coins size={18} /> <span className="hidden sm:inline">ปรับเรททั้งหมด</span><span className="sm:hidden">Set Rates</span>
+            </button>
             <button
               onClick={handleImportTemplates}
               className="flex-1 md:flex-none bg-white text-purple-600 border border-purple-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-purple-50 active:scale-95 transition-all"
@@ -508,6 +545,44 @@ export default function ManageLottos() {
                 </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* --- 2. เพิ่ม Modal สำหรับ Bulk Update ตรงนี้ (วางก่อนปิด div นอกสุด) --- */}
+      {showBulkModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+                <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                    <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                        <Coins className="text-indigo-600"/> ตั้งค่าเรททั้งหมด
+                    </h3>
+                    <button onClick={() => setShowBulkModal(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button>
+                </div>
+                
+                <div className="p-6">
+                    <p className="text-sm text-slate-500 mb-4">
+                        เลือกโปรไฟล์เรทราคาที่ต้องการนำไปใช้กับ <b>หวยทั้งหมด ({lottos.length} รายการ)</b> ที่มีอยู่ในระบบขณะนี้
+                    </p>
+                    
+                    <label className="text-xs font-bold text-slate-700 uppercase mb-2 block">เลือก Rate Profile</label>
+                    <select 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-200 outline-none mb-6"
+                        value={bulkRateId}
+                        onChange={(e) => setBulkRateId(e.target.value)}
+                    >
+                        <option value="">-- กรุณาเลือก --</option>
+                        {rateProfiles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+
+                    <button 
+                        onClick={handleBulkUpdate}
+                        disabled={isBulkUpdating || !bulkRateId}
+                        className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isBulkUpdating ? <Loader2 className="animate-spin" /> : <CheckCircle size={18} />} 
+                        {isBulkUpdating ? 'กำลังประมวลผล...' : 'ยืนยันการเปลี่ยนเรท'}
+                    </button>
+                </div>
+            </div>
         </div>
       )}
     </div>
