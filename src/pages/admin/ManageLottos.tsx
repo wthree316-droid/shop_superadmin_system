@@ -13,6 +13,7 @@ const CATEGORIES = [
   { id: 'LAOS', label: '🇱🇦 หวยลาว', color: 'bg-blue-100 text-blue-700' },
   { id: 'HANOI', label: '🇻🇳 หวยฮานอย', color: 'bg-red-100 text-red-700' },
   { id: 'STOCKS', label: '📈 หวยหุ้น', color: 'bg-emerald-100 text-emerald-700' },
+  { id: 'STOCKSVIP', label: '📈 หวยหุ้นVIP', color: 'bg-emerald-100 text-emerald-700' },
   { id: 'YIKI', label: '🎱 ยี่กี', color: 'bg-orange-100 text-orange-700' },
   { id: 'OTHERS', label: '🌐 อื่นๆ', color: 'bg-gray-100 text-gray-700' }
 ];
