@@ -469,6 +469,7 @@ export default function BettingRoom() {
                 <button onClick={() => navigate('/play')} className="flex items-center gap-1 text-gray-500 hover:text-gray-800 text-sm mb-2">
                     <ArrowLeft size={16} /> กลับไปหน้าตลาด
                 </button>
+            <div ref={billRef} className="bg-white p-2 rounded-xl">
                 <div className="bg-[#E0F7FA] border border-[#B2DFDB] rounded-lg p-3 flex justify-between items-center shadow-sm">
                     <div>
                         <h2 className="font-bold text-gray-800 text-lg">{lotto.name}</h2>
@@ -481,7 +482,7 @@ export default function BettingRoom() {
                 </div>
 
                 {/* Main Betting Card */}
-                <div className="bg-[#F8FAFC] border border-gray-200 rounded-lg p-4 shadow-sm relative">
+                <div data-ignore="true" className="bg-[#F8FAFC] border border-gray-200 rounded-lg p-4 shadow-sm relative">
                     
                     {/* Tabs */}
                     <div className="flex flex-wrap gap-2 mb-4">
@@ -652,57 +653,56 @@ export default function BettingRoom() {
                     </div>
 
                 </div>
-                <div ref={billRef} className="bg-white p-2 rounded-xl">
-                    {/* Cart List */}
-                    {groupedItems.length > 0 && (
-                        <div className="mt-6 space-y-4 animate-fade-in">
-                            <div className="flex flex-col gap-3">
-                                {groupedItems.map((group) => (
-                                    <div key={group.id} className="bg-gray-50 rounded-md border border-gray-200 overflow-hidden flex shadow-sm">
-                                        <div className="w-28 md:w-36 bg-white border-r border-gray-200 p-3 flex flex-col justify-center items-center text-center shrink-0">
-                                            <div className="font-bold text-gray-800 text-sm mb-1">{group.label}</div>
-                                            <div className="text-xs font-bold text-blue-600 whitespace-pre-line leading-relaxed">{group.priceLabel}</div>
-                                        </div>
-                                        <div className="flex-1 p-3 flex flex-wrap content-center gap-2 bg-white">
-                                            {group.numbers.map((num, idx) => (
-                                                <span key={idx} className="font-mono text-gray-800 text-sm font-bold bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 relative">
-                                                    {num}
-                                                    {risks.some(r => r.number === num && r.risk_type === 'HALF') && (
-                                                        <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-                                                        </span>
-                                                    )}
-                                                </span>
-                                            ))}
-                                        </div>
-                                        <div className="w-12 bg-white border-l border-gray-200 flex items-center justify-center shrink-0">
-                                            <button 
-                                                data-ignore="true"
-                                                onClick={() => deleteGroup(group)} 
-                                                className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors">
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </div>
+                {/* Cart List */}
+                {groupedItems.length > 0 && (
+                    <div className="mt-6 space-y-4 animate-fade-in">
+                        <div className="flex flex-col gap-3">
+                            {groupedItems.map((group) => (
+                                <div key={group.id} className="bg-gray-50 rounded-md border border-gray-200 overflow-hidden flex shadow-sm">
+                                    <div className="w-28 md:w-36 bg-white border-r border-gray-200 p-3 flex flex-col justify-center items-center text-center shrink-0">
+                                        <div className="font-bold text-gray-800 text-sm mb-1">{group.label}</div>
+                                        <div className="text-xs font-bold text-blue-600 whitespace-pre-line leading-relaxed">{group.priceLabel}</div>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Footer Summary */}
-                    <div className="mt-8 mb-4">
-                        <div className="flex items-center gap-2 mb-6">
-                            <span className="font-bold text-gray-800 whitespace-nowrap">หมายเหตุ:</span>
-                            <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="บันทึกช่วยจำ (ถ้ามี)" className="flex-1 border-b border-gray-300 focus:border-blue-500 outline-none px-2 py-1 bg-transparent text-sm"/>
-                        </div>
-                        <div className="text-center">
-                            <h2 className="text-3xl font-bold text-gray-800 mb-2">รวม: {totalAmount.toLocaleString()} บาท</h2>
-                            <p className="text-xs text-gray-400">สรุปรายการ ณ {new Date().toLocaleString('th-TH')}</p>
+                                    <div className="flex-1 p-3 flex flex-wrap content-center gap-2 bg-white">
+                                        {group.numbers.map((num, idx) => (
+                                            <span key={idx} className="font-mono text-gray-800 text-sm font-bold bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 relative">
+                                                {num}
+                                                {risks.some(r => r.number === num && r.risk_type === 'HALF') && (
+                                                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                                    </span>
+                                                )}
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <div className="w-12 bg-white border-l border-gray-200 flex items-center justify-center shrink-0">
+                                        <button 
+                                            data-ignore="true"
+                                            onClick={() => deleteGroup(group)} 
+                                            className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors">
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
+                )}
 
+                {/* Footer Summary */}
+                <div className="mt-8 mb-4">
+                    <div className="flex items-center gap-2 mb-6">
+                        <span className="font-bold text-gray-800 whitespace-nowrap">หมายเหตุ:</span>
+                        <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="บันทึกช่วยจำ (ถ้ามี)" className="flex-1 border-b border-gray-300 focus:border-blue-500 outline-none px-2 py-1 bg-transparent text-sm"/>
+                    </div>
+                    <div className="text-center">
+                        <h2 className="text-3xl font-bold text-gray-800 mb-2">รวม: {totalAmount.toLocaleString()} บาท</h2>
+                        <p className="text-xs text-gray-400">สรุปรายการ ณ {new Date().toLocaleString('th-TH')}</p>
+                    </div>
                 </div>
+
+            </div>
 
                 <div className="mb-10 flex justify-center gap-3">
                     
