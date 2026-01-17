@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import * as htmlToImage from 'html-to-image';
 import client from '../../api/client';
 import { v4 as uuidv4 } from 'uuid';
 import { 
@@ -9,7 +10,8 @@ import {
   Calculator, 
   Delete,
   History, // [เพิ่ม] ไอคอน History
-  FileText
+  FileText,
+  Camera
 } from 'lucide-react';
 import { type CartItem } from '../../types/lotto';
 import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '../../types/lottoLogic';
@@ -165,6 +167,45 @@ export default function BettingRoom() {
       setPriceTop('');
       setPriceBottom('');
   }, [tab, winMode]);
+
+  // 2. สร้าง Ref สำหรับจับภาพพื้นที่บิล
+  const billRef = useRef<HTMLDivElement>(null);
+
+  // 3. สร้างฟังก์ชันแคปหน้าจอ
+  const handleScreenshot = async () => {
+    if (!billRef.current || cart.length === 0) return;
+    
+    const toastId = toast.loading('กำลังบันทึกรูป...');
+    try {
+        // ใช้ html-to-image แทน (Syntax คล้ายกันมาก)
+        const dataUrl = await htmlToImage.toPng(billRef.current, {
+            backgroundColor: '#ffffff', // พื้นหลังสีขาว
+            quality: 1.0, // ความชัดสูงสุด
+            pixelRatio: 2, // เพิ่มความละเอียด (x2)
+            // filter เพื่อกรอง element ที่เราไม่อยากให้ติด (เช่น ปุ่มลบ)
+            filter: (node) => {
+                // ถ้า element มี class หรือ attribute ที่เรากำหนด ให้ข้ามไป
+                if (node instanceof HTMLElement && node.dataset.ignore) {
+                    return false;
+                }
+                return true;
+            }
+        });
+
+        // สร้าง Link เพื่อดาวน์โหลด
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = `LottoBill-${new Date().getTime()}.png`;
+        link.click();
+        
+        toast.dismiss(toastId);
+        toast.success('บันทึกรูปสำเร็จ!');
+    } catch (error) {
+        console.error("Screenshot error:", error);
+        toast.dismiss(toastId);
+        toast.error('บันทึกรูปไม่สำเร็จ');
+    }
+  };
 
   // ... (ส่วน Logic การคำนวณเลข เหมือนเดิม) ...
   const getInputConfig = () => {
@@ -611,60 +652,92 @@ export default function BettingRoom() {
                     </div>
 
                 </div>
+                <div ref={billRef} className="bg-white p-2 rounded-xl">
+                    {/* Cart List */}
+                    {groupedItems.length > 0 && (
+                        <div className="mt-6 space-y-4 animate-fade-in">
+                            <div className="flex flex-col gap-3">
+                                {groupedItems.map((group) => (
+                                    <div key={group.id} className="bg-gray-50 rounded-md border border-gray-200 overflow-hidden flex shadow-sm">
+                                        <div className="w-28 md:w-36 bg-white border-r border-gray-200 p-3 flex flex-col justify-center items-center text-center shrink-0">
+                                            <div className="font-bold text-gray-800 text-sm mb-1">{group.label}</div>
+                                            <div className="text-xs font-bold text-blue-600 whitespace-pre-line leading-relaxed">{group.priceLabel}</div>
+                                        </div>
+                                        <div className="flex-1 p-3 flex flex-wrap content-center gap-2 bg-white">
+                                            {group.numbers.map((num, idx) => (
+                                                <span key={idx} className="font-mono text-gray-800 text-sm font-bold bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 relative">
+                                                    {num}
+                                                    {risks.some(r => r.number === num && r.risk_type === 'HALF') && (
+                                                        <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <div className="w-12 bg-white border-l border-gray-200 flex items-center justify-center shrink-0">
+                                            <button 
+                                                data-ignore="true"
+                                                onClick={() => deleteGroup(group)} 
+                                                className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors">
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                {/* Cart List */}
-                {groupedItems.length > 0 && (
-                    <div className="mt-6 space-y-4 animate-fade-in">
-                        <div className="flex flex-col gap-3">
-                            {groupedItems.map((group) => (
-                                <div key={group.id} className="bg-gray-50 rounded-md border border-gray-200 overflow-hidden flex shadow-sm">
-                                    <div className="w-28 md:w-36 bg-white border-r border-gray-200 p-3 flex flex-col justify-center items-center text-center shrink-0">
-                                        <div className="font-bold text-gray-800 text-sm mb-1">{group.label}</div>
-                                        <div className="text-xs font-bold text-blue-600 whitespace-pre-line leading-relaxed">{group.priceLabel}</div>
-                                    </div>
-                                    <div className="flex-1 p-3 flex flex-wrap content-center gap-2 bg-white">
-                                        {group.numbers.map((num, idx) => (
-                                            <span key={idx} className="font-mono text-gray-800 text-sm font-bold bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 relative">
-                                                {num}
-                                                {risks.some(r => r.number === num && r.risk_type === 'HALF') && (
-                                                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-                                                    </span>
-                                                )}
-                                            </span>
-                                        ))}
-                                    </div>
-                                    <div className="w-12 bg-white border-l border-gray-200 flex items-center justify-center shrink-0">
-                                        <button onClick={() => deleteGroup(group)} className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors">
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                    {/* Footer Summary */}
+                    <div className="mt-8 mb-4">
+                        <div className="flex items-center gap-2 mb-6">
+                            <span className="font-bold text-gray-800 whitespace-nowrap">หมายเหตุ:</span>
+                            <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="บันทึกช่วยจำ (ถ้ามี)" className="flex-1 border-b border-gray-300 focus:border-blue-500 outline-none px-2 py-1 bg-transparent text-sm"/>
+                        </div>
+                        <div className="text-center">
+                            <h2 className="text-3xl font-bold text-gray-800 mb-2">รวม: {totalAmount.toLocaleString()} บาท</h2>
+                            <p className="text-xs text-gray-400">สรุปรายการ ณ {new Date().toLocaleString('th-TH')}</p>
                         </div>
                     </div>
-                )}
 
-                {/* Footer Summary */}
-                <div className="mt-8 mb-10">
-                     <div className="flex items-center gap-2 mb-6">
-                        <span className="font-bold text-gray-800 whitespace-nowrap">หมายเหตุ:</span>
-                        <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="บันทึกช่วยจำ (ถ้ามี)" className="flex-1 border-b border-gray-300 focus:border-blue-500 outline-none px-2 py-1 bg-transparent text-sm"/>
-                     </div>
-                     <div className="text-center">
-                        <h2 className="text-3xl font-bold text-gray-800 mb-6">รวม: {totalAmount.toLocaleString()} บาท</h2>
-                        <div className="flex justify-center gap-3">
-                            <button onClick={submitTicket} disabled={isSubmitting || cart.length === 0} className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg flex items-center gap-2 transition-all w-full md:w-auto justify-center ${isSubmitting || cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#2962FF] hover:bg-blue-700 hover:scale-105 active:scale-95'}`}>
-                                {isSubmitting ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />} บันทึกโพย
-                            </button>
-                        </div>
-                     </div>
                 </div>
 
-             </div>
-          </div>
+                <div className="mb-10 flex justify-center gap-3">
+                    
+                    {/* 4. เพิ่มปุ่มแคปหน้าจอ */}
+                    <button 
+                        onClick={handleScreenshot}
+                        disabled={cart.length === 0}
+                        className={`px-4 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 transition-all border
+                            ${cart.length === 0 
+                                ? 'bg-white text-gray-400 border-gray-200 cursor-not-allowed' 
+                                : 'bg-green-700 text-white border-indigo-100 hover:bg-indigo-700 hover:scale-105 active:scale-95'
+                            }
+                        `}
+                    >
+                        <Camera size={24} /> 
+                        <span className="hidden md:inline">แคปจอ</span>
+                    </button>
 
+                    <button 
+                        onClick={submitTicket} 
+                        disabled={isSubmitting || cart.length === 0} 
+                        className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg flex items-center gap-2 transition-all flex-1 md:flex-none justify-center md:min-w-50
+                            ${isSubmitting || cart.length === 0 
+                                ? 'bg-gray-400 cursor-not-allowed' 
+                                : 'bg-[#2962FF] hover:bg-blue-700 hover:scale-105 active:scale-95'
+                            }
+                        `}
+                    >
+                        {isSubmitting ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />} บันทึกโพย
+                    </button>
+                </div>
+
+            
+            </div>
+        </div>
           {/* Right Column: Rates & Risks */}
           <div className="hidden lg:flex w-80 bg-[#1e293b] text-white border-l border-gray-700 flex-col shadow-xl z-10 overflow-y-auto">
                <div className="p-4 bg-[#0f172a] border-b border-gray-700 flex justify-between items-center">
