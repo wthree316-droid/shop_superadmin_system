@@ -73,6 +73,7 @@ export interface CartItem extends BetItem {
   temp_id: string;      // UUID ชั่วคราวไว้อ้างอิงตอนลบออกจากตะกร้า
   display_text: string; // เช่น "2 ตัวบน - 99"
   rate_pay: number;     // อัตราจ่ายที่จะได้รับ (โชว์ให้ลูกค้าดู)
+  batch_id?: string;
 }
 
 export interface TicketItemResponse {
