@@ -349,9 +349,9 @@ export default function BettingRoom() {
             const perms = generateReturnNumbers(num); 
             newSet.push(...perms);
         });
-        const uniqueNumbers = [...new Set(newSet)];
-        setBufferNumbers(uniqueNumbers);
-        toast.success(`กลับเลขเรียบร้อย (รวม ${uniqueNumbers.length} รายการ)`);
+        setBufferNumbers(newSet); 
+    
+        toast.success(`กลับเลขเรียบร้อย (รวม ${newSet.length} รายการ)`);
     };
 
     useEffect(() => {
@@ -785,7 +785,7 @@ export default function BettingRoom() {
                                     />
                                 </div>
 
-                                {(tab === '2' || tab === '3' || tab === '19' || tab === 'win') && (
+                                {(tab === '2' || tab === '3' || tab === 'win') && (
                                     <button 
                                         onClick={handleReverseBuffer}
                                         disabled={bufferNumbers.length === 0}
@@ -1130,8 +1130,8 @@ export default function BettingRoom() {
                                                     </div>
                                                 </div>
                                                 {ticket.note && (
-                                                    <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-1 bg-gray-800/50 p-1 rounded">
-                                                        <FileText size={8} /> {ticket.note}
+                                                    <div className="text-[15px] text-white flex items-center gap-1 mt-1 bg-gray-800/50 p-1 rounded">
+                                                        <FileText size={8} /> <b> {ticket.note} </b>
                                                     </div>
                                                 )}
                                             </div>
