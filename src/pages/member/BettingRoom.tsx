@@ -101,6 +101,9 @@ export default function BettingRoom() {
     // Betting Logic State
     const [currentInput, setCurrentInput] = useState('');
     const [bufferNumbers, setBufferNumbers] = useState<string[]>([]);
+    // ✅ State ใหม่: เก็บเลขตั้งต้นของ 19 ประตูที่กดไปแล้ว (เพื่อเช็คลิมิต 3 ตัว)
+    const [root19Inputs, setRoot19Inputs] = useState<string[]>([]); 
+    
     const [priceTop, setPriceTop] = useState('');    
     const [priceBottom, setPriceBottom] = useState(''); 
 
@@ -174,10 +177,18 @@ export default function BettingRoom() {
 
     useEffect(() => {
         setBufferNumbers([]);
+        setRoot19Inputs([]); // ล้างประวัติ 19 ประตูเมื่อเปลี่ยน tab
         setCurrentInput('');
         setPriceTop('');
         setPriceBottom('');
     }, [tab, winMode]);
+
+    // ✅ ล้างประวัติ 19 ประตู หากผู้ใช้กดลบเลขหมดถัง (Trash)
+    useEffect(() => {
+        if (bufferNumbers.length === 0) {
+            setRoot19Inputs([]);
+        }
+    }, [bufferNumbers]);
 
     const numberInputRef = useRef<HTMLInputElement>(null);
     const priceTopRef = useRef<HTMLInputElement>(null);
@@ -231,16 +242,49 @@ export default function BettingRoom() {
         const parts = text.split(/[^0-9]+/).filter(x => x); 
         if (parts.length === 0) return;
 
+        // 1. จัดการโหมดวิน (Win)
         if (tab === 'win') {
             const joined = parts.join('');
-            if (currentInput.length + joined.length > 8) {
-                return toast.error('ตัวเลขเยอะเกินไปสำหรับโหมดวิน (สูงสุด 8 ตัว)');
+            if (currentInput.length + joined.length > 7) {
+                return toast.error('ตัวเลขเยอะเกินไปสำหรับโหมดวิน (สูงสุด 7 ตัว)');
             }
             setCurrentInput(prev => prev + joined);
             return;
         }
 
         const config = getInputConfig();
+
+        // 2. จัดการโหมด 19 ประตู (Logic พิเศษที่เพิ่มไป)
+        // เมื่อทำงานเสร็จจะ return ออกไปเลย ทำให้โค้ดด้านล่างไม่ต้องเช็ค tab === '19' อีก
+        if (tab === '19') {
+            const uniqueInputs = [...new Set(parts.filter(n => n.length === 1))];
+            const availableSlots = 3 - root19Inputs.length;
+            
+            if (availableSlots <= 0) return toast.error("⚠️ รูดได้สูงสุด 3 ตัวต่อรอบบิล");
+
+            const newRoots = uniqueInputs.filter(n => !root19Inputs.includes(n));
+            
+            if (newRoots.length === 0) return toast("เลขซ้ำหรือไม่มีเลขใหม่");
+
+            const rootsToAdd = newRoots.slice(0, availableSlots);
+            if (newRoots.length > availableSlots) {
+                toast(`นำเข้า ${availableSlots} ตัวแรก (${rootsToAdd.join(', ')}) เนื่องจากครบโควต้า 3 ตัว`);
+            } else {
+                toast.success(`วางเลขรูด ${rootsToAdd.length} ตัวสำเร็จ`);
+            }
+
+            const allGenNumbers: string[] = [];
+            rootsToAdd.forEach(r => {
+                allGenNumbers.push(...generateNumbers(r, '19gate'));
+            });
+
+            setRoot19Inputs(prev => [...prev, ...rootsToAdd]);
+            setBufferNumbers(prev => [...prev, ...allGenNumbers]);
+            return;
+        }
+
+        // 3. จัดการโหมดอื่นๆ (2 ตัว, 3 ตัว, เลขวิ่ง)
+        // ✅ แก้ไข: ลบการเช็ค tab === '19' ตรงนี้ออก เพราะถูกดักจับและ return ไปแล้วด้านบน
         const validList: string[] = [];
         let errorCount = 0;
 
@@ -249,12 +293,8 @@ export default function BettingRoom() {
                 errorCount++;
                 return;
             }
-            if (tab === '19') {
-                const gen = generateNumbers(numStr, '19gate');
-                validList.push(...gen);
-            } else {
-                validList.push(numStr);
-            }
+            // ไม่ต้องเช็ค 19 ประตูแล้ว ใส่เข้า list ได้เลย
+            validList.push(numStr);
         });
 
         if (validList.length > 0) {
@@ -315,6 +355,18 @@ export default function BettingRoom() {
         const config = getInputConfig();
         if (numToAdd.length < config.min) {
             return toast.error(`กรุณาระบุตัวเลขอย่างน้อย ${config.min} ตัว`);
+        }
+
+        // ✅ 19 Gate Check Limit
+        if (tab === '19') {
+            if (root19Inputs.length >= 3) {
+                return toast.error("⚠️ รูดได้สูงสุด 3 ตัวต่อรอบบิล");
+            }
+            if (root19Inputs.includes(numToAdd)) {
+                return toast.error("⚠️ เลขนี้รูดไปแล้ว");
+            }
+            // บันทึกว่ารูดเลขนี้ไปแล้ว
+            setRoot19Inputs(prev => [...prev, numToAdd]);
         }
 
         let numbersToAdd: string[] = [numToAdd];
@@ -436,8 +488,6 @@ export default function BettingRoom() {
         const currentBatchId = uuidv4();
 
         finalNumbersToProcess.forEach(num => {
-            // อนุญาตให้เพิ่มเลขปิดลงตะกร้าได้ (แต่จะไม่คิดเงินตอนรวมยอด)
-            
             if (tab === '2' || tab === '19' || (tab === 'win' && winMode === '2')) {
                 if (pTop > 0) newItems.push({ 
                     temp_id: uuidv4(), number: num, bet_type: '2up', amount: pTop, display_text: num,
@@ -480,6 +530,7 @@ export default function BettingRoom() {
 
         setCart(prev => [...newItems, ...prev]); 
         setBufferNumbers([]);
+        // setRoot19Inputs([]); // Note: ไม่ต้องล้างตรงนี้เพราะ useEffect จะล้างให้อัตโนมัติเมื่อ buffer ว่าง
         setPriceTop('');
         setPriceBottom('');
         
@@ -564,8 +615,6 @@ export default function BettingRoom() {
             return Array.from(groups.values());
         };
 
-        // 3. ส่งค่ากลับโดยเอาผลลัพธ์ของกลุ่มปกติ และกลุ่มปิดรับ มาต่อกัน
-        // จะทำให้ได้แถวแยกกันชัดเจน (เช่น แถว "บน 10" ที่ปิดรับ กับ แถว "ล่าง 10" ที่ปกติ)
         return [...processGrouping(openItems), ...processGrouping(closedItems)];
     };
 
@@ -605,7 +654,6 @@ export default function BettingRoom() {
     const submitTicket = async () => {
         if (cart.length === 0) return;
 
-        // ✅ กรองรายการที่ปิดรับออก (ไม่ส่งไป Backend)
         const validItems = cart.filter(item => !isItemClosed(item));
 
         if (validItems.length === 0) {
