@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import client from '../../api/client';
 import { 
   Ticket, Eye, Ban, RefreshCcw, X, 
-  ChevronLeft, ChevronRight, FileText,
+  FileText,
   User, Calendar, Loader2
 } from 'lucide-react';
 import { calculateWinAmount, calculateNet, getStatusBadge } from '../../utils/lottoHelpers';
@@ -71,33 +71,46 @@ export default function ShopHistory() {
     }
   };
 
-  // Logic จัดกลุ่ม
+  // ✅ ปรับ Logic การจัดกลุ่มแอดมิน: แยกตาม "ชื่อหวย"
   const groupedTickets = useMemo(() => {
       if (tickets.length === 0) return [];
+      
       const catMap = new Map();
       categories.forEach(c => catMap.set(c.id, c));
-      const lottoCatMap = new Map();
-      lottos.forEach(l => lottoCatMap.set(l.id, l.category));
+
+      // Map หวย -> ชื่อ & สี
+      const lottoMap = new Map();
+      lottos.forEach(l => {
+          const cat = catMap.get(l.category);
+          lottoMap.set(l.id, {
+              name: l.name,
+              color: cat?.color || 'bg-gray-100 text-gray-800'
+          });
+      });
 
       const groups: any = {};
-      const noCatKey = 'uncategorized';
 
       tickets.forEach(ticket => {
-          const catId = lottoCatMap.get(ticket.lotto_type_id) || noCatKey;
-          if (!groups[catId]) {
-              groups[catId] = {
-                  info: catMap.get(catId) || { label: 'หมวดอื่นๆ', color: 'bg-gray-800 text-white' },
+          // ใช้ lotto_type_id เป็น key การจัดกลุ่ม
+          const key = ticket.lotto_type_id;
+          
+          if (!groups[key]) {
+              const info = lottoMap.get(key) || {
+                  name: ticket.lotto_type?.name || 'ไม่ระบุชื่อหวย',
+                  color: 'bg-gray-100 text-gray-800'
+              };
+
+              groups[key] = {
+                  info: info,
                   items: []
               };
           }
-          groups[catId].items.push(ticket);
+          groups[key].items.push(ticket);
       });
 
-      return Object.entries(groups).sort((a, b) => {
-          if (a[0] === noCatKey) return 1;
-          if (b[0] === noCatKey) return -1;
-          return 0;
-      }).map(([, val]) => val);
+      return Object.values(groups).sort((a: any, b: any) => 
+          a.info.name.localeCompare(b.info.name, 'th')
+      );
 
   }, [tickets, lottos, categories]);
 
@@ -150,14 +163,14 @@ export default function ShopHistory() {
                 <p>ไม่พบรายการโพย</p>
             </div>
         ) : (
-            /* วนลูปแสดงกลุ่มหมวดหมู่ */
+            /* วนลูปแสดงกลุ่มตามชื่อหวย */
             groupedTickets.map((group: any, index: number) => (
                 <div key={index} className="animate-slide-up">
                     
-                    {/* Header หมวดหมู่ */}
+                    {/* Header ชื่อหวย */}
                     <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
                         <span className={`w-1.5 h-6 rounded-full ${group.info.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
-                        {group.info.label} 
+                        {group.info.name} 
                         <span className="text-xs font-normal text-slate-400 ml-2 bg-white px-2 py-0.5 rounded-full border border-slate-200 shadow-sm">
                             {group.items.length} รายการ
                         </span>
@@ -247,14 +260,7 @@ export default function ShopHistory() {
         )}
       </div>
 
-      {/* Pagination Controls */}
-      <div className="flex justify-center items-center gap-4 mt-8">
-          <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1} className="p-2 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-50 shadow-sm"><ChevronLeft size={20}/></button>
-          <span className="text-sm font-bold text-slate-600 bg-white px-4 py-2 rounded-lg border shadow-sm">หน้า {page}</span>
-          <button onClick={() => setPage(p => p+1)} disabled={tickets.length < limit} className="p-2 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-50 shadow-sm"><ChevronRight size={20}/></button>
-      </div>
-
-      {/* Modal Detail (Admin Version - Full Columns) */}
+      {/* Modal Detail (มีคอลัมน์ เรท, รวม) */}
       {selectedTicket && (
           <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">

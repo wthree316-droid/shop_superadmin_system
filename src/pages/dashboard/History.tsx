@@ -62,17 +62,26 @@ export default function History() {
     }
   };
 
+  // ✅ ปรับ Logic การจัดกลุ่ม: แยกตาม "ชื่อหวย" (Lotto) แทนหมวดหมู่ (Category)
   const groupedTickets = useMemo(() => {
       if (tickets.length === 0) return [];
 
+      // 1. สร้าง Map หมวดหมู่เพื่อดึงสี (Color)
       const catMap = new Map();
       categories.forEach(c => catMap.set(c.id, c));
 
-      const lottoCatMap = new Map();
-      lottos.forEach(l => lottoCatMap.set(l.id, l.category));
+      // 2. สร้าง Map หวย เพื่อดึงชื่อและสีจากหมวดหมู่แม่
+      const lottoMap = new Map();
+      lottos.forEach(l => {
+          const cat = catMap.get(l.category);
+          lottoMap.set(l.id, {
+              name: l.name,
+              // ใช้สีของหมวดหมู่ (ถ้ามี) หรือสี Default
+              color: cat?.color || 'bg-gray-100 text-gray-800'
+          });
+      });
 
       const groups: any = {};
-      const noCatKey = 'uncategorized';
 
       tickets.forEach(ticket => {
           const searchLower = searchTerm.toLowerCase();
@@ -82,22 +91,28 @@ export default function History() {
           
           if (searchTerm && !matchUser && !matchLotto && !matchId) return;
 
-          const catId = lottoCatMap.get(ticket.lotto_type_id) || noCatKey;
+          // ✅ Group Key: ใช้ ID ของหวย (lotto_type_id)
+          const key = ticket.lotto_type_id;
           
-          if (!groups[catId]) {
-              groups[catId] = {
-                  info: catMap.get(catId) || { label: 'หมวดอื่นๆ', color: 'bg-gray-800 text-white' },
+          if (!groups[key]) {
+              // ดึงข้อมูลชื่อและสี
+              const info = lottoMap.get(key) || {
+                  name: ticket.lotto_type?.name || 'ไม่ระบุชื่อหวย',
+                  color: 'bg-gray-100 text-gray-800'
+              };
+
+              groups[key] = {
+                  info: info,
                   items: []
               };
           }
-          groups[catId].items.push(ticket);
+          groups[key].items.push(ticket);
       });
 
-      return Object.entries(groups).sort((a, b) => {
-          if (a[0] === noCatKey) return 1;
-          if (b[0] === noCatKey) return -1;
-          return 0;
-      }).map(([, val]) => val);
+      // เรียงลำดับกลุ่มตามชื่อหวย (ก-ฮ)
+      return Object.values(groups).sort((a: any, b: any) => 
+          a.info.name.localeCompare(b.info.name, 'th')
+      );
 
   }, [tickets, lottos, categories, searchTerm]);
 
@@ -109,7 +124,7 @@ export default function History() {
           <div className="flex items-center justify-between mb-4 max-w-7xl mx-auto">
               <div>
                   <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                      <Layers className="text-blue-600" /> ประวัติแยกหมวดหมู่
+                      <Layers className="text-blue-600" /> ประวัติแยกตามหวย
                   </h1>
                   <p className="text-xs text-slate-500">ตรวจสอบรายการแบบแยกประเภทหวย</p>
               </div>
@@ -151,9 +166,10 @@ export default function History() {
               groupedTickets.map((group: any, index: number) => (
                   <div key={index} className="animate-slide-up">
                       
+                      {/* หัวข้อชื่อหวย (ใช้สีจากหมวดหมู่) */}
                       <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
                           <span className={`w-1.5 h-6 rounded-full ${group.info.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
-                          {group.info.label} 
+                          {group.info.name} 
                           <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
                               {group.items.length} รายการ
                           </span>
@@ -203,7 +219,10 @@ export default function History() {
                                                     ) : getStatusBadge(t.status)}
                                                 </td>
                                                 <td className="p-4 text-right font-mono font-bold">
-                                                    <span className={isCancelled ? 'text-gray-400' : net > 0 ? 'text-green-600' : 'text-red-500'}>
+                                                    <span className={
+                                                        isCancelled ? 'text-gray-400' :
+                                                        net > 0 ? 'text-green-600' : 'text-red-500'
+                                                    }>
                                                         {isCancelled ? '0' : (net > 0 ? '+' : '') + net.toLocaleString()}
                                                     </span>
                                                 </td>
@@ -232,7 +251,7 @@ export default function History() {
           )}
       </div>
 
-      {/* Modal Detail (แก้ไขแล้ว: เพิ่มคอลัมน์ เรท, รวม) */}
+      {/* Modal Detail (มีคอลัมน์ เรท, รวม) */}
       {selectedTicket && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
               <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] flex flex-col animate-scale-in overflow-hidden">
