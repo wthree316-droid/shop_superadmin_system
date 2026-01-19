@@ -11,15 +11,16 @@ import {
   Delete,
   History, 
   FileText,
-  Camera
-} from 'lucide-react';
+  Camera,
+  Check
+} from 'lucide-react'; // เพิ่ม Check icon
 import { type CartItem } from '../../types/lotto';
+// ✅ นำเข้า generateNumbers ตัวใหม่
 import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '../../types/lottoLogic';
 import toast from 'react-hot-toast';
 
-
-// --- Sub-Component: ตัวนับถอยหลัง ---
-const CountDownTimer = ({ closeTime }: { closeTime: string }) => {
+// ... (Sub-Component CountDownTimer, getRateVal, getStatusBadge เหมือนเดิม) ...
+const CountDownTimer = ({ closeTime, onTimeout }: { closeTime: string; onTimeout?: () => void }) => {
     const [timeLeft, setTimeLeft] = useState('00:00:00:00');
 
     useEffect(() => {
@@ -37,6 +38,9 @@ const CountDownTimer = ({ closeTime }: { closeTime: string }) => {
         if (diff <= 0) {
             setTimeLeft("00:00:00:00");
             clearInterval(interval);
+
+            if (onTimeout) onTimeout();
+
             return;
         }
 
@@ -52,7 +56,7 @@ const CountDownTimer = ({ closeTime }: { closeTime: string }) => {
         }, 10);
 
         return () => clearInterval(interval);
-    }, [closeTime]);
+    }, [closeTime, onTimeout]);
 
     return (
         <div className="text-red-500 font-bold text-xl animate-pulse">
@@ -88,31 +92,31 @@ export default function BettingRoom() {
     const { id } = useParams(); 
     const navigate = useNavigate();
 
-    // Data State
     const [lotto, setLotto] = useState<any>(null);
     const [risks, setRisks] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [history, setHistory] = useState<any[]>([]);
 
-    // UI State
     const [tab, setTab] = useState<'2' | '3' | '19' | 'run' | 'win'>('2');
     const [winMode, setWinMode] = useState<'2' | '3'>('2'); 
+    
+    // ✅ เพิ่ม State ใหม่สำหรับตัวเลือก "รวมเบิ้ล"
+    const [includeDoubles, setIncludeDoubles] = useState(false);
 
-    // Betting Logic State
     const [currentInput, setCurrentInput] = useState('');
     const [bufferNumbers, setBufferNumbers] = useState<string[]>([]);
-    // ✅ State ใหม่: เก็บเลขตั้งต้นของ 19 ประตูที่กดไปแล้ว (เพื่อเช็คลิมิต 3 ตัว)
     const [root19Inputs, setRoot19Inputs] = useState<string[]>([]); 
     
     const [priceTop, setPriceTop] = useState('');    
     const [priceBottom, setPriceBottom] = useState(''); 
 
-    // Cart & Note
     const [cart, setCart] = useState<CartItem[]>([]);
     const [note, setNote] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // --- Helper Check Closed ---
+    const handleTimeUp = () => {
+        alert("⛔ หมดเวลาแทงแล้ว!\nระบบจะพาท่านกลับไปยังหน้าตลาด");
+        navigate('/play');
+    };
     const isItemClosed = (item: CartItem) => {
         return risks.some(r => 
             r.number === item.number && 
@@ -121,7 +125,6 @@ export default function BettingRoom() {
         );
     };
 
-    // --- 1. Fetch Data ---
     const fetchData = async () => {
         if(!id) return;
         setLoading(true);
@@ -177,13 +180,13 @@ export default function BettingRoom() {
 
     useEffect(() => {
         setBufferNumbers([]);
-        setRoot19Inputs([]); // ล้างประวัติ 19 ประตูเมื่อเปลี่ยน tab
+        setRoot19Inputs([]); 
         setCurrentInput('');
         setPriceTop('');
         setPriceBottom('');
+        // setIncludeDoubles(false); // (Optional) ถ้าอยากให้รีเซ็ตตัวเลือกเบิ้ลทุกครั้งที่เปลี่ยน Tab ให้เปิดบรรทัดนี้
     }, [tab, winMode]);
 
-    // ✅ ล้างประวัติ 19 ประตู หากผู้ใช้กดลบเลขหมดถัง (Trash)
     useEffect(() => {
         if (bufferNumbers.length === 0) {
             setRoot19Inputs([]);
@@ -242,7 +245,6 @@ export default function BettingRoom() {
         const parts = text.split(/[^0-9]+/).filter(x => x); 
         if (parts.length === 0) return;
 
-        // 1. จัดการโหมดวิน (Win)
         if (tab === 'win') {
             const joined = parts.join('');
             if (currentInput.length + joined.length > 7) {
@@ -254,8 +256,6 @@ export default function BettingRoom() {
 
         const config = getInputConfig();
 
-        // 2. จัดการโหมด 19 ประตู (Logic พิเศษที่เพิ่มไป)
-        // เมื่อทำงานเสร็จจะ return ออกไปเลย ทำให้โค้ดด้านล่างไม่ต้องเช็ค tab === '19' อีก
         if (tab === '19') {
             const uniqueInputs = [...new Set(parts.filter(n => n.length === 1))];
             const availableSlots = 3 - root19Inputs.length;
@@ -283,8 +283,6 @@ export default function BettingRoom() {
             return;
         }
 
-        // 3. จัดการโหมดอื่นๆ (2 ตัว, 3 ตัว, เลขวิ่ง)
-        // ✅ แก้ไข: ลบการเช็ค tab === '19' ตรงนี้ออก เพราะถูกดักจับและ return ไปแล้วด้านบน
         const validList: string[] = [];
         let errorCount = 0;
 
@@ -293,7 +291,6 @@ export default function BettingRoom() {
                 errorCount++;
                 return;
             }
-            // ไม่ต้องเช็ค 19 ประตูแล้ว ใส่เข้า list ได้เลย
             validList.push(numStr);
         });
 
@@ -357,7 +354,6 @@ export default function BettingRoom() {
             return toast.error(`กรุณาระบุตัวเลขอย่างน้อย ${config.min} ตัว`);
         }
 
-        // ✅ 19 Gate Check Limit
         if (tab === '19') {
             if (root19Inputs.length >= 3) {
                 return toast.error("⚠️ รูดได้สูงสุด 3 ตัวต่อรอบบิล");
@@ -365,7 +361,6 @@ export default function BettingRoom() {
             if (root19Inputs.includes(numToAdd)) {
                 return toast.error("⚠️ เลขนี้รูดไปแล้ว");
             }
-            // บันทึกว่ารูดเลขนี้ไปแล้ว
             setRoot19Inputs(prev => [...prev, numToAdd]);
         }
 
@@ -375,7 +370,8 @@ export default function BettingRoom() {
             numbersToAdd = generateNumbers(numToAdd, '19gate');
         } else if (tab === 'win') {
             const mode = winMode === '2' ? 'win2' : 'win3';
-            numbersToAdd = generateNumbers(numToAdd, mode);
+            // ✅ ส่ง includeDoubles เข้าไปในฟังก์ชัน
+            numbersToAdd = generateNumbers(numToAdd, mode, includeDoubles);
             if(numbersToAdd.length === 0) return toast.error("จับวินไม่ได้ (เลขซ้ำหรือจำนวนไม่พอ)");
         }
 
@@ -411,7 +407,6 @@ export default function BettingRoom() {
             newSet.push(...perms);
         });
         setBufferNumbers(newSet); 
-    
         toast.success(`กลับเลขเรียบร้อย (รวม ${newSet.length} รายการ)`);
     };
 
@@ -430,7 +425,6 @@ export default function BettingRoom() {
     }, [bufferNumbers]);
 
 
-    // --- Add to Cart Logic ---
     const handleAddBill = () => {
         if (currentInput && currentInput.length >= getInputConfig().min) {
             handleAddNumberToBuffer();
@@ -439,7 +433,8 @@ export default function BettingRoom() {
         let pendingNumbers: string[] = [];
         if (currentInput && currentInput.length >= getInputConfig().min && tab === 'win') {
             const mode = winMode === '2' ? 'win2' : 'win3';
-            const generated = generateNumbers(currentInput, mode);
+            // ✅ ส่ง includeDoubles ตรงนี้ด้วย เพื่อให้เลขที่ค้างใน input ถูกคำนวณถูกต้องก่อนเพิ่มลงตะกร้า
+            const generated = generateNumbers(currentInput, mode, includeDoubles);
             pendingNumbers = generated;
             setCurrentInput('');
         }
@@ -530,7 +525,6 @@ export default function BettingRoom() {
 
         setCart(prev => [...newItems, ...prev]); 
         setBufferNumbers([]);
-        // setRoot19Inputs([]); // Note: ไม่ต้องล้างตรงนี้เพราะ useEffect จะล้างให้อัตโนมัติเมื่อ buffer ว่าง
         setPriceTop('');
         setPriceBottom('');
         
@@ -549,8 +543,6 @@ export default function BettingRoom() {
         }
     };
     const groupItemsInBatch = (batchItems: CartItem[]) => {
-        
-        // 1. แยกรายการปกติ (Open) กับรายการปิดรับ (Closed) ออกจากกัน
         const openItems: CartItem[] = [];
         const closedItems: CartItem[] = [];
 
@@ -562,7 +554,6 @@ export default function BettingRoom() {
             }
         });
 
-        // 2. ฟังก์ชันย่อยสำหรับคำนวณการจัดกลุ่ม (Logic เดิม)
         const processGrouping = (items: CartItem[]) => {
             const itemsByNumber = new Map<string, CartItem[]>();
             items.forEach(item => {
@@ -683,7 +674,6 @@ export default function BettingRoom() {
         }
     };
 
-    // ✅ คำนวณยอดรวมเฉพาะรายการที่ไม่ปิดรับ
     const totalAmount = cart.reduce((sum, item) => {
         if (isItemClosed(item)) return sum;
         return sum + item.amount;
@@ -698,7 +688,10 @@ export default function BettingRoom() {
     return (
         <div className="flex flex-col h-full bg-white overflow-hidden font-sans">
             <div className="mt-1 mx-4">
-                <CountDownTimer closeTime={lotto.close_time || "00:00"} />
+                <CountDownTimer 
+                closeTime={lotto.close_time || "00:00"} 
+                onTimeout={handleTimeUp}
+                />
             </div>
             <div className="flex flex-1 overflow-hidden relative">
             
@@ -756,10 +749,27 @@ export default function BettingRoom() {
                                 ))}
                             </div>
 
+                            {/* ✅ UI ส่วนเลือกวินเลขและตัวเลือก รวม/ไม่รวมเบิ้ล */}
                             {tab === 'win' && (
-                                <div className="flex gap-1 mb-4 bg-white p-1 rounded-md border border-green-200 w-fit">
-                                    <button onClick={() => handleWinModeChange('2')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '2' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>วิน 2 ตัว</button>
-                                    <button onClick={() => handleWinModeChange('3')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '3' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>วิน 3 ตัว</button>
+                                <div className="flex flex-col gap-2 mb-4 w-fit">
+                                    <div className="flex gap-1 bg-white p-1 rounded-md border border-green-200">
+                                        <button onClick={() => handleWinModeChange('2')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '2' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>วิน 2 ตัว</button>
+                                        <button onClick={() => handleWinModeChange('3')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '3' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>วิน 3 ตัว</button>
+                                    </div>
+                                    <div className="flex gap-1 bg-white p-1 rounded-md border border-blue-200">
+                                        <button 
+                                            onClick={() => setIncludeDoubles(false)} 
+                                            className={`px-4 py-1 rounded text-xs font-bold transition-all flex items-center gap-1 ${!includeDoubles ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+                                        >
+                                            {!includeDoubles && <Check size={12} />} ไม่รวมเบิ้ล
+                                        </button>
+                                        <button 
+                                            onClick={() => setIncludeDoubles(true)} 
+                                            className={`px-4 py-1 rounded text-xs font-bold transition-all flex items-center gap-1 ${includeDoubles ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+                                        >
+                                            {includeDoubles && <Check size={12} />} รวมเบิ้ล
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 
@@ -947,7 +957,6 @@ export default function BettingRoom() {
                                                     risks.some(r => r.number === item.number && r.risk_type === 'HALF' && (r.specific_bet_type === 'ALL' || r.specific_bet_type === item.bet_type))
                                                 );
                                                 
-                                                // ✅ [ใช้ Helper] เช็คเลขปิดรับ
                                                 const isClosed = inst.items.some(item => isItemClosed(item));
                                                 
                                                 return (
@@ -957,7 +966,6 @@ export default function BettingRoom() {
                                                         className="relative group/chip cursor-pointer select-none"
                                                         title="แตะเพื่อลบ"
                                                     >
-                                                        {/* ✅ [Visual] ถ้าปิดรับ ให้ขีดฆ่าและสีแดง */}
                                                         <span className={`font-mono font-bold text-base px-2 py-1 rounded border transition-colors flex items-center gap-1
                                                             ${isClosed 
                                                                 ? 'bg-red-100 text-red-500 border-red-200 line-through opacity-75' 
@@ -1081,6 +1089,7 @@ export default function BettingRoom() {
                     </div>
                 </div>
                 <div className="hidden lg:flex w-80 bg-[#1e293b] text-white border-l border-gray-700 flex-col shadow-xl z-10 overflow-y-auto">
+                    {/* (ส่วน Sidebar แสดงอัตราจ่ายและเลขอั้นเหมือนเดิม) */}
                     <div className="p-4 bg-[#0f172a] border-b border-gray-700 flex justify-between items-center">
                         <div><h3 className="font-bold text-lg text-blue-400">อัตราจ่าย</h3></div>
                     </div>

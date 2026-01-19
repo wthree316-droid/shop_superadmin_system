@@ -2,10 +2,15 @@
 
 /**
  * ฟังก์ชันสำหรับแตกตัวเลขตามสูตร (Returns Array of strings)
- * @param number เลขที่ลูกค้ากรอก (เช่น "5", "123", "12345")
+ * @param number เลขที่ลูกค้ากรอก
  * @param mode รูปแบบ "19gate" | "win2" | "win3" | "normal"
+ * @param includeDoubles (Optional) สำหรับโหมดวิน: true = รวมเบิ้ล, false = ไม่รวมเบิ้ล
  */
-export const generateNumbers = (number: string, mode: '19gate' | 'win2' | 'win3' | 'normal'): string[] => {
+export const generateNumbers = (
+    number: string, 
+    mode: '19gate' | 'win2' | 'win3' | 'normal',
+    includeDoubles: boolean = false 
+): string[] => {
     const n = number.trim();
     const result: string[] = [];
   
@@ -18,29 +23,34 @@ export const generateNumbers = (number: string, mode: '19gate' | 'win2' | 'win3'
       }
     }
     
-    // 2. วิน 2 ตัว (จับคู่ 2 ไม่รวมเบิ้ล และ **ไม่กลับเลข**)
+    // 2. วิน 2 ตัว
     else if (mode === 'win2') {
       const uniqueChars = Array.from(new Set(n.split(''))).slice(0, 8); 
       if (uniqueChars.length < 2) return [];
 
       for (let i = 0; i < uniqueChars.length; i++) {
-        // เริ่ม j ที่ i + 1 เพื่อไม่ให้จับคู่ย้อนหลัง (เช่นได้ 12 แต่จะไม่เอา 21)
-        for (let j = i + 1; j < uniqueChars.length; j++) {
+        // ถ้าเอาเบิ้ล เริ่ม j ที่ i (จับคู่ตัวเองได้)
+        // ถ้าไม่เอาเบิ้ล เริ่ม j ที่ i + 1
+        const startJ = includeDoubles ? i : i + 1;
+        
+        for (let j = startJ; j < uniqueChars.length; j++) {
             result.push(uniqueChars[i] + uniqueChars[j]);
         }
       }
     }
   
-    // 3. วิน 3 ตัว (จับคู่ 3 ไม่รวมหาม/ตอง และ **ไม่กลับเลข**)
+    // 3. วิน 3 ตัว
     else if (mode === 'win3') {
       const uniqueChars = Array.from(new Set(n.split(''))).slice(0, 8);
       if (uniqueChars.length < 3) return [];
 
       for (let i = 0; i < uniqueChars.length; i++) {
-        // เริ่ม j ที่ i + 1
-        for (let j = i + 1; j < uniqueChars.length; j++) {
-          // เริ่ม k ที่ j + 1
-          for (let k = j + 1; k < uniqueChars.length; k++) {
+        const startJ = includeDoubles ? i : i + 1;
+        
+        for (let j = startJ; j < uniqueChars.length; j++) {
+          const startK = includeDoubles ? j : j + 1;
+          
+          for (let k = startK; k < uniqueChars.length; k++) {
               result.push(uniqueChars[i] + uniqueChars[j] + uniqueChars[k]);
           }
         }
@@ -52,7 +62,7 @@ export const generateNumbers = (number: string, mode: '19gate' | 'win2' | 'win3'
       result.push(n);
     }
   
-    // ตัดเลขซ้ำผลลัพธ์สุดท้าย (Unique)
+    // ตัดเลขซ้ำผลลัพธ์สุดท้าย
     return [...new Set(result)];
 };
 
