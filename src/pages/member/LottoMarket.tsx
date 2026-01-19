@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import client from '../../api/client';
 import { 
-  Sparkles, Search, Clock // [เพิ่ม] Import Clock เข้ามา
+  Sparkles, Search, Clock, Layers
 } from 'lucide-react';
 
 // --- Helper Functions ---
@@ -14,7 +14,6 @@ const getCloseDate = (timeStr: string) => {
   return date;
 };
 
-// [ปรับปรุง] รับค่า diff โดยตรงเพื่อคำนวณ string
 const formatTimeRemaining = (diff: number) => {
   if (diff <= 0) return null;
   const h = Math.floor(diff / (1000 * 60 * 60));
@@ -23,37 +22,58 @@ const formatTimeRemaining = (diff: number) => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-const CATEGORIES = [
-  { id: 'ALL', label: 'ทั้งหมด', icon: '🔥' },
-  { id: 'THAI', label: 'รัฐบาลไทย', icon: '' },
-  { id: 'LAOS', label: 'หวยลาว', icon: '' },
-  { id: 'HANOI', label: 'หวยฮานอย', icon: '' },
-  { id: 'STOCKS', label: 'หวยหุ้น', icon: '📈' },
-  { id: 'STOCKSVIP', label: 'หวยหุ้นVIP', icon: '📈' },
-  { id: 'YIKI', label: 'ยี่กี', icon: '🎱' },
-  { id: 'OTHERS', label: 'อื่นๆ', icon: '🌐' },
-];
-
 export default function LottoMarket() {
   const [lottos, setLottos] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [now, setNow] = useState(new Date());
   const [filter, setFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
+  // 1. ดึงข้อมูล Lottos และ Categories
   useEffect(() => {
-    client.get('/play/lottos').then(res => setLottos(res.data));
+    const fetchData = async () => {
+        try {
+            const [resLottos, resCats] = await Promise.all([
+                client.get('/play/lottos'),
+                client.get('/play/categories')
+            ]);
+            setLottos(resLottos.data);
+            setCategories(resCats.data);
+        } catch (err) {
+            console.error("Failed to load market data", err);
+        }
+    };
+    fetchData();
+
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const getFilteredLottos = (category: string) => {
+  // 2. รวมหมวดหมู่ "ทั้งหมด" เข้ากับหมวดหมู่จาก DB
+  const displayCategories = useMemo(() => {
+      return [
+          { id: 'ALL', label: 'ทั้งหมด', color: 'bg-blue-600 text-white' },
+          ...categories
+      ];
+  }, [categories]);
+
+  // 3. ฟังก์ชันกรองหวย
+  const getFilteredLottos = (categoryId: string) => {
     const filtered = lottos.filter(l => {
-      const catMatch = category === 'ALL' || (l.category || 'OTHERS') === category;
+      // เช็คว่าเป็นหมวดที่เลือก หรือเลือกทั้งหมด
+      // กรณีหวยเก่าที่ไม่มี category id (เป็น null/empty) อาจต้องจัดการเพิ่ม ถ้าต้องการ
+      const catMatch = categoryId === 'ALL' || l.category === categoryId;
+      
       const searchMatch = l.name.toLowerCase().includes(searchTerm.toLowerCase());
-      return catMatch && searchMatch;
+      
+      // กรองเฉพาะที่เปิดใช้งาน
+      const activeMatch = l.is_active;
+
+      return catMatch && searchMatch && activeMatch;
     });
 
+    // เรียงลำดับตามเวลาปิด (ใกล้ปิดขึ้นก่อน)
     return filtered.sort((a, b) => {
       const dateA = getCloseDate(a.close_time);
       const dateB = getCloseDate(b.close_time);
@@ -67,13 +87,16 @@ export default function LottoMarket() {
       const isOpenA = diffA > 0;
       const isOpenB = diffB > 0;
 
+      // อันที่เปิดอยู่ขึ้นก่อนอันที่ปิดแล้ว
       if (isOpenA && !isOpenB) return -1;
       if (!isOpenA && isOpenB) return 1; 
 
+      // ถ้าเปิดอยู่ทั้งคู่ เอาอันที่ใกล้ปิดสุดขึ้นก่อน
       if (isOpenA && isOpenB) {
         return diffA - diffB;
       }
 
+      // ถ้าปิดแล้วทั้งคู่ เรียงตามเวลาปิด (ดึกสุดลงล่าง)
       return dateA.getTime() - dateB.getTime();
     });
   };
@@ -82,14 +105,10 @@ export default function LottoMarket() {
   const LottoCard = ({ lotto }: { lotto: any }) => {
       const closeDate = getCloseDate(lotto.close_time);
       
-      // 1. คำนวณเวลาที่เหลือ (ms)
       const diff = closeDate ? closeDate.getTime() - now.getTime() : 0;
       const isClosed = diff <= 0;
       
-      // 2. แปลงเป็นข้อความ
       const timeLeftStr = !isClosed ? formatTimeRemaining(diff) : null;
-
-      // 3. [NEW] เช็คว่า "ใกล้หมดเวลา" หรือไม่ (น้อยกว่า 30 นาที)
       const isCritical = !isClosed && diff < 30 * 60 * 1000; 
 
       return (
@@ -99,11 +118,10 @@ export default function LottoMarket() {
             relative p-3 rounded-sm shadow-sm border transition-all duration-200 overflow-hidden cursor-pointer
             ${!isClosed 
                 ? 'bg-[#00B900] border-[#00A000] hover:scale-[1.02] hover:shadow-md text-white' 
-                : 'bg-white border-gray-200 opacity-80 text-gray-700 grayscale'
+                : 'bg-white border-gray-200 opacity-80 text-gray-700 grayscale cursor-not-allowed'
             }
           `}
         >
-            {/* Header */}
             <div className="flex justify-between items-start mb-2">
                 <div className="w-14 h-9 bg-white/20 rounded-sm overflow-hidden shrink-0 border border-white/10 shadow-sm">
                     {lotto.img_url ? (
@@ -119,25 +137,24 @@ export default function LottoMarket() {
                 </div>
 
                 <div className="text-right flex flex-col items-end flex-1 pl-2">
-                    <h3 className={`font-bold text-xs leading-tight line-clamp-1 ${!isClosed ? 'text-white' : 'text-gray-800'}`}>
+                    <h3 className={`font-bold text-sm leading-tight line-clamp-1 ${!isClosed ? 'text-white' : 'text-gray-800'}`}>
                         {lotto.name}
                     </h3>
-                    <span className={`text-[10px] font-bold mt-0.5 ${!isClosed ? 'text-white/90' : 'text-gray-500'}`}>
+                    <span className={`text-xs font-bold mt-0.5 ${!isClosed ? 'text-white/90' : 'text-gray-500'}`}>
                         {isClosed ? 'ปิดรับ' : 'เปิดรับ'}
                     </span>
                 </div>
             </div>
 
-            {/* Info Rows */}
             <div className={`text-[10px] space-y-0.5 font-medium ${!isClosed ? 'text-white/90' : 'text-gray-500'}`}>
                 <div className="flex justify-between border-b border-white/10 pb-0">
                     <span>เวลาปิด</span>
-                    <span className="font-bold">{lotto.close_time || '-'}</span>
+                    <span className="font-bold">{lotto.close_time?.substring(0,5) || '-'}</span>
                 </div>
                 
                 <div className="flex justify-between border-b border-white/10 pb-0">
                     <span>ออกผล</span>
-                    <span className="font-bold">{lotto.result_time || '-'}</span>
+                    <span className="font-bold">{lotto.result_time?.substring(0,5) || '-'}</span>
                 </div>
 
                 <div className="flex justify-between items-center pt-0">
@@ -145,15 +162,13 @@ export default function LottoMarket() {
                     {isClosed ? (
                         <span>-</span>
                     ) : (
-                        // [NEW] ปรับเปลี่ยน Style ตามความด่วน (isCritical)
                         <span className={`
                             font-bold px-1.5 py-0 rounded text-[9px] whitespace-nowrap flex items-center gap-1
                             ${isCritical 
-                                ? 'bg-red-600 text-white animate-pulse shadow-sm' // ใกล้ปิด: แดง+กระพริบ
-                                : 'bg-black/20' // ปกติ: ดำจางๆ
+                                ? 'bg-red-600 text-white animate-pulse shadow-sm' 
+                                : 'bg-black/20' 
                             }
                         `}>
-                           {/* ใส่ไอคอนนาฬิกาถ้าใกล้ปิด */}
                            {isCritical && <Clock size={10} strokeWidth={3} />} 
                            ปิดรับใน {timeLeftStr}
                         </span>
@@ -171,7 +186,7 @@ export default function LottoMarket() {
       <div className="bg-white text-gray-800 pt-4 pb-4 px-4 shadow-sm relative z-20">
           <div className="flex justify-between items-center mb-4">
             <h1 className="text-xl font-bold flex items-center gap-2 text-[#1e293b]">
-              <Sparkles className="text-blue-600" size={20} /> รายการหวย
+              <Sparkles className="text-blue-600" size={20} /> ตลาดหวย
             </h1>
             <div className="text-xs text-gray-500">
                {now.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' })}
@@ -182,7 +197,7 @@ export default function LottoMarket() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input 
               type="text" 
-              placeholder="ค้นหา..." 
+              placeholder="ค้นหาชื่อหวย..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-gray-100 border border-gray-200 text-gray-700 placeholder-gray-400 pl-9 pr-4 py-2 rounded-lg focus:outline-none focus:bg-white focus:border-blue-500 text-sm transition-all"
@@ -190,22 +205,27 @@ export default function LottoMarket() {
           </div>
       </div>
 
-      {/* Categories */}
+      {/* Categories Scrollable Bar */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 py-2 px-4 shadow-sm overflow-x-auto">
         <div className="flex gap-2 min-w-max">
-          {CATEGORIES.map(cat => (
+          {displayCategories.map(cat => (
             <button
               key={cat.id}
               onClick={() => setFilter(cat.id)}
               className={`
-                whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 transition-all
+                whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 transition-all border
                 ${filter === cat.id 
-                  ? 'bg-blue-600 text-white shadow-sm' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                 }
               `}
             >
-              <span>{cat.icon}</span> {cat.label}
+              {/* ใช้สีจาก DB เป็นจุดเล็กๆ นำหน้าแทน icon */}
+              {filter !== cat.id && cat.id !== 'ALL' && (
+                  <span className={`w-2 h-2 rounded-full ${cat.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
+              )}
+              {cat.id === 'ALL' && <Layers size={14}/>}
+              {cat.label}
             </button>
           ))}
         </div>
@@ -215,14 +235,17 @@ export default function LottoMarket() {
       <div className="p-4">
         {filter === 'ALL' && searchTerm === '' ? (
             <div className="space-y-6">
-                {CATEGORIES.slice(1).map(cat => {
+                {/* วนลูป Categories ที่ดึงมาจาก DB (ข้าม 'ALL' ตัวแรก) */}
+                {displayCategories.slice(1).map(cat => {
                     const catLottos = getFilteredLottos(cat.id);
                     if (catLottos.length === 0) return null;
 
                     return (
                         <div key={cat.id}>
-                            <h2 className="text-sm font-bold text-gray-700 mb-3 pl-1 border-l-4 border-blue-500 flex items-center gap-2">
-                                {cat.icon} {cat.label}
+                            <h2 className="text-sm font-bold text-gray-700 mb-3 pl-2 border-l-4 border-blue-500 flex items-center gap-2">
+                                {/* ใช้สีพื้นหลังตามหมวดหมู่มาแต่งหัวข้อ */}
+                                <span className={`w-2 h-2 rounded-full ${cat.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
+                                {cat.label}
                             </h2>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                 {catLottos.map(lotto => <LottoCard key={lotto.id} lotto={lotto} />)}
@@ -237,10 +260,14 @@ export default function LottoMarket() {
             </div>
         )}
 
+        {/* กรณีค้นหาแล้วไม่เจอ */}
         {getFilteredLottos(filter).length === 0 && (
-            <div className="text-center py-20 text-gray-400 text-sm">
-                <Search className="mx-auto mb-2 opacity-50" size={32} />
-                <p>ไม่พบรายการ</p>
+            <div className="text-center py-20 text-gray-400 text-sm flex flex-col items-center">
+                <Search className="mb-2 opacity-30" size={48} />
+                <p>ไม่พบรายการหวยที่เปิดรับ</p>
+                <button onClick={() => { setFilter('ALL'); setSearchTerm(''); }} className="mt-2 text-blue-500 underline text-xs">
+                    ดูทั้งหมด
+                </button>
             </div>
         )}
       </div>

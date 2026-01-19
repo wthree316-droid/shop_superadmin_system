@@ -1,27 +1,24 @@
 import { useEffect, useState } from 'react';
 import client from '../../api/client';
 import { 
-  X, RefreshCw, Trophy, FileText, 
+  X, RefreshCw, FileText, 
   ChevronRight, Receipt, ChevronLeft, 
-  Search, Calendar
+  Search, Eye
 } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
+import { calculateWinAmount, calculateNet, getStatusBadge } from '../../utils/lottoHelpers';
 
 export default function History() {
-  // Data List
-  const [tickets, setTickets] = useState<any[]>([]);     // รายการโพยทั้งหมด
+  const [tickets, setTickets] = useState<any[]>([]);     
   const [loading, setLoading] = useState(false);
   
-  // Filters
-  const [filter, setFilter] = useState('ALL'); // สถานะโพย (ALL, WIN, LOSE...)
-  const [searchTerm, setSearchTerm] = useState(''); // ค้นหาด้วยเลขโพย หรือ ชื่อหวย
+  const [filter, setFilter] = useState('ALL'); 
+  const [searchTerm, setSearchTerm] = useState(''); 
 
-  // Pagination & Modal
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 40;
+  const itemsPerPage = 20;
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
 
-  // 1. โหลดประวัติทั้งหมดทันทีที่เข้าหน้า
   useEffect(() => {
     fetchHistory();
   }, []);
@@ -29,7 +26,6 @@ export default function History() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      // ไม่ส่ง lotto_type_id เพื่อดึง "ทั้งหมด"
       const res = await client.get(`/play/history?limit=100`); 
       setTickets(res.data);
     } catch (err) {
@@ -51,19 +47,13 @@ export default function History() {
     }
   };
 
-  // --- Logic การแสดงผล ---
-  
-  // กรองรายการ (สถานะ + คำค้นหา)
   const filteredTickets = tickets.filter(t => {
-      // 1. กรองสถานะ
       const statusMatch = filter === 'ALL' || t.status === filter;
-      
-      // 2. กรองคำค้นหา (ค้นจาก ID โพย หรือ ชื่อหวย)
       const searchLower = searchTerm.toLowerCase();
       const idMatch = t.id.toLowerCase().includes(searchLower);
       const nameMatch = t.lotto_type?.name?.toLowerCase().includes(searchLower);
-      
-      return statusMatch && (searchTerm === '' || idMatch || nameMatch);
+      const userMatch = t.user?.username?.toLowerCase().includes(searchLower);
+      return statusMatch && (searchTerm === '' || idMatch || nameMatch || userMatch);
   });
 
   const totalPages = Math.ceil(filteredTickets.length / itemsPerPage);
@@ -73,37 +63,17 @@ export default function History() {
 
   const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
-  const getStatusColor = (status: string) => {
-      switch(status) {
-          case 'WIN': return 'bg-green-100 text-green-700';
-          case 'LOSE': return 'bg-gray-100 text-gray-500';
-          case 'CANCELLED': return 'bg-red-100 text-red-600';
-          default: return 'bg-blue-100 text-blue-600';
-      }
-  };
-
-  const getStatusLabel = (status: string) => {
-      switch(status) {
-          case 'WIN': return 'ถูกรางวัล';
-          case 'LOSE': return 'ไม่ถูก';
-          case 'CANCELLED': return 'ยกเลิก';
-          default: return 'รอผล';
-      }
-  };
-
-  // ================= RENDER =================
-
   return (
     <div className="animate-fade-in pb-20 bg-gray-50 min-h-screen flex flex-col font-sans">
       
       {/* Header Sticky */}
       <div className="bg-white px-4 py-4 shadow-sm sticky top-0 z-10 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-4 max-w-6xl mx-auto">
+          <div className="flex items-center justify-between mb-4 max-w-7xl mx-auto">
               <div>
                   <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
                       <Receipt className="text-blue-600" /> ประวัติการแทง
                   </h1>
-                  <p className="text-xs text-slate-500">รายการโพยทั้งหมดของคุณ</p>
+                  <p className="text-xs text-slate-500">รายการโพยทั้งหมด</p>
               </div>
               <button 
                   onClick={fetchHistory} 
@@ -113,40 +83,39 @@ export default function History() {
               </button>
           </div>
           
-          <div className="max-w-6xl mx-auto space-y-3">
-              {/* Search */}
-              <div className="relative">
-                  <input 
-                      type="text" 
-                      placeholder="ค้นหาเลขโพย หรือ ชื่อหวย..." 
-                      value={searchTerm}
-                      onChange={e => setSearchTerm(e.target.value)}
-                      className="w-full bg-slate-100 border-none rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                  />
-                  <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-              </div>
-
-              {/* Tabs Filter */}
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                  {['ALL', 'PENDING', 'WIN', 'LOSE', 'CANCELLED'].map(f => (
-                      <button
-                          key={f}
-                          onClick={() => { setFilter(f); setCurrentPage(1); }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all border ${
-                              filter === f 
-                              ? 'bg-slate-800 text-white border-slate-800' 
-                              : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                          }`}
-                      >
-                          {f === 'ALL' ? 'ทั้งหมด' : getStatusLabel(f)}
-                      </button>
-                  ))}
+          <div className="max-w-7xl mx-auto space-y-3">
+              <div className="flex flex-col md:flex-row gap-3">
+                <div className="relative flex-1">
+                    <input 
+                        type="text" 
+                        placeholder="ค้นหา..." 
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full bg-slate-100 border-none rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                    />
+                    <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                    {['ALL', 'PENDING', 'WIN', 'LOSE', 'CANCELLED'].map(f => (
+                        <button
+                            key={f}
+                            onClick={() => { setFilter(f); setCurrentPage(1); }}
+                            className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all border ${
+                                filter === f 
+                                ? 'bg-slate-800 text-white border-slate-800' 
+                                : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                            }`}
+                        >
+                            {f === 'ALL' ? 'ทั้งหมด' : f}
+                        </button>
+                    ))}
+                </div>
               </div>
           </div>
       </div>
 
-      {/* List Content */}
-      <div className="flex-1 px-4 py-4 max-w-6xl mx-auto w-full">
+      {/* Table Content */}
+      <div className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full">
           {loading ? (
               <div className="py-20 flex flex-col items-center text-slate-400">
                   <Loader2 className="animate-spin mb-2" size={32} />
@@ -158,64 +127,72 @@ export default function History() {
                   ไม่พบรายการโพย
               </div>
           ) : (
-              // Masonry Layout
-              <div className="md:columns-2 gap-4"> 
-                  {currentTickets.map((t) => (
-                      <div 
-                          key={t.id} 
-                          onClick={() => setSelectedTicket(t)}
-                          className="break-inside-avoid bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md active:scale-[0.98] transition-all cursor-pointer mb-4 relative overflow-hidden"
-                      >
-                          {/* Stripe Status Color */}
-                          <div className={`absolute left-0 top-0 bottom-0 w-1 ${
-                              t.status === 'WIN' ? 'bg-green-500' : 
-                              t.status === 'LOSE' ? 'bg-gray-300' : 
-                              t.status === 'CANCELLED' ? 'bg-red-500' : 'bg-blue-500'
-                          }`}></div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left whitespace-nowrap">
+                        <thead className="bg-gray-100 text-gray-600 font-bold uppercase text-xs">
+                            <tr>
+                                <th className="p-4">1. วัน/เวลา</th>
+                                <th className="p-4">2. ลูกค้า</th>
+                                <th className="p-4">3. หวย</th>
+                                <th className="p-4 text-right">4. ยอดแทง</th>
+                                <th className="p-4 text-right">5. ถูกรางวัล</th>
+                                <th className="p-4 text-right">6. แพ้/ชนะ</th>
+                                <th className="p-4 w-40">7. หมายเหตุ</th>
+                                <th className="p-4 text-center">8. จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {currentTickets.map((t) => {
+                                const winAmount = calculateWinAmount(t);
+                                const net = calculateNet(t);
+                                const isWin = t.status === 'WIN';
+                                const isCancelled = t.status === 'CANCELLED';
 
-                          <div className="pl-3">
-                              <div className="flex justify-between items-start mb-2">
-                                  <div className="flex items-center gap-3 overflow-hidden">
-                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 border ${
-                                          t.status === 'WIN' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-gray-50 text-gray-400 border-gray-100'
-                                      }`}>
-                                          {t.status === 'WIN' ? <Trophy size={18} /> : <FileText size={18} />}
-                                      </div>
-                                      <div className="min-w-0">
-                                          <div className="flex items-center gap-2">
-                                              <h3 className="font-bold text-slate-800 text-sm truncate">
-                                                  {t.lotto_type?.name || 'ไม่ระบุชื่อหวย'}
-                                              </h3>
-                                          </div>
-                                          <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1 font-mono">
-                                              <Calendar size={10} /> {new Date(t.created_at).toLocaleString('th-TH')}
-                                          </div>
-                                      </div>
-                                  </div>
-                                  <div className="text-right">
-                                      <div className="font-bold text-blue-600 text-base">-{Number(t.total_amount).toLocaleString()}</div>
-                                      <div className={`text-[9px] px-2 py-0.5 rounded-full inline-block font-bold mt-1 ${getStatusColor(t.status)}`}>
-                                          {getStatusLabel(t.status)}
-                                      </div>
-                                  </div>
-                              </div>
-                              
-                              {/* Preview Numbers */}
-                              <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t border-slate-50">
-                                  {t.items?.slice(0, 6).map((item:any, i:number) => (
-                                      <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded font-mono border ${
-                                          item.status === 'WIN' 
-                                          ? 'bg-green-500 text-white border-green-500 font-bold shadow-sm' 
-                                          : 'bg-slate-50 text-slate-500 border-slate-100'
-                                      }`}>
-                                          {item.number}
-                                      </span>
-                                  ))}
-                                  {(t.items?.length || 0) > 6 && <span className="text-[10px] text-gray-400 px-1 pt-0.5">+{t.items.length-6}</span>}
-                              </div>
-                          </div>
-                      </div>
-                  ))}
+                                return (
+                                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="p-4">
+                                            <div className="font-bold text-slate-700">{new Date(t.created_at).toLocaleDateString('th-TH')}</div>
+                                            <div className="text-xs text-gray-400 font-mono">{new Date(t.created_at).toLocaleTimeString('th-TH')}</div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="font-bold text-slate-800">{t.user?.username || '-'}</div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="font-bold text-blue-600">{t.lotto_type?.name || 'Unknown'}</div>
+                                        </td>
+                                        <td className="p-4 text-right font-mono font-bold text-slate-700">
+                                            {Number(t.total_amount).toLocaleString()}
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            {isWin ? (
+                                                <span className="text-green-600 font-bold font-mono">+{winAmount.toLocaleString()}</span>
+                                            ) : getStatusBadge(t.status)}
+                                        </td>
+                                        <td className="p-4 text-right font-mono font-bold">
+                                            <span className={isCancelled ? 'text-gray-400' : net > 0 ? 'text-green-600' : 'text-red-500'}>
+                                                {isCancelled ? '0' : (net > 0 ? '+' : '') + net.toLocaleString()}
+                                            </span>
+                                        </td>
+                                        <td className="p-4">
+                                            <span className="text-xs text-gray-500 truncate block max-w-36" title={t.note}>
+                                                {t.note || '-'}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <button 
+                                                onClick={() => setSelectedTicket(t)}
+                                                className="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 p-2 rounded-lg transition-colors border border-slate-200"
+                                            >
+                                                <Eye size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                  </div>
               </div>
           )}
       </div>
@@ -229,95 +206,67 @@ export default function History() {
           </div>
       )}
 
-      {/* ---------------- MODAL DETAIL (เหมือนเดิม) ---------------- */}
+      {/* Modal Detail (เพิ่มคอลัมน์ เรท, รวม) */}
       {selectedTicket && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
               <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] flex flex-col animate-scale-in overflow-hidden">
-                  
-                  {/* Modal Header */}
                   <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                       <div>
                           <h3 className="font-bold text-lg text-gray-800">รายละเอียดโพย</h3>
-                          <div className="flex items-center gap-1 text-xs text-gray-500 font-mono mt-0.5 font-bold">
-                                # {selectedTicket.id.substring(0, 8)}...
-                          </div>
+                          <div className="text-xs text-gray-500 font-mono mt-0.5">#{selectedTicket.id}</div>
                       </div>
                       <button onClick={() => setSelectedTicket(null)} className="p-2 bg-white rounded-full border hover:bg-gray-100 text-gray-500">
                           <X size={20} />
                       </button>
                   </div>
 
-                  {/* Modal Body */}
                   <div className="p-4 overflow-y-auto bg-white flex-1 custom-scrollbar">
-                      
-                      {/* Info Header */}
                       <div className="text-center mb-4">
                           <h2 className="text-xl font-bold text-slate-800">{selectedTicket.lotto_type?.name}</h2>
                           <p className="text-xs text-slate-400">{new Date(selectedTicket.created_at).toLocaleString('th-TH')}</p>
+                          <div className="text-sm font-bold text-blue-600 mt-1">ผู้เล่น: {selectedTicket.user?.username}</div>
                       </div>
 
-                      {/* Status Banner */}
-                      <div className={`p-4 rounded-xl mb-4 flex justify-between items-center border ${
-                          selectedTicket.status === 'WIN' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-100'
-                      }`}>
-                          <div>
-                              <div className="text-xs text-gray-500 mb-1">สถานะบิล</div>
-                              <div className={`font-bold text-lg ${
-                                  selectedTicket.status === 'WIN' ? 'text-green-700' : 'text-blue-800'
-                              }`}>
-                                  {getStatusLabel(selectedTicket.status)}
-                              </div>
-                          </div>
-                          <div className="text-right">
-                              <div className="text-xs text-gray-500 mb-1">ยอดรวม</div>
-                              <div className="font-bold text-xl text-gray-800">{Number(selectedTicket.total_amount).toLocaleString()} ฿</div>
-                          </div>
-                      </div>
-
-                      {/* Items List */}
-                      <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                          <Receipt size={16} className="text-gray-400"/> รายการตัวเลข ({selectedTicket.items?.length})
-                      </h4>
-                      
                       <div className="border rounded-xl overflow-hidden">
                           <table className="w-full text-sm">
-                              <thead className="bg-gray-100 text-gray-600 font-bold">
+                              <thead className="bg-gray-100 text-gray-600 font-bold text-xs uppercase">
                                   <tr>
                                       <th className="p-3 text-left">เลข</th>
                                       <th className="p-3 text-left">ประเภท</th>
+                                      <th className="p-3 text-right">เรท</th>
                                       <th className="p-3 text-right">ราคา</th>
+                                      <th className="p-3 text-right">รวม</th>
                                       <th className="p-3 text-center">ผล</th>
                                   </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-100">
-                                  {selectedTicket.items?.map((item: any, i: number) => (
-                                      <tr key={i} className={item.status === 'WIN' ? 'bg-green-50' : 'bg-white'}>
-                                          <td className="p-3 font-mono font-bold text-lg">{item.number}</td>
-                                          <td className="p-3 text-gray-500">{item.bet_type}</td>
-                                          <td className="p-3 text-right font-bold">{item.amount}</td>
-                                          <td className="p-3 text-center">
-                                              {item.status === 'WIN' ? (
-                                                  <span className="text-green-600 text-xs font-bold">WIN</span>
-                                              ) : item.status === 'LOSE' ? (
-                                                  <span className="text-gray-300">-</span>
-                                              ) : (
-                                                  <span className="text-orange-400 text-xs">รอ</span>
-                                              )}
-                                          </td>
-                                      </tr>
-                                  ))}
+                                  {selectedTicket.items?.map((item: any, i: number) => {
+                                      // คำนวณยอดคาดการณ์
+                                      const potentialReward = Number(item.amount) * Number(item.reward_rate);
+                                      return (
+                                          <tr key={i} className={item.status === 'WIN' ? 'bg-green-50' : 'bg-white'}>
+                                              <td className="p-3 font-mono font-bold text-lg">{item.number}</td>
+                                              <td className="p-3 text-gray-500 text-xs">{item.bet_type}</td>
+                                              <td className="p-3 text-right text-gray-500 text-xs">{Number(item.reward_rate).toLocaleString()}</td>
+                                              <td className="p-3 text-right font-bold text-slate-700">{Number(item.amount).toLocaleString()}</td>
+                                              <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
+                                              <td className="p-3 text-center">
+                                                  {item.status === 'WIN' ? (
+                                                      <span className="text-green-600 text-xs font-bold">WIN</span>
+                                                  ) : item.status === 'LOSE' ? (
+                                                      <span className="text-gray-300">-</span>
+                                                  ) : (
+                                                      <span className="text-orange-400 text-xs">รอ</span>
+                                                  )}
+                                              </td>
+                                          </tr>
+                                      );
+                                  })}
                               </tbody>
                           </table>
                       </div>
-
-                      {selectedTicket.note && (
-                          <div className="mt-4 p-3 bg-yellow-50 rounded-lg text-xs text-yellow-800 border border-yellow-100">
-                              📝 <b>Note:</b> {selectedTicket.note}
-                          </div>
-                      )}
                   </div>
 
-                  {/* Modal Footer */}
                   <div className="p-4 border-t bg-gray-50 safe-pb">
                       {selectedTicket.status === 'PENDING' ? (
                           <button 
@@ -326,17 +275,8 @@ export default function History() {
                           >
                               ยกเลิกโพย / คืนเงิน
                           </button>
-                      ) : selectedTicket.status === 'WIN' ? (
-                        <div className="flex justify-between items-center bg-green-100 p-3 rounded-xl border border-green-200">
-                            <span className="text-green-800 font-bold">เงินรางวัลรวม</span>
-                            <span className="text-2xl font-bold text-green-700">
-                                +{selectedTicket.items.reduce((s:number, i:any) => s + Number(i.winning_amount || 0), 0).toLocaleString()} ฿
-                            </span>
-                        </div>
                       ) : (
-                          <div className="text-center text-xs text-gray-400">
-                              จบการทำงานแล้ว (ไม่สามารถแก้ไขได้)
-                          </div>
+                          <div className="text-center text-xs text-gray-400">จบการทำงานแล้ว</div>
                       )}
                   </div>
               </div>
