@@ -92,6 +92,45 @@ export default function ManageRisks() {
       }
   };
 
+  // ✅ ฟังก์ชันจัดการการวาง (Paste)
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>, key: string, digits: number) => {
+      e.preventDefault();
+      const text = e.clipboardData.getData('text');
+      if (!text) return;
+
+      // 1. แยกด้วยตัวที่ไม่ใช่ตัวเลข (ตัดอักขระพิเศษ, เว้นวรรค, ขึ้นบรรทัดใหม่ ออกหมด)
+      const parts = text.split(/[^0-9]+/).filter(x => x); 
+      
+      const validNumbers: string[] = [];
+      let errorCount = 0;
+
+      parts.forEach(numStr => {
+          // 2. กรองเฉพาะเลขที่จำนวนหลักถูกต้องตามประเภทนั้นๆ
+          if (numStr.length === digits) {
+              validNumbers.push(numStr);
+          } else {
+              errorCount++;
+          }
+      });
+
+      if (validNumbers.length > 0) {
+          setPending(prev => {
+              const currentList = prev[key] || [];
+              // 3. รวมและตัดตัวซ้ำ
+              const uniqueSet = new Set([...currentList, ...validNumbers]);
+              return {
+                  ...prev,
+                  [key]: Array.from(uniqueSet)
+              };
+          });
+          toast.success(`วางเลขสำเร็จ ${validNumbers.length} รายการ`);
+      }
+      
+      if (errorCount > 0) {
+          toast.error(`ข้าม ${errorCount} ตัวที่หลักไม่ครบ/เกิน`);
+      }
+  };
+
   // Logic การกดปุ่ม (Tab Loop & Enter)
   const handleGridKeyDown = (e: React.KeyboardEvent, currentKey: string) => {
       if (e.key === 'Enter') {
@@ -344,7 +383,7 @@ export default function ManageRisks() {
                                                   {type.label} <span className="opacity-50">| {type.digits} หลัก</span>
                                               </div>
                                               
-                                              {/* ✅ ตรงนี้แก้ Ref แล้ว */}
+                                              {/* ✅ เพิ่ม onPaste */}
                                               <input 
                                                   ref={(el) => { inputRefs.current[type.key] = el; }} 
                                                   type="text" 
@@ -352,6 +391,7 @@ export default function ManageRisks() {
                                                   value={typing[type.key] || ''}
                                                   onChange={e => handleSmartInput(type.key, e.target.value, type.digits)}
                                                   onKeyDown={(e) => handleGridKeyDown(e, type.key)} 
+                                                  onPaste={(e) => handlePaste(e, type.key, type.digits)}
                                                   maxLength={type.digits}
                                                   className="w-24 text-center font-mono font-bold text-xl bg-transparent border-b-2 border-slate-200 focus:border-blue-500 outline-none placeholder-slate-300 text-slate-700"
                                               />
