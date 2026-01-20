@@ -893,7 +893,7 @@ export default function BettingRoom() {
                                                         if (prev.includes(strNum)) {
                                                             return prev.replace(strNum, '');
                                                         }
-                                                        if (prev.length >= 8) return prev; 
+                                                        if (prev.length >= 7) return prev; 
                                                         return prev + strNum;
                                                     })}
                                                     className={`
