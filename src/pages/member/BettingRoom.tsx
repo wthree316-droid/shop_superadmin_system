@@ -85,7 +85,6 @@ const getStatusBadge = (status: string) => {
     }
 };
 
-// ฟังก์ชันคำนวณสีตัวอักษร
 const getContrastTextColor = (hexColor: string) => {
     if (!hexColor || !hexColor.startsWith('#')) return '#ffffff'; 
     const r = parseInt(hexColor.slice(1, 3), 16);
@@ -99,13 +98,39 @@ export default function BettingRoom() {
     const { id } = useParams(); 
     const navigate = useNavigate();
 
+    const numberInputRef = useRef<HTMLInputElement>(null);
+    const priceTopRef = useRef<HTMLInputElement>(null);
+    const priceBottomRef = useRef<HTMLInputElement>(null);
+    const addButtonRef = useRef<HTMLButtonElement>(null);
+    const billRef = useRef<HTMLDivElement>(null);
+
+    // ✅ ฟังก์ชันดึง Focus กลับมาที่ช่องกรอก
     const focusInput = () => {
         setTimeout(() => {
             if (numberInputRef.current) {
                 numberInputRef.current.focus();
             }
-        }, 100); 
+        }, 50); 
     };
+
+    // ✅ [ใหม่] ฟังก์ชันป้องกันการขโมย Focus เมื่อกดพื้นหลัง
+    const handleBackgroundMouseDown = (e: React.MouseEvent) => {
+        // เช็คว่าสิ่งที่คลิกคือ Input หรือ Button หรือไม่
+        const target = e.target as HTMLElement;
+        const isInteractive = 
+            target.tagName === 'INPUT' || 
+            target.tagName === 'BUTTON' || 
+            target.tagName === 'A' ||
+            target.closest('button') || 
+            target.closest('a') ||
+            target.closest('input');
+
+        // ถ้าไม่ใช่สิ่งที่ต้องพิมพ์หรือกด -> ห้ามขโมย Focus (preventDefault)
+        if (!isInteractive) {
+            e.preventDefault();
+        }
+    };
+
     // Theme Logic
     const themeClasses = {
         main: 'bg-[var(--theme-main)] text-[var(--theme-text-contrast)]', 
@@ -179,41 +204,29 @@ export default function BettingRoom() {
 
             const currentLotto = resLotto.data;
 
-            // -----------------------------------------------------------
-            // 🚨 [เพิ่มส่วนนี้] 1. เช็คว่า Admin ปิดหวยหรือไม่ (is_active)
-            // -----------------------------------------------------------
             if (!currentLotto.is_active) {
                 toast.error("⛔ หวยนี้ปิดรับแทงชั่วคราว");
-                navigate('/play'); // ดีดกลับหน้าตลาดทันที
+                navigate('/play'); 
                 return;
             }
 
-            // -----------------------------------------------------------
-            // 🚨 [เพิ่มส่วนนี้] 2. เช็คว่าหมดเวลาหรือยัง (Time Check)
-            // -----------------------------------------------------------
             if (currentLotto.close_time) {
                 const now = new Date();
                 const [hours, minutes] = currentLotto.close_time.split(':').map(Number);
                 const closeDate = new Date();
                 closeDate.setHours(hours, minutes, 0, 0);
-
-                // ถ้าเวลาปิด น้อยกว่าเวลาปัจจุบันมากๆ (เช่น ปิดตี 1 แต่ตอนนี้เที่ยง) 
-                // แสดงว่าเป็นของวันพรุ่งนี้ (Logic เดียวกับ LottoMarket)
-                // แต่ถ้าเอาชัวร์ เบื้องต้นเช็คแค่ Time Diff ปัจจุบันก่อน
                 
                 const diff = closeDate.getTime() - now.getTime();
                 if (diff <= 0) {
                     toast.error("⛔ หวยนี้ปิดรับแล้ว (หมดเวลา)");
-                    navigate('/play'); // ดีดกลับหน้าตลาดทันที
+                    navigate('/play'); 
                     return;
                 }
             }
-            // -----------------------------------------------------------
 
             setLotto(currentLotto);
             setRisks(resRisks.data);
 
-            // ดึงสีจาก theme_color ของหวย
             if (currentLotto.theme_color) {
                 applyThemeFromHex(currentLotto.theme_color);
             }
@@ -274,11 +287,6 @@ export default function BettingRoom() {
             setRoot19Inputs([]);
         }
     }, [bufferNumbers]);
-
-    const numberInputRef = useRef<HTMLInputElement>(null);
-    const priceTopRef = useRef<HTMLInputElement>(null);
-    const priceBottomRef = useRef<HTMLInputElement>(null);
-    const addButtonRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         if (loading) return;
@@ -386,8 +394,6 @@ export default function BettingRoom() {
         }
     };
 
-    const billRef = useRef<HTMLDivElement>(null);
-
     const handleScreenshot = async () => {
         if (!billRef.current || cart.length === 0) return;
         const toastId = toast.loading('กำลังประมวลผล...');
@@ -459,6 +465,7 @@ export default function BettingRoom() {
         setBufferNumbers(prev => [...prev, ...numbersToAdd]);
         setCurrentInput('');
 
+        // ✅ เด้งกลับมาช่องกรอกเสมอ
         focusInput();
     };
 
@@ -480,6 +487,7 @@ export default function BettingRoom() {
                 toast("เลขชุดนี้ถูกเลือกไว้หมดแล้ว");
             }
         }
+        // ✅ เด้งกลับมาช่องกรอกเสมอ
         focusInput();
     };
 
@@ -493,6 +501,7 @@ export default function BettingRoom() {
         setBufferNumbers(newSet); 
         toast.success(`กลับเลขเรียบร้อย (รวม ${newSet.length} รายการ)`);
         
+        // ✅ เด้งกลับมาช่องกรอกเสมอ
         focusInput();
     };
 
@@ -628,18 +637,13 @@ export default function BettingRoom() {
         }
     };
 
-    // ✅ [แก้ไข Logic ใหม่: รวมทุกอย่างในกล่องเดียว]
     const groupItemsInBatch = (batchItems: CartItem[]) => {
-        
-        // 1. จัดกลุ่มตาม "เลข" ก่อน (itemsByNumber)
         const itemsByNumber = new Map<string, CartItem[]>();
         batchItems.forEach(item => {
             if (!itemsByNumber.has(item.number)) itemsByNumber.set(item.number, []);
             itemsByNumber.get(item.number)?.push(item);
         });
 
-        // 2. ไม่ต้องแยก Normal/Mixed แล้ว ส่งเข้า processGrouping ก้อนเดียวเลย
-        // (Logic ภายใน processGrouping จะจัดกลุ่มย่อยตาม Signature เดิม คือ ประเภท+ราคา)
         const processGrouping = (items: CartItem[]) => {
             const itemsByNum = new Map<string, CartItem[]>();
             items.forEach(item => {
@@ -692,7 +696,6 @@ export default function BettingRoom() {
             return Array.from(groups.values());
         };
 
-        // ส่ง batchItems ทั้งหมดเข้าไปเลย
         return processGrouping(batchItems);
     };
 
@@ -729,7 +732,6 @@ export default function BettingRoom() {
         setCart(prev => prev.filter(i => !ids.has(i.temp_id)));
     };
 
-    // ✅ คืนค่า submitTicket และตัวแปร labels
     const submitTicket = async () => {
         if (cart.length === 0) return;
 
@@ -760,6 +762,8 @@ export default function BettingRoom() {
         } finally {
             setIsSubmitting(false);
         }
+        
+        // ✅ ส่งแล้วก็ต้องกลับมา Focus
         focusInput();
     };
 
@@ -775,9 +779,11 @@ export default function BettingRoom() {
     if(!lotto) return null;
 
     return (
+        // ✅ แปะ handleBackgroundMouseDown ไว้ที่ Main Wrapper เพื่อดักจับทุกการคลิกในหน้านี้
         <div 
             className="flex flex-col h-full bg-white overflow-hidden font-sans"
             style={themeStyles} 
+            onMouseDown={handleBackgroundMouseDown}
         >
             <div className="mt-1 mx-4">
                 <CountDownTimer 
@@ -854,21 +860,13 @@ export default function BettingRoom() {
                                     </div>
                                     <div className="flex gap-1 bg-white p-1 rounded-md border border-blue-200">
                                         <button 
-                                            onClick={() => { 
-                                                setIncludeDoubles(false); 
-                                                focusInput(); // ✅ เพิ่มตรงนี้
-                                            }} 
+                                            onClick={() => { setIncludeDoubles(false); focusInput(); }} 
                                             className={`px-4 py-1 rounded text-xs font-bold transition-all flex items-center gap-1 ${!includeDoubles ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
                                         >
                                             {!includeDoubles && <Check size={12} />} ไม่รวมเบิ้ล
                                         </button>
-
-                                        {/* ปุ่มที่ 2: รวมเบิ้ล */}
                                         <button 
-                                            onClick={() => { 
-                                                setIncludeDoubles(true); 
-                                                focusInput(); // ✅ เพิ่มตรงนี้
-                                            }} 
+                                            onClick={() => { setIncludeDoubles(true); focusInput(); }} 
                                             className={`px-4 py-1 rounded text-xs font-bold transition-all flex items-center gap-1 ${includeDoubles ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
                                         >
                                             {includeDoubles && <Check size={12} />} รวมเบิ้ล
@@ -879,11 +877,8 @@ export default function BettingRoom() {
 
                             <div className="flex justify-end gap-2 mb-2">
                                 <button 
-                                    onClick={() => {
-                                        setBufferNumbers([]); // ล้างค่า
-                                        focusInput();         // ✅ เด้งกลับมาช่องกรอก
-                                    }} 
-                                    disabled={bufferNumbers.length === 0}
+                                    onClick={() => { setBufferNumbers([]); focusInput(); }} 
+                                    disabled={bufferNumbers.length === 0} 
                                     className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition-colors disabled:opacity-50"
                                 >
                                     <Trash2 size={14} /> ล้างเลขที่เลือก
