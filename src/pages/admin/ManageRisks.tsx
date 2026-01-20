@@ -11,7 +11,8 @@ import {
   CheckCircle2,
   Layers,
   Eraser,
-  AlertOctagon
+  AlertOctagon,
+  Zap // ไอคอนสายฟ้าสำหรับทางลัด
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -33,6 +34,10 @@ export default function ManageRisks() {
   
   const [typing, setTyping] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Record<string, string[]>>({});
+  
+  // ✅ State สำหรับทางลัด และ ธีมร้าน
+  const [globalInput, setGlobalInput] = useState('');
+  const [shopTheme, setShopTheme] = useState('#2563EB'); // Default Blue
 
   const [riskType, setRiskType] = useState<'CLOSE' | 'HALF'>('CLOSE');
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +51,7 @@ export default function ManageRisks() {
 
   useEffect(() => {
     fetchLottos();
+    fetchShopTheme();
   }, []);
 
   const fetchLottos = async () => {
@@ -60,16 +66,25 @@ export default function ManageRisks() {
     } catch (err) { console.error(err); }
   };
 
+  const fetchShopTheme = async () => {
+      try {
+          const res = await client.get('/shops/');
+          if (res.data && res.data.length > 0) {
+              setShopTheme(res.data[0].theme_color || '#2563EB');
+          }
+      } catch (err) { console.error("Theme fetch error", err); }
+  };
+
   const openRiskModal = async (lotto: any) => {
     setSelectedLotto(lotto);
     setRisks([]); 
     setTyping({});
     setPending({}); 
+    setGlobalInput('');
     try {
       const res = await client.get(`/play/risks/${lotto.id}`);
       setRisks(res.data);
       
-      // Auto Focus ช่องแรก
       setTimeout(() => {
           inputRefs.current['2up']?.focus();
       }, 100);
@@ -77,9 +92,39 @@ export default function ManageRisks() {
     } catch (err) { console.error(err); }
   };
 
+  // --- Logic การกระจายเลข (Core Logic) ---
+  const distributeNumbers = (rawText: string) => {
+      // 1. แยกข้อความด้วย "ตัวที่ไม่ใช่เลข" (เว้นวรรค, ลูกน้ำ, จุด, ขึ้นบรรทัดใหม่ ฯลฯ)
+      // เช่น "12 123, 5" -> ["12", "123", "5"]
+      const parts = rawText.split(/[^0-9]+/).filter(x => x); 
+      
+      if (parts.length === 0) return 0;
+
+      let count = 0;
+      setPending(prev => {
+          const newState = { ...prev };
+          
+          parts.forEach(num => {
+              // เช็คความยาวเลข แล้วยัดลงถังที่ถูกต้อง
+              BET_TYPES.forEach(type => {
+                  if (type.digits === num.length) {
+                      const currentList = newState[type.key] || [];
+                      if (!currentList.includes(num)) {
+                          newState[type.key] = [...currentList, num];
+                          count++;
+                      }
+                  }
+              });
+          });
+          return newState;
+      });
+      
+      return count;
+  };
+
+  // ✅ 1. Input ปกติ (ช่องใครช่องมัน)
   const handleSmartInput = (key: string, value: string, digits: number) => {
       const val = value.replace(/[^0-9]/g, ''); 
-      
       if (val.length === digits) {
           setPending(prev => {
               const currentList = prev[key] || [];
@@ -92,20 +137,43 @@ export default function ManageRisks() {
       }
   };
 
-  // ✅ ฟังก์ชันจัดการการวาง (Paste)
+  // ✅ 2. Global Input: พิมพ์เอง (แก้ปัญหาพิมพ์ไม่ทัน -> ใช้ Enter แทน)
+  const handleGlobalKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+          e.preventDefault();
+          const count = distributeNumbers(globalInput);
+          if (count > 0) {
+              setGlobalInput(''); // เคลียร์ช่องเมื่อกด Enter
+              toast.success(`เพิ่ม ${count} รายการเรียบร้อย`);
+          }
+      }
+  };
+
+  // ✅ 3. Global Input: Paste (วางปุ๊บ กระจายปั๊บ)
+  const handleGlobalPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+      e.preventDefault();
+      const text = e.clipboardData.getData('text');
+      if (!text) return;
+
+      const count = distributeNumbers(text);
+      if (count > 0) {
+          toast.success(`วางและกระจาย ${count} รายการสำเร็จ!`);
+      } else {
+          toast.error("ไม่พบตัวเลขที่ใช้ได้");
+      }
+  };
+
+  // ✅ 4. Grid Input: Paste (วางในช่องเฉพาะ)
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>, key: string, digits: number) => {
       e.preventDefault();
       const text = e.clipboardData.getData('text');
       if (!text) return;
 
-      // 1. แยกด้วยตัวที่ไม่ใช่ตัวเลข (ตัดอักขระพิเศษ, เว้นวรรค, ขึ้นบรรทัดใหม่ ออกหมด)
       const parts = text.split(/[^0-9]+/).filter(x => x); 
-      
       const validNumbers: string[] = [];
       let errorCount = 0;
 
       parts.forEach(numStr => {
-          // 2. กรองเฉพาะเลขที่จำนวนหลักถูกต้องตามประเภทนั้นๆ
           if (numStr.length === digits) {
               validNumbers.push(numStr);
           } else {
@@ -116,43 +184,32 @@ export default function ManageRisks() {
       if (validNumbers.length > 0) {
           setPending(prev => {
               const currentList = prev[key] || [];
-              // 3. รวมและตัดตัวซ้ำ
               const uniqueSet = new Set([...currentList, ...validNumbers]);
-              return {
-                  ...prev,
-                  [key]: Array.from(uniqueSet)
-              };
+              return { ...prev, [key]: Array.from(uniqueSet) };
           });
           toast.success(`วางเลขสำเร็จ ${validNumbers.length} รายการ`);
       }
-      
       if (errorCount > 0) {
           toast.error(`ข้าม ${errorCount} ตัวที่หลักไม่ครบ/เกิน`);
       }
   };
 
-  // Logic การกดปุ่ม (Tab Loop & Enter)
   const handleGridKeyDown = (e: React.KeyboardEvent, currentKey: string) => {
       if (e.key === 'Enter') {
           e.preventDefault();
           handleSaveRisks();
           return;
       }
-
       if (e.key === 'Tab') {
           e.preventDefault(); 
-
           const currentIndex = BET_TYPES.findIndex(t => t.key === currentKey);
           let nextIndex;
-          
           if (e.shiftKey) {
               nextIndex = (currentIndex - 1 + BET_TYPES.length) % BET_TYPES.length;
           } else {
               nextIndex = (currentIndex + 1) % BET_TYPES.length;
           }
-
           const nextKey = BET_TYPES[nextIndex].key;
-          
           if (inputRefs.current[nextKey]) {
               inputRefs.current[nextKey]?.focus();
               inputRefs.current[nextKey]?.select();
@@ -171,6 +228,7 @@ export default function ManageRisks() {
       if(confirm('ล้างรายการที่เตรียมไว้ทั้งหมด?')) {
           setPending({});
           setTyping({});
+          setGlobalInput('');
           inputRefs.current['2up']?.focus();
       }
   };
@@ -202,6 +260,7 @@ export default function ManageRisks() {
       setRisks(res.data);
       setPending({});
       setTyping({});
+      setGlobalInput(''); // Clear Global Input too
       inputRefs.current['2up']?.focus();
 
     } catch (err) {
@@ -283,7 +342,7 @@ export default function ManageRisks() {
         </div>
       </div>
 
-      {/* Grid */}
+      {/* Grid ของหวย */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
          {filteredLottos.map((lotto) => (
              <div key={lotto.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-pointer" onClick={() => openRiskModal(lotto)}>
@@ -340,7 +399,8 @@ export default function ManageRisks() {
                       <div className="w-full lg:w-5/12 bg-white border-r border-slate-200 overflow-y-auto custom-scrollbar flex flex-col shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] z-10">
                           <div className="p-6 pb-24">
                               
-                              <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 flex mb-6 shadow-inner">
+                              {/* Risk Type Selector */}
+                              <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 flex mb-4 shadow-inner">
                                   <button 
                                     onClick={() => setRiskType('CLOSE')}
                                     className={`flex-1 py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
@@ -363,10 +423,33 @@ export default function ManageRisks() {
                                   </button>
                               </div>
 
+                              {/* ✅ Global Input (ทางลัด) - Logic ใหม่ */}
+                              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-6 relative group focus-within:ring-2 focus-within:ring-blue-200 transition-all">
+                                  <div className="flex items-center gap-3">
+                                      <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                                          <Zap size={20} />
+                                      </div>
+                                      <div className="flex-1">
+                                          <label className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block mb-0.5">
+                                              ทางลัด (พิมพ์/วางเลข แล้วกด Enter)
+                                          </label>
+                                          <input 
+                                              type="text" 
+                                              value={globalInput}
+                                              onChange={e => setGlobalInput(e.target.value)} // แค่เก็บค่า ไม่ process อัตโนมัติ
+                                              onKeyDown={handleGlobalKeyDown} // Process เมื่อกด Enter
+                                              onPaste={handleGlobalPaste}     // Process เมื่อ Paste
+                                              placeholder="เช่น 12 123 59 (เว้นวรรคได้)"
+                                              className="w-full bg-transparent font-mono font-bold text-lg text-blue-800 placeholder-blue-300 outline-none"
+                                          />
+                                      </div>
+                                  </div>
+                              </div>
+
                               <div className="flex justify-between items-end mb-4">
                                   <div>
-                                      <h4 className="font-bold text-slate-800 text-base">ระบุตัวเลข</h4>
-                                      <p className="text-xs text-slate-400 mt-0.5">พิมพ์ครบหลักจะถูกส่งไปรอบันทึกอัตโนมัติ</p>
+                                      <h4 className="font-bold text-slate-800 text-base">ระบุตัวเลขรายประเภท</h4>
+                                      <p className="text-xs text-slate-400 mt-0.5">แยกตามประเภทการแทง</p>
                                   </div>
                                   {totalPending > 0 && (
                                       <button onClick={clearAllPending} className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
@@ -383,7 +466,6 @@ export default function ManageRisks() {
                                                   {type.label} <span className="opacity-50">| {type.digits} หลัก</span>
                                               </div>
                                               
-                                              {/* ✅ เพิ่ม onPaste */}
                                               <input 
                                                   ref={(el) => { inputRefs.current[type.key] = el; }} 
                                                   type="text" 
@@ -424,7 +506,10 @@ export default function ManageRisks() {
                               <button 
                                 onClick={handleSaveRisks}
                                 disabled={isLoading || totalPending === 0}
-                                className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold shadow-xl shadow-slate-200 hover:bg-black hover:shadow-2xl hover:-translate-y-0.5 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:translate-y-0 transition-all flex items-center justify-center gap-2.5 text-lg"
+                                style={{ backgroundColor: totalPending > 0 ? shopTheme : undefined }}
+                                className={`w-full text-white py-3.5 rounded-xl font-bold shadow-xl shadow-slate-200 hover:shadow-2xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2.5 text-lg
+                                    ${totalPending === 0 ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'hover:opacity-90'}
+                                `}
                               >
                                   {isLoading ? <span className="animate-spin">⏳</span> : <CheckCircle2 size={24} />} 
                                   บันทึกรายการ ({totalPending})
@@ -432,7 +517,7 @@ export default function ManageRisks() {
                           </div>
                       </div>
 
-                      {/* Right Panel */}
+                      {/* Right Panel: List (เหมือนเดิม) */}
                       <div className="w-full lg:w-7/12 flex flex-col h-full bg-slate-50/50">
                           <div className="px-6 py-4 flex justify-between items-center bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                               <div className="flex items-center gap-2.5">

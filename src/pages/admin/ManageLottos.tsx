@@ -6,19 +6,9 @@ import {
   Trash2, Coins, FolderCog, Palette, Save, Lock
 } from 'lucide-react';
 import type { LottoType, RateProfile } from '../../types/lotto';
+import toast from 'react-hot-toast';
 
 // --- Configs ---
-const COLOR_OPTIONS = [
-    { label: 'ม่วง', class: 'bg-indigo-100 text-indigo-700' },
-    { label: 'ฟ้า', class: 'bg-blue-100 text-blue-700' },
-    { label: 'แดง', class: 'bg-red-100 text-red-700' },
-    { label: 'เขียว', class: 'bg-emerald-100 text-emerald-700' },
-    { label: 'ส้ม', class: 'bg-orange-100 text-orange-700' },
-    { label: 'เทา', class: 'bg-gray-100 text-gray-700' },
-    { label: 'ชมพู', class: 'bg-pink-100 text-pink-700' },
-    { label: 'เหลือง', class: 'bg-yellow-100 text-yellow-800' },
-];
-
 const DAYS = [
   { id: 'SUN', label: 'อาทิตย์', short: 'อา' }, 
   { id: 'MON', label: 'จันทร์', short: 'จ' }, 
@@ -38,11 +28,54 @@ const INITIAL_FORM_STATE = {
   api_link: ''
 };
 
-// --- Helper ---
+// --- Helper Functions ---
 const formatTimeForInput = (timeStr: string | null | undefined) => timeStr ? timeStr.substring(0, 5) : '00:00';
 
+const getContrastTextColor = (hexColor: string) => {
+    if (!hexColor || !hexColor.startsWith('#')) return '#ffffff';
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness > 145 ? '#1e293b' : '#ffffff';
+};
+
+// Component Dropdown เปลี่ยนหมวดหมู่ด่วน
+const CategoryBadgeSelect = ({ currentId, categories, onChange, isLoading }: any) => {
+    const activeCat = categories.find((c: any) => c.id === currentId) || { label: 'ไม่ระบุ', color: '#94a3b8' };
+    
+    // Style
+    const isHex = activeCat.color?.startsWith('#');
+    const style = isHex ? { backgroundColor: activeCat.color, color: getContrastTextColor(activeCat.color) } : {};
+    const className = isHex 
+        ? 'appearance-none pl-3 pr-8 py-1 rounded-full font-bold text-[10px] cursor-pointer transition-all hover:opacity-90 shadow-sm border border-black/10 focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 outline-none w-full text-center' 
+        : `appearance-none pl-3 pr-8 py-1 rounded-full font-bold text-[10px] cursor-pointer ${activeCat.color} w-full text-center`;
+
+    return (
+        <div className="relative inline-block min-w-[120px]">
+            <select
+                value={currentId}
+                onChange={(e) => onChange(e.target.value)}
+                disabled={isLoading}
+                className={className}
+                style={style}
+            >
+                {categories.map((cat: any) => (
+                    <option key={cat.id} value={cat.id} className="bg-white text-slate-800">
+                        {cat.label}
+                    </option>
+                ))}
+            </select>
+            {/* Arrow Icon */}
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-60">
+                {isLoading ? <Loader2 size={10} className="animate-spin"/> : <ChevronDown size={12} />}
+            </div>
+        </div>
+    );
+};
+
 // --- Sub-Components (Memoized) ---
-const LottoRow = memo(({ lotto, category, onToggle, onEdit, onDelete }: any) => {
+const LottoRow = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
     return (
         <tr className="hover:bg-blue-50/30 transition-colors group">
             <td className="p-4 text-center">
@@ -59,11 +92,15 @@ const LottoRow = memo(({ lotto, category, onToggle, onEdit, onDelete }: any) => 
             </td>
             <td className="p-4">
                 <div className="font-bold text-slate-800">{lotto.name}</div>
-                <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 rounded">{lotto.code}</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${category.color}`}>
-                        {category.label}
-                    </span>
+                <div className="flex items-center gap-2 mt-1.5">
+                    <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 rounded border border-slate-200">{lotto.code}</span>
+                    
+                    {/* Quick Select */}
+                    <CategoryBadgeSelect 
+                        currentId={lotto.category} 
+                        categories={categories} 
+                        onChange={(newId: string) => onCategoryChange(lotto, newId)}
+                    />
                 </div>
             </td>
             <td className="p-4 text-center">
@@ -83,7 +120,7 @@ const LottoRow = memo(({ lotto, category, onToggle, onEdit, onDelete }: any) => 
     );
 });
 
-const LottoCard = memo(({ lotto, category, onToggle, onEdit, onDelete }: any) => {
+const LottoCard = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
     return (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative overflow-hidden">
             <div className="flex items-start gap-4 mb-3">
@@ -104,14 +141,22 @@ const LottoCard = memo(({ lotto, category, onToggle, onEdit, onDelete }: any) =>
                             <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${lotto.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
                         </button>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 rounded">{lotto.code}</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${category.color}`}>
-                            {category.label}
-                        </span>
+                    <div className="flex flex-col gap-2 mt-2">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 rounded border border-slate-200">{lotto.code}</span>
+                        </div>
+                        {/* Quick Select on Mobile */}
+                        <div className="w-full">
+                            <CategoryBadgeSelect 
+                                currentId={lotto.category} 
+                                categories={categories} 
+                                onChange={(newId: string) => onCategoryChange(lotto, newId)}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
+            {/* ... Rest of card content ... */}
             <div className="grid grid-cols-2 gap-2 mb-3">
                 <div className="bg-red-50 p-2 rounded-lg text-center border border-red-100">
                     <span className="text-[10px] text-red-400 font-bold uppercase block">ปิดรับ</span>
@@ -134,7 +179,7 @@ const LottoCard = memo(({ lotto, category, onToggle, onEdit, onDelete }: any) =>
     );
 });
 
-const LottoTableContainer = memo(({ lottos, categoryMap, onToggle, onEdit, onDelete }: any) => {
+const LottoTableContainer = memo(({ lottos, categories, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
     return (
         <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
@@ -142,7 +187,7 @@ const LottoTableContainer = memo(({ lottos, categoryMap, onToggle, onEdit, onDel
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-xs tracking-wider">
                         <tr>
                             <th className="p-4 w-20 text-center">IMG</th>
-                            <th className="p-4">ชื่อหวย</th>
+                            <th className="p-4">ชื่อหวย / หมวดหมู่</th>
                             <th className="p-4 text-center">สถานะ</th>
                             <th className="p-4 text-center">ปิดรับ</th>
                             <th className="p-4 text-center">ผลออก</th>
@@ -154,10 +199,11 @@ const LottoTableContainer = memo(({ lottos, categoryMap, onToggle, onEdit, onDel
                             <LottoRow 
                                 key={lotto.id} 
                                 lotto={lotto}
-                                category={categoryMap[lotto.category] || { label: 'ทั่วไป', color: 'bg-gray-100 text-gray-700' }}
+                                categories={categories} // ส่ง categories ไปให้ Dropdown ใช้
                                 onToggle={onToggle}
                                 onEdit={onEdit}
                                 onDelete={onDelete}
+                                onCategoryChange={onCategoryChange}
                             />
                         ))}
                     </tbody>
@@ -167,7 +213,7 @@ const LottoTableContainer = memo(({ lottos, categoryMap, onToggle, onEdit, onDel
     );
 });
 
-const LottoListContainer = memo(({ lottos, categoryMap, isLoading, onToggle, onEdit, onDelete }: any) => {
+const LottoListContainer = memo(({ lottos, categories, isLoading, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
     return (
         <div className="md:hidden grid grid-cols-1 gap-4">
             {isLoading && <div className="text-center py-10 text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" /> กำลังโหลด...</div>}
@@ -176,10 +222,11 @@ const LottoListContainer = memo(({ lottos, categoryMap, isLoading, onToggle, onE
                 <LottoCard 
                     key={lotto.id}
                     lotto={lotto}
-                    category={categoryMap[lotto.category] || { label: 'ทั่วไป', color: 'bg-gray-100 text-gray-700' }}
+                    categories={categories}
                     onToggle={onToggle}
                     onEdit={onEdit}
                     onDelete={onDelete}
+                    onCategoryChange={onCategoryChange}
                 />
             ))}
             {!isLoading && lottos.length === 0 && (
@@ -269,9 +316,8 @@ export default function ManageLottos() {
   
   const [bulkRateId, setBulkRateId] = useState('');
   
-  // ✅ [แก้ไข] State สำหรับจัดการหมวดหมู่ (Edit Mode)
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
-  const [catForm, setCatForm] = useState({ label: '', color: 'bg-gray-100 text-gray-700' });
+  const [catForm, setCatForm] = useState({ label: '', color: '#2563EB', order_index: 999 });
   
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
   
@@ -307,12 +353,6 @@ export default function ManageLottos() {
     } catch (err) { console.error(err); } 
     finally { setIsLoading(false); }
   };
-
-  const categoryMap = useMemo(() => {
-      const map: Record<string, any> = {};
-      categories.forEach(c => map[c.id] = c);
-      return map;
-  }, [categories]);
 
   const toggleStatus = useCallback(async (id: string) => {
     setLottos(prev => prev.map(l => l.id === id ? { ...l, is_active: !l.is_active } : l));
@@ -385,23 +425,20 @@ export default function ManageLottos() {
     finally { setIsSubmitting(false); }
   };
 
-  // ✅ [แก้ไข] ฟังก์ชันจัดการหมวดหมู่ (Create / Update)
+  // ✅ ฟังก์ชันจัดการหมวดหมู่ (ใช้ Hex Color)
   const handleSaveCategory = async () => {
       if (!catForm.label) return alert("กรุณากรอกชื่อหมวดหมู่");
       setIsCatSubmitting(true);
       try {
           if (editingCatId) {
-              // Edit Mode
               await client.put(`/play/categories/${editingCatId}`, catForm);
           } else {
-              // Create Mode
               await client.post('/play/categories', catForm);
           }
           const res = await client.get('/play/categories'); 
           setCategories(res.data);
-          // Reset Form
           setEditingCatId(null);
-          setCatForm({ label: '', color: 'bg-gray-100 text-gray-700' });
+          setCatForm({ label: '', color: '#2563EB', order_index: 999 });
       } catch (err: any) {
           alert(`ทำรายการไม่สำเร็จ: ${err.response?.data?.detail}`);
       } finally {
@@ -409,26 +446,24 @@ export default function ManageLottos() {
       }
   };
 
-  // ✅ [เพิ่ม] ฟังก์ชันเตรียมข้อมูลเพื่อแก้ไขหมวดหมู่
   const startEditCategory = (cat: any) => {
       setEditingCatId(cat.id);
-      setCatForm({ label: cat.label, color: cat.color });
+      // เช็คว่าเป็น Hex หรือ Class ถ้าเป็น Class ให้ใช้ Default Hex แทน เพื่อไม่ให้ Input Color พัง
+      const colorValue = cat.color?.startsWith('#') ? cat.color : '#2563EB';
+      setCatForm({ label: cat.label, color: colorValue, order_index: cat.order_index || 999 });
   };
 
-  // ✅ [เพิ่ม] ฟังก์ชันยกเลิกการแก้ไขหมวดหมู่
   const cancelEditCategory = () => {
       setEditingCatId(null);
-      setCatForm({ label: '', color: 'bg-gray-100 text-gray-700' });
+      setCatForm({ label: '', color: '#2563EB', order_index: 999 });
   };
 
-  // ✅ [เพิ่ม] ฟังก์ชันลบหมวดหมู่
   const handleDeleteCategory = async (id: string) => {
       if (!confirm("⚠️ ต้องการลบหมวดหมู่นี้ใช่หรือไม่?")) return;
       try {
           await client.delete(`/play/categories/${id}`);
           const res = await client.get('/play/categories');
           setCategories(res.data);
-          // ถ้าลบตัวที่กำลังแก้อยู่ ให้ reset form
           if (editingCatId === id) cancelEditCategory();
       } catch (err: any) {
           alert(`ลบไม่สำเร็จ: ${err.response?.data?.detail}`);
@@ -473,6 +508,36 @@ export default function ManageLottos() {
     }
   };
 
+  // ✅ ฟังก์ชันเปลี่ยนหมวดหมู่แบบด่วน (Quick Change)
+  const handleQuickCategoryChange = async (lotto: LottoType, newCategoryId: string) => {
+      // 1. เตรียมข้อมูล Payload (ต้องส่งข้อมูลเดิมไปด้วย ไม่งั้นค่าอื่นจะหาย)
+      const payload = {
+          name: lotto.name,
+          code: lotto.code,
+          category: newCategoryId, // <-- เปลี่ยนแค่ตรงนี้
+          rate_profile_id: lotto.rate_profile_id,
+          img_url: lotto.img_url,
+          api_link: lotto.api_link,
+          open_days: lotto.open_days,
+          open_time: formatTimeForInput(lotto.open_time),
+          close_time: formatTimeForInput(lotto.close_time),
+          result_time: formatTimeForInput(lotto.result_time),
+      };
+
+      try {
+          await client.put(`/play/lottos/${lotto.id}`, payload);
+          toast.success("เปลี่ยนหมวดหมู่สำเร็จ");
+          
+          // อัปเดต State หน้าจอทันทีโดยไม่ต้องโหลดใหม่ทั้งหมด
+          setLottos(prev => prev.map(l => 
+              l.id === lotto.id ? { ...l, category: newCategoryId } : l
+          ));
+      } catch (err: any) {
+          console.error(err);
+          toast.error("เปลี่ยนหมวดหมู่ไม่สำเร็จ");
+      }
+  };
+
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-8 animate-fade-in">
       
@@ -514,26 +579,28 @@ export default function ManageLottos() {
         </div>
       </div>
 
-      {/* --- Desktop Table View (Render only if NOT mobile) --- */}
+      {/* --- Desktop Table View --- */}
       {!isMobile && (
         <LottoTableContainer 
             lottos={lottos}
-            categoryMap={categoryMap}
+            categories={categories} // ส่ง categories ไปให้ Dropdown ใช้
             onToggle={toggleStatus}
             onEdit={openEditModal}
             onDelete={handleDelete}
+            onCategoryChange={handleQuickCategoryChange} // ✅ ส่งฟังก์ชันเปลี่ยนด่วน
         />
       )}
 
-      {/* --- Mobile Card View (Render only if mobile) --- */}
+      {/* --- Mobile Card View --- */}
       {isMobile && (
         <LottoListContainer 
             lottos={lottos}
-            categoryMap={categoryMap}
+            categories={categories}
             isLoading={isLoading}
             onToggle={toggleStatus}
             onEdit={openEditModal}
             onDelete={handleDelete}
+            onCategoryChange={handleQuickCategoryChange}
         />
       )}
 
@@ -557,7 +624,6 @@ export default function ManageLottos() {
             {/* Modal Body */}
             <div className="overflow-y-auto p-5 md:p-6 flex-1 bg-white custom-scrollbar">
               <form id="lotto-form" onSubmit={handleSaveLotto} className="space-y-6">
-                {/* (Form Content เหมือนเดิม) */}
                 <div className="flex flex-col md:flex-row gap-6">
                     <div className="w-full md:w-1/3 flex flex-col gap-2">
                         <label className="text-xs font-bold text-slate-500 uppercase">รูปปก</label>
@@ -652,7 +718,7 @@ export default function ManageLottos() {
         </div>
       )}
 
-      {/* --- Modal Manage Categories (Updated Layout) --- */}
+      {/* --- Modal Manage Categories (Hex Color Update) --- */}
       {showCatModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95">
@@ -675,28 +741,48 @@ export default function ManageLottos() {
                         </h4>
                         
                         <div className="space-y-3">
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">ชื่อหมวดหมู่</label>
-                                <input 
-                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-blue-500 outline-none text-sm"
-                                    placeholder="เช่น หวยต่างประเทศ"
-                                    value={catForm.label}
-                                    onChange={e => setCatForm({...catForm, label: e.target.value})}
-                                />
+                            <div className="flex gap-3">
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">ชื่อหมวดหมู่</label>
+                                    <input 
+                                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-blue-500 outline-none text-sm"
+                                        placeholder="เช่น หวยต่างประเทศ"
+                                        value={catForm.label}
+                                        onChange={e => setCatForm({...catForm, label: e.target.value})}
+                                    />
+                                </div>
+                                <div className="w-20">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block text-center">ลำดับ</label>
+                                    <input 
+                                        type="number"
+                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-2 font-mono text-center text-slate-800 focus:border-blue-500 outline-none text-sm"
+                                        value={catForm.order_index}
+                                        onChange={e => setCatForm({...catForm, order_index: Number(e.target.value)})}
+                                    />
+                                </div>
                             </div>
                             
+                            {/* ✅ แก้ไข: ใช้ Input Color Picker (Hex) */}
                             <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Palette size={10}/> สีป้าย</label>
-                                <div className="grid grid-cols-4 gap-2">
-                                    {COLOR_OPTIONS.map((c) => (
-                                        <button
-                                            key={c.class}
-                                            onClick={() => setCatForm({...catForm, color: c.class})}
-                                            className={`h-8 rounded-md text-[10px] font-bold border-2 transition-all ${c.class} ${catForm.color === c.class ? 'border-black scale-105 shadow-md' : 'border-transparent hover:scale-105'}`}
-                                        >
-                                            {c.label}
-                                        </button>
-                                    ))}
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Palette size={10}/> สีหมวดหมู่</label>
+                                <div className="flex items-center gap-3">
+                                    <div className="relative w-10 h-10 overflow-hidden rounded-lg shadow-sm border border-slate-200">
+                                        <input 
+                                            type="color"
+                                            className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer"
+                                            value={catForm.color.startsWith('#') ? catForm.color : '#2563EB'}
+                                            onChange={e => setCatForm({...catForm, color: e.target.value})}
+                                        />
+                                    </div>
+                                    <div className="flex-1">
+                                        <input 
+                                            type="text" 
+                                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono uppercase text-slate-600 focus:border-blue-500 outline-none"
+                                            value={catForm.color}
+                                            onChange={e => setCatForm({...catForm, color: e.target.value})}
+                                            maxLength={7}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
@@ -733,19 +819,25 @@ export default function ManageLottos() {
                                     ยังไม่มีหมวดหมู่
                                 </div>
                             ) : (
-                                /* ✅ สังเกตตรงนี้: ใช้ปีกกา { หลังลูกศร => และมี return */
                                 categories.map((cat: any) => {
                                     const isSystem = !cat.shop_id; 
+                                    // ตรวจสอบประเภทสี (Hex หรือ Class) เพื่อแสดงผลให้ถูกต้อง
+                                    const isHex = cat.color?.startsWith('#');
+                                    const badgeStyle = isHex ? { backgroundColor: cat.color, color: getContrastTextColor(cat.color) } : {};
+                                    const badgeClass = isHex ? 'px-2 py-1 rounded text-[10px] font-bold' : `px-2 py-1 rounded text-[10px] font-bold ${cat.color}`;
 
                                     return (
                                         <div key={cat.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-blue-200 transition-colors group">
                                             <div className="flex items-center gap-3">
-                                                <span className={`px-2 py-1 rounded text-[10px] font-bold ${cat.color}`}>
+                                                <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold flex items-center justify-center border border-slate-200 shrink-0">
+                                                    {cat.order_index || 999}
+                                                </div>
+                                                
+                                                <span className={badgeClass} style={badgeStyle}>
                                                     ตัวอย่าง
                                                 </span>
                                                 <span className="font-bold text-slate-700 text-sm flex items-center gap-2">
                                                     {cat.label}
-                                                    {/* แสดงป้าย System ถ้าเป็นของระบบ */}
                                                     {isSystem && <span className="bg-gray-100 text-gray-400 text-[9px] px-1.5 py-0.5 rounded border border-gray-200">SYSTEM</span>}
                                                 </span>
                                             </div>
@@ -757,6 +849,7 @@ export default function ManageLottos() {
                                                     </div>
                                                 ) : (
                                                     <>
+                                                        {/* ✅ แสดงปุ่มแก้ไขเสมอ (ไม่ว่าจะเป็นของระบบหรือไม่) */}
                                                         <button 
                                                             onClick={() => startEditCategory(cat)}
                                                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
@@ -764,13 +857,18 @@ export default function ManageLottos() {
                                                         >
                                                             <Pencil size={14} />
                                                         </button>
-                                                        <button 
-                                                            onClick={() => handleDeleteCategory(cat.id)}
-                                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                                            title="ลบ"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
+
+                                                        {/* ปุ่มลบ: ถ้าอยากให้ลบได้เฉพาะของที่สร้างเอง ให้คงเงื่อนไข !isSystem ไว้ */}
+                                                        {/* แต่ถ้าอยากให้ลบได้หมด ก็เอาเงื่อนไข !isSystem && ออกได้เลยครับ */}
+                                                        {!isSystem && (
+                                                            <button 
+                                                                onClick={() => handleDeleteCategory(cat.id)}
+                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                                title="ลบ"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        )}
                                                     </>
                                                 )}
                                             </div>

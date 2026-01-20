@@ -6,16 +6,8 @@ import {
 } from 'lucide-react';
 import type { LottoType, RateProfile } from '../../types/lotto';
 
-
-const CATEGORIES = [
-  { id: 'THAI', label: '🇹🇭 หวยรัฐบาล' },
-  { id: 'LAOS', label: '🇱🇦 หวยลาว' },
-  { id: 'HANOI', label: '🇻🇳 หวยฮานอย' },
-  { id: 'STOCKS', label: '📈 หวยหุ้น' },
-  { id: 'STOCKSVIP', label: '📈 หวยหุ้นVIP'},
-  { id: 'YIKI', label: '🎱 ยี่กี' },
-  { id: 'OTHERS', label: '🌐 อื่นๆ' }
-];
+// ❌ ลบ CATEGORIES แบบ Hardcode ออกไปเลยครับ
+// เราจะใช้ข้อมูลจาก Database แทน
 
 const DAYS = [
   { id: 'SUN', label: 'อาทิตย์' }, { id: 'MON', label: 'จันทร์' }, { id: 'TUE', label: 'อังคาร' },
@@ -25,7 +17,7 @@ const DAYS = [
 const INITIAL_FORM_STATE = {
   name: '', 
   code: '', 
-  category: 'OTHERS', 
+  category: '', // เริ่มต้นเป็นค่าว่าง
   img_url: '',
   rate_profile_id: '', 
   open_days: [] as string[],
@@ -129,6 +121,10 @@ const TimeSelector = ({ label, value, onChange, iconColorClass }: any) => {
 export default function ManageLottoTemplates() {
   const [lottos, setLottos] = useState<LottoType[]>([]);
   const [rateProfiles, setRateProfiles] = useState<RateProfile[]>([]);
+  
+  // ✅ เพิ่ม State สำหรับเก็บหมวดหมู่จาก DB
+  const [categories, setCategories] = useState<any[]>([]);
+
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -148,12 +144,21 @@ export default function ManageLottoTemplates() {
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      const [resLottos, resRates] = await Promise.all([
+      // ✅ ดึง Categories ด้วย
+      const [resLottos, resRates, resCats] = await Promise.all([
         client.get('/play/lottos/templates'), 
-        client.get('/play/rates')
+        client.get('/play/rates'),
+        client.get('/play/categories') 
       ]);
-      setLottos(resLottos.data);
+      const sortedLottos = resLottos.data.sort((a: any, b: any) => {
+          // ถ้าไม่มีเวลา ให้ไปอยู่ท้ายสุด (23:59)
+          const timeA = a.close_time || '23:59';
+          const timeB = b.close_time || '23:59';
+          return timeA.localeCompare(timeB);
+      });
+      setLottos(sortedLottos);
       setRateProfiles(resRates.data);
+      setCategories(resCats.data);
     } catch (err) { 
         console.error("Fetch Error:", err); 
     } finally { 
@@ -169,7 +174,11 @@ export default function ManageLottoTemplates() {
   // Handlers
   const openCreateModal = () => {
     setEditingId(null);
-    setFormData(INITIAL_FORM_STATE);
+    setFormData({
+        ...INITIAL_FORM_STATE,
+        // ✅ ตั้งค่า Default หมวดหมู่แรก ถ้ามี
+        category: categories.length > 0 ? categories[0].id : ''
+    });
     setShowModal(true);
   };
 
@@ -178,7 +187,8 @@ export default function ManageLottoTemplates() {
     setFormData({
       name: lotto.name,
       code: lotto.code,
-      category: lotto.category || 'OTHERS',
+      // ✅ ใช้ค่าจาก DB หรือถ้าไม่มีให้ใช้ตัวแรก
+      category: lotto.category || (categories.length > 0 ? categories[0].id : ''),
       img_url: lotto.img_url || '',
       rate_profile_id: lotto.rate_profile_id || '',
       open_days: lotto.open_days || [],
@@ -304,7 +314,6 @@ export default function ManageLottoTemplates() {
                                     src={lotto.img_url} 
                                     loading="lazy" 
                                     className="w-full h-full object-cover rounded-lg"
-                                    // ✅ ใส่ onError ตรงนี้
                                     onError={(e) => {
                                         const target = e.target as HTMLImageElement;
                                         target.src = 'https://placehold.co/100x100?text=No+Img';
@@ -321,8 +330,9 @@ export default function ManageLottoTemplates() {
                         <div className="text-xs font-mono text-amber-600 mt-1 bg-amber-50 px-2 py-0.5 rounded-md inline-block border border-amber-100">{lotto.code}</div>
                     </td>
                     <td className="p-4 text-center">
+                        {/* ✅ ค้นหาชื่อหมวดหมู่จาก State categories */}
                         <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold border border-gray-200">
-                           {CATEGORIES.find(c => c.id === lotto.category)?.label || lotto.category}
+                           {categories.find(c => c.id === lotto.category)?.label || 'ไม่ระบุ'}
                         </span>
                     </td>
                     <td className="p-4 text-center">
@@ -396,7 +406,6 @@ export default function ManageLottoTemplates() {
                                         <Loader2 className="animate-spin text-amber-500" size={32} />
                                     ) : formData.img_url ? (
                                         <>
-                                            {/* ✅ ใส่ onError ตรงนี้ (Preview Modal) */}
                                             <img 
                                                 src={formData.img_url} 
                                                 className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-50"
@@ -443,12 +452,14 @@ export default function ManageLottoTemplates() {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold mb-1 text-gray-700">หมวดหมู่</label>
+                                    {/* ✅ ใช้ Categories จาก Database */}
                                     <select 
                                         className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none"
                                         value={formData.category}
                                         onChange={e => setFormData({...formData, category: e.target.value})}
                                     >
-                                        {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                                        <option value="">-- เลือกหมวดหมู่ --</option>
+                                        {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                                     </select>
                                 </div>
                                 <div>

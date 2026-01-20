@@ -13,13 +13,12 @@ import {
   FileText,
   Camera,
   Check
-} from 'lucide-react'; // เพิ่ม Check icon
+} from 'lucide-react';
 import { type CartItem } from '../../types/lotto';
-// ✅ นำเข้า generateNumbers ตัวใหม่
 import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '../../types/lottoLogic';
 import toast from 'react-hot-toast';
 
-// ... (Sub-Component CountDownTimer, getRateVal, getStatusBadge เหมือนเดิม) ...
+// --- Sub-Component: ตัวนับถอยหลัง ---
 const CountDownTimer = ({ closeTime, onTimeout }: { closeTime: string; onTimeout?: () => void }) => {
     const [timeLeft, setTimeLeft] = useState('00:00:00:00');
 
@@ -27,40 +26,38 @@ const CountDownTimer = ({ closeTime, onTimeout }: { closeTime: string; onTimeout
         if (!closeTime) return;
 
         const interval = setInterval(() => {
-        const now = new Date();
-        const [hours, minutes] = closeTime.split(':').map(Number);
-        
-        const target = new Date();
-        target.setHours(hours, minutes, 0);
+            const now = new Date();
+            const [hours, minutes] = closeTime.split(':').map(Number);
+            
+            const target = new Date();
+            target.setHours(hours, minutes, 0);
 
-        const diff = target.getTime() - now.getTime();
+            const diff = target.getTime() - now.getTime();
 
-        if (diff <= 0) {
-            setTimeLeft("00:00:00:00");
-            clearInterval(interval);
+            if (diff <= 0) {
+                setTimeLeft("00:00:00:00");
+                clearInterval(interval);
+                if (onTimeout) onTimeout();
+                return;
+            }
 
-            if (onTimeout) onTimeout();
+            const h = Math.floor((diff / (1000 * 60 * 60)));
+            const m = Math.floor((diff / (1000 * 60)) % 60);
+            const s = Math.floor((diff / 1000) % 60);
 
-            return;
-        }
+            const strH = h.toString().padStart(2, '0');
+            const strM = m.toString().padStart(2, '0');
+            const strS = s.toString().padStart(2, '0');
 
-        const h = Math.floor((diff / (1000 * 60 * 60)));
-        const m = Math.floor((diff / (1000 * 60)) % 60);
-        const s = Math.floor((diff / 1000) % 60);
-
-        const strH = h.toString().padStart(2, '0');
-        const strM = m.toString().padStart(2, '0');
-        const strS = s.toString().padStart(2, '0');
-
-        setTimeLeft(`${strH}:${strM}:${strS}`);
-        }, 10);
+            setTimeLeft(`${strH}:${strM}:${strS}`);
+        }, 1000);
 
         return () => clearInterval(interval);
     }, [closeTime, onTimeout]);
 
     return (
         <div className="text-red-500 font-bold text-xl animate-pulse">
-        เหลือเวลา {timeLeft}
+            เหลือเวลา {timeLeft}
         </div>
     );
 };
@@ -88,9 +85,47 @@ const getStatusBadge = (status: string) => {
     }
 };
 
+// ฟังก์ชันคำนวณสีตัวอักษร
+const getContrastTextColor = (hexColor: string) => {
+    if (!hexColor || !hexColor.startsWith('#')) return '#ffffff'; 
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness > 145 ? '#1e293b' : '#ffffff'; 
+};
+
 export default function BettingRoom() {
     const { id } = useParams(); 
     const navigate = useNavigate();
+
+    // Theme Logic
+    const themeClasses = {
+        main: 'bg-[var(--theme-main)] text-[var(--theme-text-contrast)]', 
+        light: 'bg-[var(--theme-light)]',         
+        border: 'border-[var(--theme-border)]',   
+        text: 'text-[var(--theme-main)]',         
+        focus: 'focus:border-[var(--theme-main)]', 
+        hover: 'hover:opacity-90'                 
+    };
+
+    const [themeStyles, setThemeStyles] = useState<React.CSSProperties>({
+        '--theme-main': '#2ECC71',
+        '--theme-light': '#2ECC711A',
+        '--theme-border': '#2ECC714D',
+        '--theme-text-contrast': '#ffffff'
+    } as React.CSSProperties);
+
+    const applyThemeFromHex = (hex: string) => {
+        if (!hex) return;
+        const contrastText = getContrastTextColor(hex);
+        setThemeStyles({
+            '--theme-main': hex,
+            '--theme-light': `${hex}1A`,
+            '--theme-border': `${hex}4D`,
+            '--theme-text-contrast': contrastText
+        } as React.CSSProperties);
+    };
 
     const [lotto, setLotto] = useState<any>(null);
     const [risks, setRisks] = useState<any[]>([]);
@@ -100,7 +135,6 @@ export default function BettingRoom() {
     const [tab, setTab] = useState<'2' | '3' | '19' | 'run' | 'win'>('2');
     const [winMode, setWinMode] = useState<'2' | '3'>('2'); 
     
-    // ✅ เพิ่ม State ใหม่สำหรับตัวเลือก "รวมเบิ้ล"
     const [includeDoubles, setIncludeDoubles] = useState(false);
 
     const [currentInput, setCurrentInput] = useState('');
@@ -113,10 +147,12 @@ export default function BettingRoom() {
     const [cart, setCart] = useState<CartItem[]>([]);
     const [note, setNote] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
     const handleTimeUp = () => {
         alert("⛔ หมดเวลาแทงแล้ว!\nระบบจะพาท่านกลับไปยังหน้าตลาด");
         navigate('/play');
     };
+
     const isItemClosed = (item: CartItem) => {
         return risks.some(r => 
             r.number === item.number && 
@@ -133,8 +169,48 @@ export default function BettingRoom() {
                 client.get(`/play/lottos/${id}`), 
                 client.get(`/play/risks/${id}`)
             ]);
-            setLotto(resLotto.data);
+
+            const currentLotto = resLotto.data;
+
+            // -----------------------------------------------------------
+            // 🚨 [เพิ่มส่วนนี้] 1. เช็คว่า Admin ปิดหวยหรือไม่ (is_active)
+            // -----------------------------------------------------------
+            if (!currentLotto.is_active) {
+                toast.error("⛔ หวยนี้ปิดรับแทงชั่วคราว");
+                navigate('/play'); // ดีดกลับหน้าตลาดทันที
+                return;
+            }
+
+            // -----------------------------------------------------------
+            // 🚨 [เพิ่มส่วนนี้] 2. เช็คว่าหมดเวลาหรือยัง (Time Check)
+            // -----------------------------------------------------------
+            if (currentLotto.close_time) {
+                const now = new Date();
+                const [hours, minutes] = currentLotto.close_time.split(':').map(Number);
+                const closeDate = new Date();
+                closeDate.setHours(hours, minutes, 0, 0);
+
+                // ถ้าเวลาปิด น้อยกว่าเวลาปัจจุบันมากๆ (เช่น ปิดตี 1 แต่ตอนนี้เที่ยง) 
+                // แสดงว่าเป็นของวันพรุ่งนี้ (Logic เดียวกับ LottoMarket)
+                // แต่ถ้าเอาชัวร์ เบื้องต้นเช็คแค่ Time Diff ปัจจุบันก่อน
+                
+                const diff = closeDate.getTime() - now.getTime();
+                if (diff <= 0) {
+                    toast.error("⛔ หวยนี้ปิดรับแล้ว (หมดเวลา)");
+                    navigate('/play'); // ดีดกลับหน้าตลาดทันที
+                    return;
+                }
+            }
+            // -----------------------------------------------------------
+
+            setLotto(currentLotto);
             setRisks(resRisks.data);
+
+            // ดึงสีจาก theme_color ของหวย
+            if (currentLotto.theme_color) {
+                applyThemeFromHex(currentLotto.theme_color);
+            }
+
             fetchHistory();
         } catch (err) { 
             console.error("Load data error", err);
@@ -184,7 +260,6 @@ export default function BettingRoom() {
         setCurrentInput('');
         setPriceTop('');
         setPriceBottom('');
-        // setIncludeDoubles(false); // (Optional) ถ้าอยากให้รีเซ็ตตัวเลือกเบิ้ลทุกครั้งที่เปลี่ยน Tab ให้เปิดบรรทัดนี้
     }, [tab, winMode]);
 
     useEffect(() => {
@@ -370,7 +445,6 @@ export default function BettingRoom() {
             numbersToAdd = generateNumbers(numToAdd, '19gate');
         } else if (tab === 'win') {
             const mode = winMode === '2' ? 'win2' : 'win3';
-            // ✅ ส่ง includeDoubles เข้าไปในฟังก์ชัน
             numbersToAdd = generateNumbers(numToAdd, mode, includeDoubles);
             if(numbersToAdd.length === 0) return toast.error("จับวินไม่ได้ (เลขซ้ำหรือจำนวนไม่พอ)");
         }
@@ -433,7 +507,6 @@ export default function BettingRoom() {
         let pendingNumbers: string[] = [];
         if (currentInput && currentInput.length >= getInputConfig().min && tab === 'win') {
             const mode = winMode === '2' ? 'win2' : 'win3';
-            // ✅ ส่ง includeDoubles ตรงนี้ด้วย เพื่อให้เลขที่ค้างใน input ถูกคำนวณถูกต้องก่อนเพิ่มลงตะกร้า
             const generated = generateNumbers(currentInput, mode, includeDoubles);
             pendingNumbers = generated;
             setCurrentInput('');
@@ -542,30 +615,31 @@ export default function BettingRoom() {
             default: return type;
         }
     };
-    const groupItemsInBatch = (batchItems: CartItem[]) => {
-        const openItems: CartItem[] = [];
-        const closedItems: CartItem[] = [];
 
+    // ✅ [แก้ไข Logic ใหม่: รวมทุกอย่างในกล่องเดียว]
+    const groupItemsInBatch = (batchItems: CartItem[]) => {
+        
+        // 1. จัดกลุ่มตาม "เลข" ก่อน (itemsByNumber)
+        const itemsByNumber = new Map<string, CartItem[]>();
         batchItems.forEach(item => {
-            if (isItemClosed(item)) {
-                closedItems.push(item);
-            } else {
-                openItems.push(item);
-            }
+            if (!itemsByNumber.has(item.number)) itemsByNumber.set(item.number, []);
+            itemsByNumber.get(item.number)?.push(item);
         });
 
+        // 2. ไม่ต้องแยก Normal/Mixed แล้ว ส่งเข้า processGrouping ก้อนเดียวเลย
+        // (Logic ภายใน processGrouping จะจัดกลุ่มย่อยตาม Signature เดิม คือ ประเภท+ราคา)
         const processGrouping = (items: CartItem[]) => {
-            const itemsByNumber = new Map<string, CartItem[]>();
+            const itemsByNum = new Map<string, CartItem[]>();
             items.forEach(item => {
-                if (!itemsByNumber.has(item.number)) itemsByNumber.set(item.number, []);
-                itemsByNumber.get(item.number)?.push(item);
+                if (!itemsByNum.has(item.number)) itemsByNum.set(item.number, []);
+                itemsByNum.get(item.number)?.push(item);
             });
 
             const groups = new Map<string, any>();
             const typeOrder = ['2up', '2down', '3top', '3tod', 'run_up', 'run_down'];
             const sortTypes = (a: string, b: string) => typeOrder.indexOf(a) - typeOrder.indexOf(b);
 
-            itemsByNumber.forEach((userItems, number) => {
+            itemsByNum.forEach((userItems, number) => {
                 const piles = new Map<string, CartItem[]>();
                 userItems.forEach(item => {
                     const key = `${item.bet_type}:${item.amount}`;
@@ -606,7 +680,8 @@ export default function BettingRoom() {
             return Array.from(groups.values());
         };
 
-        return [...processGrouping(openItems), ...processGrouping(closedItems)];
+        // ส่ง batchItems ทั้งหมดเข้าไปเลย
+        return processGrouping(batchItems);
     };
 
     const getGroupedCartItems = () => {
@@ -642,6 +717,7 @@ export default function BettingRoom() {
         setCart(prev => prev.filter(i => !ids.has(i.temp_id)));
     };
 
+    // ✅ คืนค่า submitTicket และตัวแปร labels
     const submitTicket = async () => {
         if (cart.length === 0) return;
 
@@ -686,7 +762,10 @@ export default function BettingRoom() {
     if(!lotto) return null;
 
     return (
-        <div className="flex flex-col h-full bg-white overflow-hidden font-sans">
+        <div 
+            className="flex flex-col h-full bg-white overflow-hidden font-sans"
+            style={themeStyles} 
+        >
             <div className="mt-1 mx-4">
                 <CountDownTimer 
                 closeTime={lotto.close_time || "00:00"} 
@@ -702,7 +781,7 @@ export default function BettingRoom() {
                             <ArrowLeft size={16} /> กลับไปหน้าตลาด
                         </button>
                     <div ref={billRef} className="bg-white p-2 rounded-xl">
-                        <div className="bg-[#E0F7FA] border border-[#B2DFDB] rounded-lg p-3 flex justify-between items-center shadow-sm">
+                        <div className={`rounded-lg p-3 flex justify-between items-center shadow-sm border ${themeClasses.light} ${themeClasses.border}`}>
                             <div className="flex items-center gap-3">
                                 <div className="w-12 h-12 rounded-full bg-white border-2 border-white shadow-sm overflow-hidden shrink-0 flex items-center justify-center">
                                     {lotto.img_url ? (
@@ -743,18 +822,22 @@ export default function BettingRoom() {
                             
                             <div className="flex flex-wrap gap-1 mb-4 text-nowrap">
                                 {[{ id: '2', label: '2 ตัว' }, { id: '3', label: '3 ตัว' }, { id: '19', label: '19 ประตู' }, { id: 'run', label: 'เลขวิ่ง' }, { id: 'win', label: 'วินเลข' }].map((t) => (
-                                    <button key={t.id} onClick={() => handleTabChange(t.id as any)} className={`px-4 py-1.5 rounded-md text-sm font-bold border transition-colors ${tab === t.id ? 'bg-[#2ECC71] text-white border-[#27AE60] shadow-sm' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'}`}>
-                                        {t.label}
+                                    <button key={t.id} onClick={() => handleTabChange(t.id as any)} className={`px-4 py-1.5 rounded-md text-sm font-bold border transition-colors ${
+                                        tab === t.id 
+                                        ? `${themeClasses.main} border-transparent shadow-sm` 
+                                        : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    {t.label}
                                     </button>
                                 ))}
                             </div>
 
-                            {/* ✅ UI ส่วนเลือกวินเลขและตัวเลือก รวม/ไม่รวมเบิ้ล */}
                             {tab === 'win' && (
                                 <div className="flex flex-col gap-2 mb-4 w-fit">
-                                    <div className="flex gap-1 bg-white p-1 rounded-md border border-green-200">
-                                        <button onClick={() => handleWinModeChange('2')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '2' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>วิน 2 ตัว</button>
-                                        <button onClick={() => handleWinModeChange('3')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '3' ? 'bg-[#2ECC71] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>วิน 3 ตัว</button>
+                                    <div className="flex gap-1 bg-white p-1 rounded-md border justify-center border-green-200 ">
+                                        <button onClick={() => handleWinModeChange('2')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '2' ? `${themeClasses.main} shadow-sm` : 'text-gray-500 hover:bg-gray-100'}`}>วิน 2 ตัว</button>
+                                        <button onClick={() => handleWinModeChange('3')} className={`px-4 py-1 rounded text-xs font-bold transition-all ${winMode === '3' ? `${themeClasses.main} shadow-sm` : 'text-gray-500 hover:bg-gray-100'}`}>วิน 3 ตัว</button>
                                     </div>
                                     <div className="flex gap-1 bg-white p-1 rounded-md border border-blue-200">
                                         <button 
@@ -787,7 +870,7 @@ export default function BettingRoom() {
                                             <span 
                                                 key={idx} 
                                                 onClick={() => setBufferNumbers(prev => prev.filter(item => item !== n))}
-                                                className="bg-[#2ECC71] text-white px-2 py-1 rounded text-sm font-bold shadow-sm cursor-pointer hover:bg-red-500 transition-colors select-none"
+                                                className={`px-2 py-1 rounded text-sm font-bold shadow-sm cursor-pointer transition-colors select-none ${themeClasses.main} hover:bg-red-500 hover:text-white`}
                                                 title="กดเพื่อลบเลขนี้"
                                             >
                                                 {n}
@@ -816,7 +899,7 @@ export default function BettingRoom() {
                                                     className={`
                                                         font-bold text-lg py-3 rounded-lg shadow-sm transition-all border
                                                         ${isSelected 
-                                                            ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700 active:bg-blue-800' 
+                                                            ? `${themeClasses.main} border-transparent`
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 active:bg-blue-200' 
                                                         }
                                                     `}
@@ -847,25 +930,25 @@ export default function BettingRoom() {
                                 <div className="flex flex-wrap gap-2 mb-4">
                                     {tab === '2' && (
                                         <>
-                                            <button onClick={() => handleQuickOption('double')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#27AE60]">+ เลขเบิ้ล</button>
+                                            <button onClick={() => handleQuickOption('double')} className={`px-3 py-1.5 rounded-md text-xs font-bold ${themeClasses.main} ${themeClasses.hover}`}>+ เลขเบิ้ล</button>
                                             <button onClick={() => handleQuickOption('sibling')} className="bg-[#E67E22] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#D35400]">+ พี่น้อง</button>
                                         </>
                                     )}
                                     {tab === '3' && (
                                         <>
-                                            <button onClick={() => handleQuickOption('triple')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ ตอง</button>
+                                            <button onClick={() => handleQuickOption('triple')} className={`px-3 py-1.5 rounded-md text-xs font-bold ${themeClasses.main} ${themeClasses.hover}`}>+ ตอง</button>
                                             <button onClick={() => handleQuickOption('double_front')} className="bg-[#1E88E5] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ เบิ้ลหน้า</button>
                                             <button onClick={() => handleQuickOption('sandwich')} className="bg-[#8E24AA] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ หาม</button>
                                             <button onClick={() => handleQuickOption('double_back')} className="bg-[#00897B] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ เบิ้ลหลัง</button>
                                         </>
                                     )}
                                     {tab === '19' && (
-                                        <button onClick={() => handleQuickOption('double')} className="bg-[#2ECC71] text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-[#27AE60]">+ รูดเบิ้ล</button>
+                                        <button onClick={() => handleQuickOption('double')} className={`px-3 py-1.5 rounded-md text-xs font-bold ${themeClasses.main} ${themeClasses.hover}`}>+ รูดเบิ้ล</button>
                                     )}
                                 </div>
                             )}
                             
-                            <div className="bg-[#DCF8C6] p-3 rounded-lg border border-[#C5E1A5] flex flex-col lg:flex-row gap-2 items-stretch lg:items-center transition-all duration-300">
+                            <div className={`${themeClasses.light} p-3 rounded-lg border ${themeClasses.border} flex flex-col lg:flex-row gap-2 items-stretch lg:items-center transition-all duration-300`}>
                                 <div className="w-full lg:flex-1 min-w-0">
                                     <label className="text-xs text-gray-500 font-bold mb-1 block lg:hidden">ใส่เลข</label>
                                     
@@ -877,12 +960,12 @@ export default function BettingRoom() {
                                         onKeyDown={(e) => handleInputKeyDown(e, 'number')}
                                         onPaste={handlePaste} 
                                         placeholder={tab === 'win' ? "เลือกเลขวิน..." : "ใส่เลข"} 
-                                        className="w-full bg-[#E0F2F1] border-b-2 border-blue-400 text-center text-xl font-bold py-1 focus:outline-none focus:border-blue-600 text-gray-700 placeholder-blue-300 rounded-sm"
+                                        className={`w-full bg-white/90 border-b-2 text-center text-xl font-bold py-1 focus:outline-none text-gray-700 placeholder-blue-300 rounded-sm ${themeClasses.border} ${themeClasses.focus}`}
                                         maxLength={getInputConfig().max}
                                     />
                                 </div>
 
-                                {(tab === '2' || tab === '3' || tab === '19' || tab === 'win') && (
+                                {(tab === '2' || tab === '3' || tab === 'win') && (
                                     <button 
                                         onClick={handleReverseBuffer}
                                         disabled={bufferNumbers.length === 0}
@@ -904,7 +987,7 @@ export default function BettingRoom() {
                                             onChange={e => setPriceTop(e.target.value)}
                                             onKeyDown={(e) => handleInputKeyDown(e, 'top')} 
                                             placeholder={labels.top}
-                                            className="w-full lg:w-24 bg-[#E0F2F1] border-b-2 border-gray-400 text-center font-bold py-1 focus:outline-none focus:border-gray-600 text-gray-700 rounded-sm"
+                                            className={`w-full lg:w-24 bg-white/90 border-b-2 text-center font-bold py-1 focus:outline-none text-gray-700 rounded-sm ${themeClasses.border} ${themeClasses.focus}`}
                                         />
                                     </div>
                                     <div className="flex-1 lg:flex-none">
@@ -917,7 +1000,7 @@ export default function BettingRoom() {
                                             onChange={e => setPriceBottom(e.target.value)}
                                             onKeyDown={(e) => handleInputKeyDown(e, 'bottom')} 
                                             placeholder={labels.bottom}
-                                            className="w-full lg:w-24 bg-[#E0F2F1] border-b-2 border-gray-400 text-center font-bold py-1 focus:outline-none focus:border-gray-600 text-gray-700 rounded-sm"
+                                            className={`w-full lg:w-24 bg-white/90 border-b-2 text-center font-bold py-1 focus:outline-none text-gray-700 rounded-sm ${themeClasses.border} ${themeClasses.focus}`}
                                         />
                                     </div>
                                 </div>
@@ -929,7 +1012,7 @@ export default function BettingRoom() {
                                         setTimeout(() => numberInputRef.current?.focus(), 50);
                                     }}
                                     
-                                    className="bg-[#2ECC71] hover:bg-[#27AE60] text-white font-bold px-6 py-2 rounded-md shadow-md active:scale-95 transition-all flex items-center justify-center gap-1 w-full lg:w-auto lg:shrink-0 h-11 whitespace-nowrap"
+                                    className={`font-bold px-6 py-2 rounded-md shadow-md active:scale-95 transition-all flex items-center justify-center gap-1 w-full lg:w-auto lg:shrink-0 h-11 whitespace-nowrap ${themeClasses.main} ${themeClasses.hover}`}
                                 >
                                     <span className="text-lg">+</span> เพิ่มบิล
                                 </button>
@@ -1089,7 +1172,6 @@ export default function BettingRoom() {
                     </div>
                 </div>
                 <div className="hidden lg:flex w-80 bg-[#1e293b] text-white border-l border-gray-700 flex-col shadow-xl z-10 overflow-y-auto">
-                    {/* (ส่วน Sidebar แสดงอัตราจ่ายและเลขอั้นเหมือนเดิม) */}
                     <div className="p-4 bg-[#0f172a] border-b border-gray-700 flex justify-between items-center">
                         <div><h3 className="font-bold text-lg text-blue-400">อัตราจ่าย</h3></div>
                     </div>

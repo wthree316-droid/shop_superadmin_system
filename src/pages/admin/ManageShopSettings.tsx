@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
 import client from '../../api/client';
-import { Save, MessageSquare, Palette, Loader2, Globe, Image as ImageIcon } from 'lucide-react';
+import { 
+    Save, MessageSquare, Palette, Loader2, Globe, 
+    Image as ImageIcon, Layers, RefreshCw, CheckCircle2 
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ManageShopSettings() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
+  // State ข้อมูลร้าน
   const [shopData, setShopData] = useState({
       logo_url: '',
       theme_color: '#2563EB',
@@ -14,14 +18,20 @@ export default function ManageShopSettings() {
       line_target_id: ''
   });
 
+  // State ข้อมูลหมวดหมู่ (สำหรับปรับสีแยก)
+  const [categories, setCategories] = useState<any[]>([]);
+
   useEffect(() => {
-    fetchShopConfig();
+    const initData = async () => {
+        setLoading(true);
+        await Promise.all([fetchShopConfig(), fetchCategories()]);
+        setLoading(false);
+    };
+    initData();
   }, []);
 
   const fetchShopConfig = async () => {
-    setLoading(true);
     try {
-        // ดึงข้อมูลร้านตัวเอง (Admin เห็นแค่ร้านตัวเองอยู่แล้วจาก API /shops/)
         const res = await client.get('/shops/');
         if (res.data && res.data.length > 0) {
             const myShop = res.data[0];
@@ -35,23 +45,71 @@ export default function ManageShopSettings() {
     } catch (err) {
         console.error(err);
         toast.error('โหลดข้อมูลร้านไม่สำเร็จ');
-    } finally {
-        setLoading(false);
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const fetchCategories = async () => {
+      try {
+          // เรียก API ดึงหมวดหมู่ (ต้องแน่ใจว่า backend มี endpoint นี้)
+          const res = await client.get('/play/categories');
+          setCategories(res.data);
+      } catch (err) {
+          console.error("Error fetching categories:", err);
+      }
+  };
+
+  const handleInitDefaultCategories = async () => {
+        if (!confirm("ยืนยันการเพิ่มหมวดหมู่มาตรฐาน?\n(ระบบจะเพิ่มเฉพาะหมวดหมู่ที่ยังไม่มี)")) return;
+        
+        setLoading(true);
+        try {
+            const res = await client.post('/play/categories/init_defaults');
+            toast.success(res.data.message);
+            fetchCategories(); // รีเฟรชข้อมูลทันที
+        } catch (err: any) {
+            console.error(err);
+            toast.error('ทำรายการไม่สำเร็จ');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+  // ฟังก์ชันบันทึกการตั้งค่าร้าน (สีหลัก + โลโก้ + ไลน์)
+  const handleSaveShop = async (e: React.FormEvent) => {
       e.preventDefault();
       setSubmitting(true);
       try {
-          // เรียก API ที่เราเพิ่งแก้ในข้อ 3
           await client.put('/shops/config', shopData);
-          toast.success('บันทึกการตั้งค่าเรียบร้อย');
-          // (Optional) อาจจะสั่ง reload window เพื่อให้ theme เปลี่ยนทันที
+          toast.success('บันทึกข้อมูลร้านค้าเรียบร้อย');
       } catch (err: any) {
           toast.error(err.response?.data?.detail || 'บันทึกไม่สำเร็จ');
       } finally {
           setSubmitting(false);
+      }
+  };
+
+  // ฟังก์ชันบันทึกสีหมวดหมู่ (แยกออกมาทำทีละอัน)
+  const handleUpdateCategoryColor = async (catId: string, newColor: string) => {
+      // 1. อัปเดต State ให้เห็นผลทันที (Optimistic UI) เพื่อความลื่นไหล
+      setCategories(prev => prev.map(c => c.id === catId ? { ...c, color: newColor } : c));
+
+      // 2. ส่ง API บันทึกลงฐานข้อมูล
+      try {
+          const cat = categories.find(c => c.id === catId);
+          if (!cat) return;
+
+          // ส่งค่าไปอัปเดต (ส่ง label เดิมกลับไปด้วย เพราะ API อาจจะต้องการ)
+          await client.put(`/play/categories/${catId}`, {
+              label: cat.label,
+              color: newColor 
+          });
+          
+          // ไม่ต้อง toast ทุกครั้งที่ลากสี (มันจะรก) อาจจะ toast เฉพาะตอนปล่อยเมาส์หรือทำ Debounce ก็ได้
+          // แต่เพื่อให้ง่าย ใส่ toast แบบเบาๆ หรือไม่ใส่ก็ได้ครับ
+      } catch (err) {
+          console.error(err);
+          toast.error('บันทึกสีหมวดหมู่ไม่สำเร็จ');
+          fetchCategories(); // โหลดค่าเดิมกลับมาถ้าพัง
       }
   };
 
@@ -60,119 +118,212 @@ export default function ManageShopSettings() {
   }
 
   return (
-    <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2">
+    <div className="pb-20 max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-2 font-sans">
         
-        {/* --- Card 1: Branding Settings --- */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-            <div className="flex items-center gap-3 mb-6">
+        {/* --- ส่วนที่ 1: ตั้งค่าธีมหลักร้านค้า (Global Theme) --- */}
+        <form onSubmit={handleSaveShop} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
                 <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
                     <Palette size={24} />
                 </div>
                 <div>
-                    <h3 className="font-bold text-lg text-slate-800">ตั้งค่าหน้าร้าน (Branding)</h3>
-                    <p className="text-xs text-slate-500">โลโก้และสีธีมที่จะแสดงให้ลูกค้าเห็น</p>
+                    <h3 className="font-bold text-lg text-slate-800">1. ธีมหลักร้านค้า (Global Theme)</h3>
+                    <p className="text-xs text-slate-500">สีนี้จะถูกใช้เป็นค่าเริ่มต้นสำหรับทุกหน้า และหวยที่ไม่ได้กำหนดสีเฉพาะ</p>
                 </div>
             </div>
 
-            <div className="space-y-5">
-                {/* Logo Input */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Logo URL */}
                 <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
                         <ImageIcon size={14}/> Logo URL
                     </label>
                     <div className="flex gap-3">
-                        <div className="w-16 h-16 bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                            {shopData.logo_url ? (
-                                <img src={shopData.logo_url} className="w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'} />
-                            ) : (
-                                <Globe size={24} className="text-slate-300" />
-                            )}
+                        <div className="w-12 h-12 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                            {shopData.logo_url ? <img src={shopData.logo_url} className="w-full h-full object-cover"/> : <Globe size={20} className="text-slate-300"/>}
                         </div>
-                        <div className="flex-1">
-                            <input 
-                                type="text"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none text-sm font-mono"
-                                placeholder="https://..."
-                                value={shopData.logo_url}
-                                onChange={e => setShopData({...shopData, logo_url: e.target.value})}
-                            />
-                            <p className="text-[10px] text-slate-400 mt-1">* ใส่ลิงก์รูปภาพ (แนะนำขนาด 500x500px)</p>
-                        </div>
+                        <input 
+                            type="text"
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none text-sm transition-all"
+                            placeholder="https://example.com/logo.png"
+                            value={shopData.logo_url}
+                            onChange={e => setShopData({...shopData, logo_url: e.target.value})}
+                        />
                     </div>
                 </div>
 
-                {/* Theme Color Input */}
+                {/* Main Theme Color Picker */}
                 <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
-                        <Palette size={14}/> สีธีมร้านค้า (Theme Color)
+                        <Palette size={14}/> สีหลักของร้าน
                     </label>
-                    <div className="flex items-center gap-3">
-                        <input 
-                            type="color"
-                            className="w-12 h-12 rounded-xl border border-slate-200 cursor-pointer p-1 bg-white"
-                            value={shopData.theme_color}
-                            onChange={e => setShopData({...shopData, theme_color: e.target.value})}
-                        />
-                        <div className="flex-1">
+                    <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200 hover:border-blue-300 transition-colors">
+                        <div className="relative w-10 h-10 overflow-hidden rounded-lg shadow-sm border border-slate-200">
                             <input 
-                                type="text"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none text-sm font-mono uppercase"
+                                type="color"
+                                className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer"
                                 value={shopData.theme_color}
                                 onChange={e => setShopData({...shopData, theme_color: e.target.value})}
                             />
                         </div>
+                        <div className="flex-1">
+                            <input 
+                                type="text"
+                                className="w-full bg-transparent outline-none text-sm font-mono uppercase text-slate-700"
+                                value={shopData.theme_color}
+                                onChange={e => setShopData({...shopData, theme_color: e.target.value})}
+                            />
+                        </div>
+                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: shopData.theme_color }}></div>
                     </div>
                 </div>
             </div>
+
+            <div className="mt-6 flex justify-end">
+                <button 
+                    type="submit" 
+                    disabled={submitting}
+                    className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg hover:bg-black hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-70 text-sm"
+                >
+                    {submitting ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle2 size={18} />} บันทึกธีมหลัก
+                </button>
+            </div>
+        </form>
+
+        {/* --- ส่วนที่ 2: ตั้งค่าสีแยกรายหมวดหมู่ (Category Themes) --- */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
+                        <Layers size={24} />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-lg text-slate-800">2. แยกสีตามหมวดหมู่ (Category Theme)</h3>
+                        <p className="text-xs text-slate-500">กำหนดสีเฉพาะกลุ่ม (เช่น หวยรัฐบาลสีแดง, หวยหุ้นสีเขียว)</p>
+                    </div>
+                </div>
+                <button 
+                    onClick={handleInitDefaultCategories}
+                    className="text-xs bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 px-3 py-2 rounded-lg font-bold transition-all flex items-center gap-2 border border-transparent hover:border-blue-100"
+                    title="สร้างหมวดหมู่พื้นฐาน (รัฐบาล, ฮานอย, ลาว...)"
+                >
+                    <Layers size={14}/> + หมวดหมู่พื้นฐาน
+                </button>
+                <button 
+                    onClick={fetchCategories} 
+                    className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-blue-600 transition-colors"
+                    title="โหลดข้อมูลใหม่"
+                >
+                    <RefreshCw size={18}/>
+                </button>
+            </div>
+
+            {categories.length === 0 ? (
+                <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-xl border border-dashed">
+                    ยังไม่มีหมวดหมู่หวยในระบบ
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {categories.map((cat) => {
+                        // เช็คว่าเป็น Hex Color หรือไม่ (ถ้าเป็น class เช่น bg-red-500 แสดงว่ายังไม่ได้ตั้งค่าสีแบบใหม่)
+                        const isHex = cat.color?.startsWith('#');
+                        // ถ้ายังไม่ได้ตั้ง ให้แสดงเป็นสีหลักของร้านไปก่อน
+                        const currentColor = isHex ? cat.color : shopData.theme_color;
+
+                        return (
+                            <div key={cat.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-purple-300 hover:shadow-md transition-all bg-white">
+                                {/* Color Picker Wrapper */}
+                                <div className="relative group cursor-pointer shrink-0">
+                                    <input 
+                                        type="color" 
+                                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                                        value={currentColor}
+                                        // ใช้ onBlur เพื่อบันทึกเมื่อปล่อยเมาส์/เลือกเสร็จ (ลด Request)
+                                        onChange={(e) => {
+                                            // อัปเดต UI ทันที
+                                            setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, color: e.target.value } : c));
+                                        }}
+                                        onBlur={(e) => handleUpdateCategoryColor(cat.id, e.target.value)}
+                                    />
+                                    <div 
+                                        className="w-12 h-12 rounded-lg shadow-sm border-2 border-white ring-1 ring-slate-200 transition-transform group-hover:scale-105"
+                                        style={{ backgroundColor: currentColor }}
+                                    ></div>
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-bold text-slate-700 text-sm truncate" title={cat.label}>{cat.label}</div>
+                                    <div className="text-[10px] text-slate-400 font-mono truncate flex items-center gap-1">
+                                        {isHex ? (
+                                            <span className="uppercase">{cat.color}</span>
+                                        ) : (
+                                            <span className="text-slate-300 italic flex items-center gap-1">
+                                                <div className="w-2 h-2 rounded-full bg-slate-300"></div> ใช้สีร้าน
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {isHex && (
+                                    <button 
+                                        // รีเซ็ตกลับไปเป็นค่า Default (เช่น bg-gray-100 หรือค่าว่าง) เพื่อให้ไปดึงสีร้าน
+                                        onClick={() => handleUpdateCategoryColor(cat.id, 'bg-gray-100 text-gray-700')} 
+                                        className="text-[10px] text-slate-400 hover:text-red-500 hover:bg-red-50 px-2 py-1.5 rounded transition-colors"
+                                        title="รีเซ็ตไปใช้สีร้าน"
+                                    >
+                                        รีเซ็ต
+                                    </button>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
         </div>
 
-        {/* --- Card 2: LINE Settings (ของเดิม) --- */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-green-50 rounded-full blur-3xl -mr-16 -mt-16"></div>
-            <div className="flex items-center gap-3 mb-6 relative z-10">
+        {/* --- ส่วนที่ 3: LINE Settings (ย้ายมาไว้ล่างสุด) --- */}
+        <form className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden">
+             <div className="absolute top-0 right-0 w-64 h-64 bg-green-50 rounded-full blur-3xl -mr-20 -mt-20 opacity-50 pointer-events-none"></div>
+             
+             <div className="flex items-center gap-3 mb-6 relative z-10 border-b border-slate-100 pb-4">
                 <div className="p-2 bg-green-100 text-green-600 rounded-lg">
                     <MessageSquare size={24} />
                 </div>
                 <div>
-                    <h3 className="font-bold text-lg text-slate-800">LINE Messaging API</h3>
-                    <p className="text-xs text-slate-500">ตั้งค่าการแจ้งเตือนผ่าน LINE OA</p>
+                    <h3 className="font-bold text-lg text-slate-800">3. ตั้งค่า LINE OA</h3>
+                    <p className="text-xs text-slate-500">เชื่อมต่อกับ LINE Messaging API สำหรับการแจ้งเตือน</p>
                 </div>
             </div>
-
-            <div className="space-y-5 relative z-10">
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Channel Access Token</label>
-                    <textarea 
-                        rows={2}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 focus:bg-white focus:ring-2 focus:ring-green-200 outline-none text-xs font-mono"
+            
+            <div className="space-y-4 relative z-10">
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1">Channel Access Token</label>
+                    <input 
+                        type="text"
+                        className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-sm font-mono focus:bg-white focus:ring-2 focus:ring-green-200 outline-none transition-all" 
                         placeholder="วาง Token ยาวๆ..."
                         value={shopData.line_channel_token}
                         onChange={e => setShopData({...shopData, line_channel_token: e.target.value})}
                     />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Your User ID</label>
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1">Your User ID (Admin)</label>
                     <input 
                         type="text"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 focus:bg-white focus:ring-2 focus:ring-green-200 outline-none text-sm font-mono"
+                        className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-sm font-mono focus:bg-white focus:ring-2 focus:ring-green-200 outline-none transition-all" 
                         placeholder="Uxxxxxxxx..."
                         value={shopData.line_target_id}
                         onChange={e => setShopData({...shopData, line_target_id: e.target.value})}
                     />
-                </div>
+                 </div>
+                 <div className="flex justify-end mt-2">
+                    <button onClick={handleSaveShop} className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-green-700 shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+                        <Save size={18}/> บันทึก LINE
+                    </button>
+                 </div>
             </div>
-        </div>
+        </form>
 
-        {/* Footer Button */}
-        <div className="lg:col-span-2 flex justify-end">
-            <button 
-                type="submit" 
-                disabled={submitting}
-                className="bg-slate-900 text-white px-8 py-4 rounded-xl font-bold shadow-lg hover:bg-black hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-70"
-            >
-                {submitting ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />} บันทึกการตั้งค่าทั้งหมด
-            </button>
-        </div>
-    </form>
+    </div>
   );
 }

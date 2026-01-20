@@ -41,41 +41,45 @@ export default function MemberResults() {
     }
   };
 
-  // --- Logic การจัดกลุ่ม (ปรับใหม่: แยกตามชื่อหวย) ---
+  // --- Logic การจัดกลุ่มและเรียงลำดับ (ปรับปรุงใหม่) ---
   const groupedLottos = useMemo(() => {
     if (lottos.length === 0) return [];
 
-    // Map หมวดหมู่เพื่อดึงสี
     const catMap = new Map();
     categories.forEach(c => catMap.set(c.id, c));
 
-    const groups: any[] = [];
+    const groups: any = {};
+    const noCatKey = 'uncategorized';
 
     lottos.forEach(lotto => {
-        // กรองเฉพาะหวยที่มีผลรางวัล
+        // ✅ 1. กรองเฉพาะหวยที่มีผลรางวัลแล้วเท่านั้น (ในวันที่เลือก)
+        // ถ้าไม่มีผลใน resultsMap ให้ข้ามไปเลย (ไม่แสดง)
         if (!resultsMap[lotto.id]) return;
 
-        // ดึงสีจากหมวดหมู่
-        const cat = catMap.get(lotto.category);
-        const color = cat?.color || 'bg-gray-800 text-white';
-
-        // สร้างกลุ่มใหม่สำหรับหวยนี้โดยเฉพาะ
-        groups.push({
-            info: {
-                label: lotto.name, // ใช้ชื่อหวยเป็นหัวข้อ
-                color: color       // ใช้สีเดิมของหมวดหมู่
-            },
-            items: [lotto]
-        });
+        const catId = lotto.category || noCatKey;
+        if (!groups[catId]) {
+            groups[catId] = {
+                info: catMap.get(catId) || { label: 'หมวดอื่นๆ', color: 'bg-gray-800 text-white' },
+                items: []
+            };
+        }
+        groups[catId].items.push(lotto);
     });
 
-    // เรียงลำดับตามเวลาปิด (ล่าสุดขึ้นก่อน)
-    return groups.sort((a, b) => {
-        const timeA = a.items[0]?.close_time || '';
-        const timeB = b.items[0]?.close_time || '';
-        return timeB.localeCompare(timeA);
-    });
-
+    // 2. แปลงเป็น Array และเรียงลำดับ
+    return Object.values(groups)
+        .map((group: any) => {
+            // ✅ 3. เรียงหวยในกลุ่มจาก "ล่าสุด -> เก่าสุด" (เวลาปิดดึกสุดอยู่บน)
+            group.items.sort((a: any, b: any) => {
+                if (!a.close_time) return 1;
+                if (!b.close_time) return -1;
+                // สลับ a กับ b เพื่อเรียงจากมากไปน้อย (Descending)
+                return b.close_time.localeCompare(a.close_time);
+            });
+            return group;
+        })
+        // (Optional) เรียงกลุ่มหมวดหมู่ถ้าต้องการ แต่ตอนนี้ปล่อยตามลำดับที่เจอ
+        ; 
   }, [lottos, categories, resultsMap]);
 
   // --- Helpers ---
@@ -151,7 +155,7 @@ export default function MemberResults() {
                   groupedLottos.map((group: any, idx: number) => (
                       <div key={idx} className="animate-slide-up" style={{ animationDelay: `${idx * 50}ms` }}>
                           
-                          {/* Header เป็นชื่อหวย (ใช้สีจากหมวดหมู่) */}
+                          {/* Category Header */}
                           <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
                               <span className={`w-1.5 h-6 rounded-full ${group.info.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
                               {group.info.label} 
@@ -174,6 +178,7 @@ export default function MemberResults() {
                                       <tbody className="divide-y divide-slate-100 font-mono font-medium text-slate-600">
                                           {group.items.map((lotto: any) => {
                                               const result = resultsMap[lotto.id];
+                                              // (Logic นี้จริง ๆ ไม่จำเป็นแล้วเพราะเรากรองตั้งแต่แรก แต่ใส่ไว้เพื่อ type safety)
                                               if (!result) return null; 
 
                                               const top3 = result.top_3;
@@ -216,6 +221,7 @@ export default function MemberResults() {
                       </div>
                   ))
               ) : (
+                  // State ว่าง (ยังไม่มีผลรางวัลออก)
                   <div className="flex flex-col items-center justify-center py-20 text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl bg-white/50">
                       <Search size={48} className="mb-4 opacity-20" />
                       <p className="font-medium text-lg text-slate-600">ยังไม่มีผลรางวัล</p>

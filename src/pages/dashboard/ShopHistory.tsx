@@ -2,10 +2,9 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import client from '../../api/client';
 import { 
   Ticket, Eye, Ban, RefreshCcw, X, 
-  FileText,
-  User, Calendar, Loader2
+  Loader2, ChevronLeft, ChevronRight, Calendar
 } from 'lucide-react';
-import { calculateWinAmount, calculateNet, getStatusBadge } from '../../utils/lottoHelpers';
+import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers';
 
 export default function ShopHistory() {
   const [tickets, setTickets] = useState<any[]>([]);
@@ -15,12 +14,13 @@ export default function ShopHistory() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   
-  // Filters & Pagination (ไม่มี Search)
+  // ✅ เพิ่ม Date State
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const limit = 50; 
 
-  // Load Master Data
   useEffect(() => {
       const fetchMasterData = async () => {
           try {
@@ -30,9 +30,7 @@ export default function ShopHistory() {
               ]);
               setLottos(resLottos.data);
               setCategories(resCats.data);
-          } catch (err) {
-              console.error(err);
-          }
+          } catch (err) { console.error(err); }
       };
       fetchMasterData();
   }, []);
@@ -40,18 +38,16 @@ export default function ShopHistory() {
   const fetchTickets = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await client.get(`/play/shop_history?skip=${(page-1)*limit}&limit=${limit}`);
+      // ✅ ส่ง date
+      const res = await client.get(`/play/shop_history?skip=${(page-1)*limit}&limit=${limit}&date=${selectedDate}`);
       let data = res.data;
       if (statusFilter !== 'ALL') {
           data = data.filter((t:any) => t.status === statusFilter);
       }
       setTickets(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [page, statusFilter]);
+    } catch (err) { console.error(err); } 
+    finally { setIsLoading(false); }
+  }, [page, statusFilter, selectedDate]); // ✅ เพิ่ม selectedDate ใน dependency
 
   useEffect(() => {
     fetchTickets();
@@ -66,271 +62,241 @@ export default function ShopHistory() {
         alert('ยกเลิกโพยเรียบร้อย');
         fetchTickets();
         setSelectedTicket(null);
-    } catch (err: any) {
-        alert(`Error: ${err.response?.data?.detail}`);
-    }
+    } catch (err: any) { alert(`Error: ${err.response?.data?.detail}`); }
   };
 
-  // ✅ ปรับ Logic การจัดกลุ่มแอดมิน: แยกตาม "ชื่อหวย"
+  const renderWinStatus = (ticket: any) => {
+      if (ticket.status === 'PENDING') return <span className="text-red-500 font-bold">รอผล</span>;
+      if (ticket.status === 'CANCELLED') return <span className="text-gray-400">ยกเลิก</span>;
+      if (ticket.status === 'LOSE') return <span className="text-red-500 font-bold">ไม่ถูกรางวัล</span>;
+      return <span className="text-green-600 font-bold">{Number(calculateWinAmount(ticket)).toLocaleString()}</span>;
+  };
+
+  const renderNetProfit = (ticket: any) => {
+      if (ticket.status === 'PENDING' || ticket.status === 'CANCELLED') return <span className="text-gray-400">-</span>;
+      const net = calculateNet(ticket);
+      const isProfit = net >= 0;
+      return <span className={`font-bold ${isProfit ? 'text-green-600' : 'text-red-500'}`}>{isProfit ? '+' : ''}{Number(net).toLocaleString()}</span>;
+  };
+
   const groupedTickets = useMemo(() => {
       if (tickets.length === 0) return [];
-      
       const catMap = new Map();
       categories.forEach(c => catMap.set(c.id, c));
-
-      // Map หวย -> ชื่อ & สี
       const lottoMap = new Map();
       lottos.forEach(l => {
           const cat = catMap.get(l.category);
-          lottoMap.set(l.id, {
-              name: l.name,
-              color: cat?.color || 'bg-gray-100 text-gray-800'
-          });
+          lottoMap.set(l.id, { name: l.name, color: cat?.color || 'bg-gray-100 text-gray-800' });
       });
 
       const groups: any = {};
-
       tickets.forEach(ticket => {
-          // ใช้ lotto_type_id เป็น key การจัดกลุ่ม
           const key = ticket.lotto_type_id;
-          
           if (!groups[key]) {
-              const info = lottoMap.get(key) || {
-                  name: ticket.lotto_type?.name || 'ไม่ระบุชื่อหวย',
-                  color: 'bg-gray-100 text-gray-800'
-              };
-
-              groups[key] = {
-                  info: info,
-                  items: []
-              };
+              groups[key] = { info: lottoMap.get(key) || { name: 'Unknown', color: '' }, items: [] };
           }
           groups[key].items.push(ticket);
       });
-
-      return Object.values(groups).sort((a: any, b: any) => 
-          a.info.name.localeCompare(b.info.name, 'th')
-      );
-
+      return Object.values(groups).sort((a: any, b: any) => a.info.name.localeCompare(b.info.name, 'th'));
   }, [tickets, lottos, categories]);
+
+  const handlePrevPage = () => setPage(prev => Math.max(1, prev - 1));
+  const handleNextPage = () => setPage(prev => prev + 1);
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-8 animate-fade-in bg-slate-50 min-h-screen font-sans">
       
-      {/* Header */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-                <h1 className="text-xl md:text-2xl font-black text-slate-800 flex items-center gap-2">
-                    <Ticket className="text-blue-600" /> รายการโพยลูกค้า (Admin)
-                </h1>
-                <p className="text-sm text-slate-500">ตรวจสอบและจัดการบิลเดิมพันทั้งหมดในร้าน</p>
-            </div>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <h1 className="text-xl font-black text-slate-800 flex items-center gap-2"><Ticket className="text-blue-600" /> โพยลูกค้า (Admin)</h1>
             
-            <button onClick={fetchTickets} className="p-2.5 bg-slate-100 rounded-lg hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200 self-end md:self-auto">
-                <RefreshCcw size={20} className={isLoading ? 'animate-spin' : ''} />
-            </button>
+            <div className="flex items-center gap-2">
+                {/* ✅ Date Picker */}
+                <div className="relative">
+                    <Calendar className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                    <input 
+                      type="date" 
+                      value={selectedDate}
+                      onChange={(e) => { setSelectedDate(e.target.value); setPage(1); }}
+                      className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
+                    />
+                </div>
+                <button onClick={fetchTickets} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200"><RefreshCcw size={20} className={isLoading ? 'animate-spin' : ''} /></button>
+            </div>
         </div>
-
-        {/* Status Filters */}
+        
         <div className="flex gap-2 mt-4 overflow-x-auto pb-1 scrollbar-hide">
             {['ALL', 'PENDING', 'WIN', 'LOSE', 'CANCELLED'].map(s => (
-                <button 
-                    key={s} 
-                    onClick={() => { setStatusFilter(s); setPage(1); }}
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap ${
-                        statusFilter === s 
-                        ? 'bg-slate-800 text-white border-slate-800' 
-                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                    }`}
-                >
+                <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }} className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${statusFilter === s ? 'bg-slate-800 text-white' : 'bg-white text-slate-500'}`}>
                     {s === 'ALL' ? 'ทั้งหมด' : s}
                 </button>
             ))}
         </div>
       </div>
 
-      {/* Content Area */}
       <div className="space-y-8">
-        {isLoading && tickets.length === 0 ? (
-            <div className="py-20 text-center text-slate-400">
-                <Loader2 className="animate-spin mb-2 mx-auto" size={32} />
-                <p>กำลังโหลดข้อมูล...</p>
-            </div>
-        ) : groupedTickets.length === 0 ? (
-            <div className="py-20 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
-                <FileText size={48} className="mb-2 opacity-20 mx-auto" />
-                <p>ไม่พบรายการโพย</p>
-            </div>
-        ) : (
-            /* วนลูปแสดงกลุ่มตามชื่อหวย */
-            groupedTickets.map((group: any, index: number) => (
-                <div key={index} className="animate-slide-up">
-                    
-                    {/* Header ชื่อหวย */}
-                    <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
-                        <span className={`w-1.5 h-6 rounded-full ${group.info.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
-                        {group.info.name} 
-                        <span className="text-xs font-normal text-slate-400 ml-2 bg-white px-2 py-0.5 rounded-full border border-slate-200 shadow-sm">
-                            {group.items.length} รายการ
-                        </span>
-                    </h2>
-
-                    {/* Table */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm whitespace-nowrap">
-                                <thead className="bg-gray-100 text-gray-600 font-bold uppercase text-xs">
-                                    <tr>
-                                        <th className="p-4 w-32">1. วัน/เวลา</th>
-                                        <th className="p-4 w-40">2. ลูกค้า</th>
-                                        <th className="p-4">3. หวย</th>
-                                        <th className="p-4 text-right">4. ยอดแทง</th>
-                                        <th className="p-4 text-right">5. ถูกรางวัล</th>
-                                        <th className="p-4 text-right">6. แพ้/ชนะ</th>
-                                        <th className="p-4 w-40">7. หมายเหตุ</th>
-                                        <th className="p-4 text-center">8. จัดการ</th>
+        {isLoading && tickets.length === 0 ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto"/></div> : 
+         groupedTickets.length === 0 ? <div className="py-20 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">ไม่พบรายการในวันที่เลือก</div> : 
+         groupedTickets.map((group: any, index: number) => (
+            <div key={index} className="animate-slide-up">
+                <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <span className={`w-1.5 h-6 rounded-full ${group.info.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
+                    {group.info.name} <span className="text-xs font-normal text-slate-400 ml-2 bg-white px-2 py-0.5 rounded-full border">{group.items.length} รายการ</span>
+                </h2>
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
+                            <thead className="bg-gray-100 text-gray-600 font-bold uppercase text-xs">
+                                <tr>
+                                    <th className="p-4">1. เวลา</th>
+                                    <th className="p-4">2. ชนิดหวย</th>
+                                    <th className="p-4">3. งวดวันที่</th>
+                                    <th className="p-4 text-right">4. ยอดแทง</th>
+                                    <th className="p-4 text-right">5. ถูกรางวัล</th>
+                                    <th className="p-4 text-right">6. กำไร/ขาดทุน</th>
+                                    <th className="p-4">7. หมายเหตุ</th>
+                                    <th className="p-4 text-center">8. รายละเอียด</th>
+                                    <th className="p-4">9. ผู้ลงบิล</th>
+                                    <th className="p-4 text-center">10. ยกเลิก</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {group.items.map((t: any) => (
+                                    <tr key={t.id} className="hover:bg-blue-50/30 transition-colors">
+                                        <td className="p-4 font-bold text-slate-700">
+                                            {new Date(t.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute:'2-digit' })}
+                                        </td>
+                                        <td className="p-4 font-bold text-slate-700">{t.lotto_type?.name}</td>
+                                        <td className="p-4 font-mono">{new Date(t.created_at).toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'numeric'})}</td>
+                                        <td className="p-4 text-right font-bold text-slate-700">{Number(t.total_amount).toLocaleString()}</td>
+                                        <td className="p-4 text-right">{renderWinStatus(t)}</td>
+                                        <td className="p-4 text-right">{renderNetProfit(t)}</td>
+                                        <td className="p-4 text-xs text-gray-500">{t.note || '-'}</td>
+                                        <td className="p-4 text-center">
+                                            <button onClick={() => setSelectedTicket(t)} className="text-slate-400 hover:text-blue-600"><Eye size={16} /></button>
+                                        </td>
+                                        <td className="p-4 text-xs font-bold text-blue-600">{t.user?.username}</td>
+                                        <td className="p-4 text-center">
+                                            {t.status === 'PENDING' && <button onClick={() => handleCancelTicket(t.id)} className="text-red-400 hover:text-red-600"><Ban size={16} /></button>}
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {group.items.map((t: any) => {
-                                        const winAmount = calculateWinAmount(t);
-                                        const net = calculateNet(t);
-                                        const isWin = t.status === 'WIN';
-                                        const isCancelled = t.status === 'CANCELLED';
-
-                                        return (
-                                            <tr key={t.id} className="hover:bg-blue-50/30 transition-colors">
-                                                <td className="p-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <Calendar size={14} className="text-slate-400"/>
-                                                        <div>
-                                                            <div className="font-bold text-slate-700">{new Date(t.created_at).toLocaleDateString('th-TH')}</div>
-                                                            <div className="text-[10px] text-slate-400">{new Date(t.created_at).toLocaleTimeString('th-TH')}</div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-                                                            <User size={14}/>
-                                                        </div>
-                                                        <div>
-                                                            <div className="font-bold text-blue-600 text-sm">{t.user?.username || 'Unknown'}</div>
-                                                            <div className="text-[10px] text-slate-400">ID: {t.id.slice(0,6)}</div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 font-bold text-slate-700">{t.lotto_type?.name}</td>
-                                                <td className="p-4 text-right font-mono font-bold text-slate-700">{Number(t.total_amount).toLocaleString()}</td>
-                                                <td className="p-4 text-right">
-                                                    {isWin ? (
-                                                        <span className="text-green-600 font-bold font-mono">+{winAmount.toLocaleString()}</span>
-                                                    ) : getStatusBadge(t.status)}
-                                                </td>
-                                                <td className="p-4 text-right font-mono font-bold">
-                                                    <span className={isCancelled ? 'text-gray-400' : net > 0 ? 'text-green-600' : 'text-red-500'}>
-                                                        {isCancelled ? '0' : (net > 0 ? '+' : '') + net.toLocaleString()}
-                                                    </span>
-                                                </td>
-                                                <td className="p-4">
-                                                    <div className="flex items-center gap-1 text-xs text-slate-500" title={t.note}>
-                                                        <FileText size={12} className="shrink-0 opacity-50"/> 
-                                                        <span className="truncate max-w-30">{t.note || '-'}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 text-center">
-                                                    <button 
-                                                        onClick={() => setSelectedTicket(t)}
-                                                        className="text-slate-400 hover:text-blue-600 bg-white hover:bg-blue-50 border border-slate-200 p-2 rounded-lg transition-colors shadow-sm"
-                                                        title="ดูรายละเอียด"
-                                                    >
-                                                        <Eye size={16} />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-            ))
-        )}
+            </div>
+        ))}
       </div>
 
-      {/* Modal Detail (มีคอลัมน์ เรท, รวม) */}
+      <div className="flex justify-center items-center gap-4 mt-8">
+          <button 
+            onClick={handlePrevPage} 
+            disabled={page === 1}
+            className="flex items-center gap-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-colors"
+          >
+            <ChevronLeft size={18} /> ก่อนหน้า
+          </button>
+          <span className="text-sm font-bold text-slate-600">หน้า {page}</span>
+          <button 
+            onClick={handleNextPage}
+            disabled={tickets.length < limit}
+            className="flex items-center gap-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-colors"
+          >
+            ถัดไป <ChevronRight size={18} />
+          </button>
+      </div>
+
       {selectedTicket && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-              <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-                  <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-                      <div>
-                        <h3 className="font-bold text-lg text-slate-800">รายละเอียดโพย</h3>
-                        <div className="text-xs text-slate-500">#{selectedTicket.id}</div>
-                      </div>
-                      <button onClick={() => setSelectedTicket(null)} className="bg-white p-1.5 rounded-full border hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"><X size={20}/></button>
-                  </div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+              <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95">
                   
-                  <div className="p-5 overflow-y-auto flex-1 custom-scrollbar bg-slate-50/50">
-                        <div className="bg-white p-4 rounded-xl border border-slate-200 mb-4 shadow-sm text-center">
-                            <div className="text-lg font-black text-slate-800 mb-1">{selectedTicket.lotto_type?.name}</div>
-                            <div className="text-xs text-slate-400 mb-2">{new Date(selectedTicket.created_at).toLocaleString('th-TH')}</div>
-                            <div className="inline-block bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-bold border border-blue-100">
-                                ลูกค้า: {selectedTicket.user?.username}
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                            <table className="w-full text-sm">
-                                <thead className="bg-slate-100 font-bold text-slate-600 border-b border-slate-200 text-xs uppercase">
-                                    <tr>
-                                        <th className="p-3 text-left">เลข</th>
-                                        <th className="p-3 text-left">ประเภท</th>
-                                        <th className="p-3 text-right">เรท</th>
-                                        <th className="p-3 text-right">ราคา</th>
-                                        <th className="p-3 text-right">รวม</th>
-                                        <th className="p-3 text-center">ผล</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {selectedTicket.items?.map((item:any, idx:number) => {
-                                        const potentialReward = Number(item.amount) * Number(item.reward_rate);
-                                        return (
-                                            <tr key={idx} className={item.status === 'WIN' ? 'bg-green-50/50' : ''}>
-                                                <td className="p-3 font-mono font-bold text-slate-700 text-lg">{item.number}</td>
-                                                <td className="p-3 text-slate-500 text-xs">{item.bet_type}</td>
-                                                <td className="p-3 text-right text-gray-500 text-xs">{Number(item.reward_rate).toLocaleString()}</td>
-                                                <td className="p-3 text-right font-bold text-slate-700">{Number(item.amount).toLocaleString()}</td>
-                                                <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
-                                                <td className="p-3 text-center">
-                                                    {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs">WIN</span> : 
-                                                     item.status === 'LOSE' ? <span className="text-slate-300">-</span> : 
-                                                     <span className="text-orange-400 text-xs">รอ</span>}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                  {/* Header */}
+                  <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                      <div>
+                          <h3 className="font-bold text-lg text-slate-800">รายละเอียดบิล</h3>
+                          <div className="text-xs text-slate-500">#{selectedTicket.id.substring(0, 8)}...</div>
+                      </div>
+                      <button onClick={() => setSelectedTicket(null)} className="p-1 hover:bg-gray-200 rounded-full"><X size={20} /></button>
                   </div>
 
-                  <div className="p-4 border-t bg-white safe-pb shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
-                      <div className="flex justify-between items-center mb-4 px-2">
-                          <span className="text-sm font-bold text-slate-500">ยอดรวม</span>
-                          <span className="text-xl font-black text-slate-800">{Number(selectedTicket.total_amount).toLocaleString()} ฿</span>
-                      </div>
+                  {/* Body */}
+                  <div className="p-4 overflow-y-auto bg-white flex-1 custom-scrollbar">
+                        <table className="w-full text-sm">
+                            <thead className="bg-gray-100 font-bold text-xs uppercase text-slate-500">
+                                <tr>
+                                    <th className="p-3 rounded-l-lg text-left">เลข</th>
+                                    <th className="p-3 text-left">ประเภท</th>
+                                    <th className="p-3 text-right">ราคา</th>
+                                    <th className="p-3 text-right rounded-r-lg">ผล</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {selectedTicket.items?.map((item: any, i: number) => {
+                                    // ฟังก์ชันแปลภาษา (Inline translation)
+                                    const translateType = (type: string) => {
+                                        const map: Record<string, string> = {
+                                            '2up': '2ตัวบน', '2down': '2ตัวล่าง',
+                                            '3top': '3ตัวตรง', '3tod': '3ตัวโต๊ด',
+                                            'run_up': 'วิ่งบน', 'run_down': 'วิ่งล่าง'
+                                        };
+                                        return map[type] || type;
+                                    };
+
+                                    return (
+                                        <tr key={i} className={item.status === 'WIN' ? 'bg-green-50' : ''}>
+                                            <td className="p-3 font-bold text-slate-700">{item.number}</td>
+                                            <td className="p-3 text-xs text-slate-500">{translateType(item.bet_type)}</td>
+                                            <td className="p-3 text-right font-mono">{Number(item.amount).toLocaleString()}</td>
+                                            <td className="p-3 text-right">
+                                                {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">WIN</span> : 
+                                                 item.status === 'LOSE' ? <span className="text-red-400 text-xs">ไม่ถูก</span> : 
+                                                 <span className="text-orange-400 text-xs font-medium">รอผล</span>}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                  </div>
+
+                  {/* Footer & Summary */}
+                  <div className="p-4 border-t bg-gray-50 space-y-3">
                       
+                      {/* ส่วนสรุปยอดเงิน */}
+                      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm space-y-2">
+                          <div className="flex justify-between items-center text-sm">
+                              <span className="text-slate-500">ยอดซื้อรวม:</span>
+                              <span className="font-bold text-slate-800">{Number(selectedTicket.total_amount).toLocaleString()} บาท</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm border-t border-dashed pt-2">
+                              <span className="text-slate-500">ผลรางวัลรวม:</span>
+                              {(() => {
+                                  // คำนวณยอดถูกรางวัล
+                                  const winAmount = calculateWinAmount(selectedTicket);
+                                  return winAmount > 0 ? (
+                                      <span className="font-bold text-green-600">+{Number(winAmount).toLocaleString()} บาท</span>
+                                  ) : selectedTicket.status === 'PENDING' ? (
+                                      <span className="font-bold text-orange-400">รอผลรางวัล</span>
+                                  ) : (
+                                      <span className="font-bold text-red-500">ไม่ถูกรางวัล</span>
+                                  );
+                              })()}
+                          </div>
+                      </div>
+
+                      {/* ปุ่มยกเลิก */}
                       {selectedTicket.status === 'PENDING' && (
                           <button 
-                            onClick={() => handleCancelTicket(selectedTicket.id)} 
-                            className="w-full py-3 bg-red-50 text-red-600 font-bold rounded-xl border border-red-100 hover:bg-red-100 flex items-center justify-center gap-2 transition-all active:scale-95"
+                           
+                            onClick={() => typeof handleCancelTicket === 'function' ? handleCancelTicket(selectedTicket.id) : (window as any).handleCancelTicket?.(selectedTicket.id)} 
+                            className="w-full py-3 bg-white text-red-600 font-bold rounded-xl border-2 border-red-100 hover:bg-red-50 hover:border-red-200 transition-all shadow-sm"
                           >
-                              <Ban size={18}/> ยกเลิกบิล / คืนเงิน
+                              ยกเลิกบิลคืนเงิน
                           </button>
                       )}
                   </div>
+
               </div>
           </div>
       )}
