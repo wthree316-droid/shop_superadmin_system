@@ -99,6 +99,13 @@ export default function BettingRoom() {
     const { id } = useParams(); 
     const navigate = useNavigate();
 
+    const focusInput = () => {
+        setTimeout(() => {
+            if (numberInputRef.current) {
+                numberInputRef.current.focus();
+            }
+        }, 100); 
+    };
     // Theme Logic
     const themeClasses = {
         main: 'bg-[var(--theme-main)] text-[var(--theme-text-contrast)]', 
@@ -297,7 +304,7 @@ export default function BettingRoom() {
                 handleAddBill(); 
                 setTimeout(() => {
                     numberInputRef.current?.focus();
-                }, 50);
+                }, 100);
             }
         }
         
@@ -451,6 +458,8 @@ export default function BettingRoom() {
 
         setBufferNumbers(prev => [...prev, ...numbersToAdd]);
         setCurrentInput('');
+
+        focusInput();
     };
 
     useEffect(() => {
@@ -471,6 +480,7 @@ export default function BettingRoom() {
                 toast("เลขชุดนี้ถูกเลือกไว้หมดแล้ว");
             }
         }
+        focusInput();
     };
 
     const handleReverseBuffer = () => {
@@ -482,6 +492,8 @@ export default function BettingRoom() {
         });
         setBufferNumbers(newSet); 
         toast.success(`กลับเลขเรียบร้อย (รวม ${newSet.length} รายการ)`);
+        
+        focusInput();
     };
 
     useEffect(() => {
@@ -748,6 +760,7 @@ export default function BettingRoom() {
         } finally {
             setIsSubmitting(false);
         }
+        focusInput();
     };
 
     const totalAmount = cart.reduce((sum, item) => {
@@ -841,13 +854,21 @@ export default function BettingRoom() {
                                     </div>
                                     <div className="flex gap-1 bg-white p-1 rounded-md border border-blue-200">
                                         <button 
-                                            onClick={() => setIncludeDoubles(false)} 
+                                            onClick={() => { 
+                                                setIncludeDoubles(false); 
+                                                focusInput(); // ✅ เพิ่มตรงนี้
+                                            }} 
                                             className={`px-4 py-1 rounded text-xs font-bold transition-all flex items-center gap-1 ${!includeDoubles ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
                                         >
                                             {!includeDoubles && <Check size={12} />} ไม่รวมเบิ้ล
                                         </button>
+
+                                        {/* ปุ่มที่ 2: รวมเบิ้ล */}
                                         <button 
-                                            onClick={() => setIncludeDoubles(true)} 
+                                            onClick={() => { 
+                                                setIncludeDoubles(true); 
+                                                focusInput(); // ✅ เพิ่มตรงนี้
+                                            }} 
                                             className={`px-4 py-1 rounded text-xs font-bold transition-all flex items-center gap-1 ${includeDoubles ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
                                         >
                                             {includeDoubles && <Check size={12} />} รวมเบิ้ล
@@ -857,7 +878,14 @@ export default function BettingRoom() {
                             )}
 
                             <div className="flex justify-end gap-2 mb-2">
-                                <button onClick={() => setBufferNumbers([])} disabled={bufferNumbers.length === 0} className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition-colors disabled:opacity-50">
+                                <button 
+                                    onClick={() => {
+                                        setBufferNumbers([]); // ล้างค่า
+                                        focusInput();         // ✅ เด้งกลับมาช่องกรอก
+                                    }} 
+                                    disabled={bufferNumbers.length === 0}
+                                    className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition-colors disabled:opacity-50"
+                                >
                                     <Trash2 size={14} /> ล้างเลขที่เลือก
                                 </button>
                             </div>

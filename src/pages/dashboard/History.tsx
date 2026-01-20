@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import client from '../../api/client';
 import { 
-  X, RefreshCw, Eye, Layers, Ban, Calendar
+  X, RefreshCw, Eye, Layers, Ban, Calendar, ChevronLeft, ChevronRight 
 } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers';
@@ -12,21 +12,31 @@ export default function History() {
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // ✅ เพิ่ม Date State
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
+
+  // ✅ เพิ่ม Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50; // หน้าละ 50 บิล (สำหรับหน้านี้ควรเยอะหน่อยเพราะมีการจัดกลุ่ม)
 
   // โหลดข้อมูล
   const fetchAllData = async () => {
     setLoading(true);
     try {
       const [resHistory, resLottos, resCats] = await Promise.all([
-          // ✅ ส่ง date
-          client.get(`/play/history?limit=200&date=${selectedDate}`), 
+          // ✅ ส่ง page และ limit
+          client.get(`/play/history?date=${selectedDate}&page=${currentPage}&limit=${itemsPerPage}`), 
           client.get('/play/lottos'),
           client.get('/play/categories')
       ]);
-      setTickets(resHistory.data);
+      
+      // รองรับ Data ทั้งแบบ Array และ Object
+      if (Array.isArray(resHistory.data)) {
+          setTickets(resHistory.data);
+      } else {
+          setTickets(resHistory.data.items || resHistory.data);
+      }
+
       setLottos(resLottos.data);
       setCategories(resCats.data);
     } catch (err) { console.error(err); } 
@@ -34,11 +44,17 @@ export default function History() {
   };
 
   useEffect(() => {
+    setCurrentPage(1); // รีเซ็ตหน้าเมื่อเปลี่ยนวัน
     fetchAllData();
-  }, [selectedDate]); // ✅ Reload เมื่อเปลี่ยนวัน
+  }, [selectedDate]);
+
+  useEffect(() => {
+    fetchAllData(); // โหลดใหม่เมื่อเปลี่ยนหน้า
+  }, [currentPage]);
 
   const handleRefresh = () => fetchAllData();
-
+  
+  // ... (handleCancel, renderWinStatus, renderNetProfit, groupedTickets logic เหมือนเดิม) ...
   const handleCancel = async (ticketId: string) => {
     if (!confirm('ยืนยันยกเลิกโพยนี้?')) return;
     try {
@@ -50,56 +66,33 @@ export default function History() {
   };
 
   const renderWinStatus = (ticket: any) => {
-      if (ticket.status === 'PENDING') return <span className="text-red-500 font-bold">รอผล</span>;
-      if (ticket.status === 'CANCELLED') return <span className="text-gray-400">ยกเลิก</span>;
-      if (ticket.status === 'LOSE') return <span className="text-red-500 font-bold">ไม่ถูกรางวัล</span>;
-      return <span className="text-green-600 font-bold">{Number(calculateWinAmount(ticket)).toLocaleString()}</span>;
+    if (ticket.status === 'PENDING') return <span className="text-orange-500 font-bold animate-pulse">รอผล</span>;
+    if (ticket.status === 'CANCELLED') return <span className="text-gray-400">ยกเลิก</span>;
+    if (ticket.status === 'LOSE') return <span className="text-red-500 font-bold">ไม่ถูกรางวัล</span>;
+    return <span className="text-green-600 font-bold">{Number(calculateWinAmount(ticket)).toLocaleString()}</span>;
   };
 
   const renderNetProfit = (ticket: any) => {
-      if (ticket.status === 'PENDING' || ticket.status === 'CANCELLED') return <span className="text-gray-400">-</span>;
-      const net = calculateNet(ticket);
-      const isProfit = net >= 0;
-      return <span className={`font-bold ${isProfit ? 'text-green-600' : 'text-red-500'}`}>{isProfit ? '+' : ''}{Number(net).toLocaleString()}</span>;
+    if (ticket.status === 'PENDING' || ticket.status === 'CANCELLED') return <span className="text-gray-400">-</span>;
+    const net = calculateNet(ticket);
+    const isProfit = net >= 0;
+    return <span className={`font-bold ${isProfit ? 'text-green-600' : 'text-red-500'}`}>{isProfit ? '+' : ''}{Number(net).toLocaleString()}</span>;
   };
 
-  // ✅ Grouping Logic (จัดกลุ่มตามหมวดหมู่ Category)
+  // Grouping Logic (เหมือนเดิม)
   const groupedTickets = useMemo(() => {
       if (tickets.length === 0) return [];
-
-      // 1. สร้าง Map ข้อมูลหมวดหมู่ (ID -> Info)
       const catInfoMap = new Map();
-      categories.forEach(c => catInfoMap.set(c.id, { 
-          label: c.label, 
-          color: c.color || 'bg-gray-100 text-gray-800',
-          order: c.order_index || 999
-      }));
-
-      // 2. สร้าง Map เชื่อมโยง หวย -> หมวดหมู่ (LottoID -> CategoryID)
+      categories.forEach(c => catInfoMap.set(c.id, { label: c.label, color: c.color || 'bg-gray-100 text-gray-800', order: c.order_index || 999 }));
       const lottoToCatMap = new Map();
-      lottos.forEach(l => {
-          lottoToCatMap.set(l.id, l.category);
-      });
-
+      lottos.forEach(l => { lottoToCatMap.set(l.id, l.category); });
       const groups: any = {};
-
       tickets.forEach(ticket => {
-          // หา ID หมวดหมู่ของบิลนี้
           const catId = lottoToCatMap.get(ticket.lotto_type_id) || 'UNCATEGORIZED';
-          
-          // ดึงข้อมูลชื่อและสีของหมวดหมู่
           const catInfo = catInfoMap.get(catId) || { label: 'หมวดอื่นๆ', color: 'bg-gray-100 text-gray-800', order: 999 };
-
-          if (!groups[catId]) {
-              groups[catId] = { 
-                  info: { name: catInfo.label, color: catInfo.color, order: catInfo.order }, 
-                  items: [] 
-              };
-          }
+          if (!groups[catId]) { groups[catId] = { info: { name: catInfo.label, color: catInfo.color, order: catInfo.order }, items: [] }; }
           groups[catId].items.push(ticket);
       });
-
-      // เรียงลำดับหมวดหมู่ตาม order_index
       return Object.values(groups).sort((a: any, b: any) => a.info.order - b.info.order);
   }, [tickets, lottos, categories]);
 
@@ -108,16 +101,10 @@ export default function History() {
       <div className="bg-white px-4 py-4 shadow-sm sticky top-0 z-10 border-b border-gray-200">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-7xl mx-auto">
               <h1 className="text-xl font-black text-slate-800 flex items-center gap-2"><Layers className="text-blue-600" /> ประวัติ (แยกหมวดหมู่)</h1>
-              
               <div className="flex items-center gap-2">
                   <div className="relative">
                       <Calendar className="absolute left-3 top-2.5 text-slate-400" size={18} />
-                      <input 
-                        type="date" 
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
-                      />
+                      <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100" />
                   </div>
                   <button onClick={handleRefresh} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"><RefreshCw size={20}/></button>
               </div>
@@ -126,19 +113,16 @@ export default function History() {
 
       <div className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full space-y-8">
           {loading ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto"/></div> : 
-           groupedTickets.length === 0 ? <div className="text-center py-20 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">ไม่พบรายการในวันที่เลือก</div> : 
+           groupedTickets.length === 0 ? <div className="text-center py-20 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">ไม่พบรายการในหน้านี้</div> : 
            groupedTickets.map((group: any, index: number) => {
-              // ดึงสี Background จาก class หรือ Hex เพื่อมาทำจุดสีหน้าหัวข้อ
               const colorClass = group.info.color.split(' ')[0].replace('text', 'bg').replace('100', '500');
               const isHex = group.info.color.startsWith('#');
               const dotStyle = isHex ? { backgroundColor: group.info.color } : {};
-
               return (
                 <div key={index} className="animate-slide-up">
                     <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
                         <span className={`w-3 h-3 rounded-full ${!isHex ? colorClass : ''}`} style={dotStyle}></span>
-                        {group.info.name} 
-                        <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-0.5 rounded-full">{group.items.length} รายการ</span>
+                        {group.info.name} <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-0.5 rounded-full">{group.items.length} รายการ</span>
                     </h2>
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="overflow-x-auto">
@@ -153,8 +137,8 @@ export default function History() {
                                         <th className="p-4 text-right">6. กำไร/ขาดทุน</th>
                                         <th className="p-4">7. หมายเหตุ</th>
                                         <th className="p-4 text-center">8. รายละเอียด</th>
-                                        <th className="p-4">9. ผู้ลงบิล</th>
-                                        <th className="p-4 text-center">10. ยกเลิก</th>
+                                        <th className="p-4 text-center">9. ยกเลิก</th>
+                                        <th className="p-4">10. ผู้ลงบิล</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -172,10 +156,11 @@ export default function History() {
                                             <td className="p-4 text-center">
                                                 <button onClick={() => setSelectedTicket(t)} className="text-slate-400 hover:text-blue-600"><Eye size={18} /></button>
                                             </td>
-                                            <td className="p-4 text-xs text-slate-600">{t.user?.username}</td>
                                             <td className="p-4 text-center">
                                                 {t.status === 'PENDING' && <button onClick={() => handleCancel(t.id)} className="text-red-400 hover:text-red-600"><Ban size={16} /></button>}
                                             </td>
+                                            <td className="p-4 text-xs text-slate-600">{t.user?.username}</td>
+                                            
                                         </tr>
                                     ))}
                                 </tbody>
@@ -187,6 +172,18 @@ export default function History() {
            })}
       </div>
 
+      {/* ✅ Pagination Controls */}
+      <div className="p-4 bg-white border-t flex justify-center items-center gap-4 sticky bottom-0 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1 || loading} className="flex items-center gap-1 px-4 py-2 rounded-lg border bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-100 text-sm font-bold">
+              <ChevronLeft size={18} /> ก่อนหน้า
+          </button>
+          <span className="text-sm font-bold text-slate-600">หน้า {currentPage}</span>
+          <button onClick={() => setCurrentPage(p => p + 1)} disabled={tickets.length < itemsPerPage || loading} className="flex items-center gap-1 px-4 py-2 rounded-lg border bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-100 text-sm font-bold">
+              ถัดไป <ChevronRight size={18} />
+          </button>
+      </div>
+
+      {/* Modal ... (Copy Modal Code มาใส่ตรงนี้ได้เลย) */}
       {selectedTicket && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
               <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95">
@@ -205,15 +202,18 @@ export default function History() {
                         <table className="w-full text-sm">
                             <thead className="bg-gray-100 font-bold text-xs uppercase text-slate-500">
                                 <tr>
-                                    <th className="p-3 rounded-l-lg text-left">เลข</th>
-                                    <th className="p-3 text-left">ประเภท</th>
-                                    <th className="p-3 text-right">ราคา</th>
-                                    <th className="p-3 text-right rounded-r-lg">ผล</th>
-                                </tr>
+                                      <th className="p-3 text-left">เลข</th>
+                                      <th className="p-3 text-left">ประเภท</th>
+                                      <th className="p-3 text-right">เรท</th>
+                                      <th className="p-3 text-right">ราคา</th>
+                                      <th className="p-3 text-right">รวม</th>
+                                      <th className="p-3 text-center">ผล</th>
+                                  </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 {selectedTicket.items?.map((item: any, i: number) => {
-                                    // ฟังก์ชันแปลภาษา
+                                    const potentialReward = Number(item.amount) * Number(item.reward_rate);
+                                    // ฟังก์ชันแปลภาษา (Inline translation)
                                     const translateType = (type: string) => {
                                         const map: Record<string, string> = {
                                             '2up': '2ตัวบน', '2down': '2ตัวล่าง',
@@ -227,7 +227,9 @@ export default function History() {
                                         <tr key={i} className={item.status === 'WIN' ? 'bg-green-50' : ''}>
                                             <td className="p-3 font-bold text-slate-700">{item.number}</td>
                                             <td className="p-3 text-xs text-slate-500">{translateType(item.bet_type)}</td>
+                                            <td className="p-3 text-right text-gray-500 text-xs">{Number(item.reward_rate).toLocaleString()}</td>
                                             <td className="p-3 text-right font-mono">{Number(item.amount).toLocaleString()}</td>
+                                            <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
                                             <td className="p-3 text-right">
                                                 {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">WIN</span> : 
                                                  item.status === 'LOSE' ? <span className="text-red-400 text-xs">ไม่ถูก</span> : 
@@ -268,7 +270,8 @@ export default function History() {
                       {/* ปุ่มยกเลิก */}
                       {selectedTicket.status === 'PENDING' && (
                           <button 
-                            onClick={() => handleCancel(selectedTicket.id)}
+                        
+                            onClick={() => typeof handleCancel === 'function' ? handleCancel(selectedTicket.id) : (window as any).handleCancelTicket?.(selectedTicket.id)} 
                             className="w-full py-3 bg-white text-red-600 font-bold rounded-xl border-2 border-red-100 hover:bg-red-50 hover:border-red-200 transition-all shadow-sm"
                           >
                               ยกเลิกบิลคืนเงิน

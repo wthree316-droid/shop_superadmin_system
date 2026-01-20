@@ -2,10 +2,23 @@ import { useEffect, useState } from 'react';
 import client from '../../api/client';
 import { 
     Store, Users, Server, ShieldCheck, 
-    Trash2, AlertTriangle
+    Trash2, AlertTriangle, 
+    ArrowRight, RefreshCw // ✅ เพิ่มไอคอน
 } from 'lucide-react';
 
 export default function SuperDashboard() {
+  // ✅ 1. เพิ่ม State วันที่ (Default = วันนี้)
+  const getToday = () => {
+     const d = new Date();
+     const offset = d.getTimezoneOffset();
+     d.setMinutes(d.getMinutes() - offset);
+     return d.toISOString().split('T')[0];
+  };
+
+  const [startDate, setStartDate] = useState(getToday());
+  const [endDate, setEndDate] = useState(getToday());
+  const [loading, setLoading] = useState(false);
+
   const [stats, setStats] = useState({
     total_shops: 0,
     total_users: 0,
@@ -13,13 +26,12 @@ export default function SuperDashboard() {
     total_tickets: 0
   });
 
-  // [ใหม่] State สำหรับเก็บข้อมูลตารางยอดขาย
   const [shopStats, setShopStats] = useState<any[]>([]);
 
   useEffect(() => {
     fetchStats();
-    fetchShopPerformance(); // <--- เรียกฟังก์ชันใหม่
-  }, []);
+    fetchShopPerformance();
+  }, [startDate, endDate]); // ✅ Reload เมื่อเปลี่ยนวัน
 
   const fetchStats = async () => {
     try {
@@ -33,15 +45,19 @@ export default function SuperDashboard() {
     } catch(err) { console.error(err); }
   };
 
-  // [ใหม่] ฟังก์ชันดึงยอดขายรายร้าน
   const fetchShopPerformance = async () => {
+    setLoading(true);
     try {
-        const res = await client.get('/shops/stats/performance');
+        // ✅ ส่งวันที่ไปกับ API
+        const res = await client.get(`/shops/stats/performance?start_date=${startDate}&end_date=${endDate}`);
         setShopStats(res.data);
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+        console.error(err); 
+    } finally {
+        setLoading(false);
+    }
   };
 
-  // ฟังก์ชันล้างระบบ
   const handleGlobalCleanup = async () => {
       const confirm1 = confirm("⚠️ คำเตือน: คุณกำลังจะล้างข้อมูลประวัติการแทงทั้งหมดในระบบ!");
       if (!confirm1) return;
@@ -52,7 +68,7 @@ export default function SuperDashboard() {
           await client.delete('/system/cleanup/global');
           alert('ล้างข้อมูลเรียบร้อย ระบบสะอาดเอี่ยม!');
           fetchStats();
-          fetchShopPerformance(); // Refresh ตารางด้วย
+          fetchShopPerformance();
       } catch (err) {
           alert('เกิดข้อผิดพลาดในการล้างข้อมูล');
       }
@@ -67,36 +83,24 @@ export default function SuperDashboard() {
       </h1>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Card: Shops */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
-              <div className="p-4 bg-purple-100 text-purple-600 rounded-full">
-                  <Store size={32} />
-              </div>
+              <div className="p-4 bg-purple-100 text-purple-600 rounded-full"><Store size={32} /></div>
               <div>
                   <p className="text-sm text-slate-500">Total Shops</p>
                   <h3 className="text-3xl font-bold text-slate-800">{stats.total_shops}</h3>
                   <p className="text-xs text-green-600 font-bold">Active: {stats.active_shops}</p>
               </div>
           </div>
-
-          {/* Card: Users (แก้ไขให้โชว์ตัวเลขแล้ว) */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
-              <div className="p-4 bg-blue-100 text-blue-600 rounded-full">
-                  <Users size={32} />
-              </div>
+              <div className="p-4 bg-blue-100 text-blue-600 rounded-full"><Users size={32} /></div>
               <div>
                   <p className="text-sm text-slate-500">Total Users</p>
-                  {/* ✅ แก้ไข: แสดงตัวเลขจริง */}
                   <h3 className="text-3xl font-bold text-slate-800">{stats.total_users.toLocaleString()}</h3>
                   <p className="text-xs text-slate-400">System wide</p>
               </div>
           </div>
-
-          {/* Card: Status */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
-              <div className="p-4 bg-green-100 text-green-600 rounded-full">
-                  <ShieldCheck size={32} />
-              </div>
+              <div className="p-4 bg-green-100 text-green-600 rounded-full"><ShieldCheck size={32} /></div>
               <div>
                   <p className="text-sm text-slate-500">System Status</p>
                   <h3 className="text-3xl font-bold text-green-600">Online</h3>
@@ -105,22 +109,51 @@ export default function SuperDashboard() {
           </div>
       </div>
       
-      {/* --- Section 2: Shop Performance Table (แทนที่ Maintenance Mode) --- */}
+      {/* --- Section 2: Shop Performance Table --- */}
       <div className="mt-8 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        
+        {/* ✅ Header Table + Date Picker */}
         <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <Store className="text-amber-500" /> สรุปยอดขายรายร้าน (วันนี้)
+                    <Store className="text-amber-500" /> สรุปยอดขายรายร้าน (ช่วงเวลา)
                 </h3>
+                {/* แสดงวันที่ที่เลือกอยู่ */}
                 <p className="text-xs text-slate-500 mt-1">
-                    ข้อมูล Realtime ประจำวันที่ {new Date().toLocaleDateString('th-TH')}
+                    ข้อมูลวันที่ {new Date(startDate).toLocaleDateString('th-TH')} ถึง {new Date(endDate).toLocaleDateString('th-TH')}
                 </p>
             </div>
-            <span className="text-xs bg-amber-50 text-amber-700 px-3 py-1 rounded-full font-bold border border-amber-100 animate-pulse">
-                Live Update
-            </span>
+
+            {/* ✅ Input เลือกวันที่ */}
+            <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                <div className="relative">
+                    <input 
+                        type="date" 
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="pl-3 pr-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                </div>
+                <span className="text-slate-400"><ArrowRight size={14}/></span>
+                <div className="relative">
+                    <input 
+                        type="date" 
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        min={startDate}
+                        className="pl-3 pr-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                </div>
+                <button 
+                    onClick={() => { fetchStats(); fetchShopPerformance(); }}
+                    className="p-1.5 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors shadow-sm"
+                >
+                    <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                </button>
+            </div>
         </div>
         
+        {/* Table Content (เหมือนเดิม) */}
         <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-xs">
@@ -133,10 +166,12 @@ export default function SuperDashboard() {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {shopStats.length === 0 ? (
+                    {loading ? (
+                        <tr><td colSpan={5} className="p-10 text-center text-slate-400">กำลังโหลดข้อมูล...</td></tr>
+                    ) : shopStats.length === 0 ? (
                         <tr>
                             <td colSpan={5} className="p-8 text-center text-slate-400 italic">
-                                ยังไม่มีข้อมูลการขายในวันนี้
+                                ยังไม่มีข้อมูลการขายในช่วงเวลานี้
                             </td>
                         </tr>
                     ) : (

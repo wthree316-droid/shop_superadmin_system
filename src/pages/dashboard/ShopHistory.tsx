@@ -1,212 +1,316 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import client from '../../api/client';
 import { 
-  Ticket, Eye, Ban, RefreshCcw, X, 
-  Loader2, ChevronLeft, ChevronRight, Calendar
+    Calendar, User, Filter, 
+    X, Eye, Ban, RefreshCw, Loader2,
+    ChevronLeft, ChevronRight, Wallet, Receipt
 } from 'lucide-react';
-import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers';
+import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers'; 
 
 export default function ShopHistory() {
+  // --- Data States ---
   const [tickets, setTickets] = useState<any[]>([]);
-  const [lottos, setLottos] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [members, setMembers] = useState<any[]>([]); 
+  const [loading, setLoading] = useState(true);
   
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState<any>(null);
-  
-  // ✅ เพิ่ม Date State
+  // --- Filter States ---
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedUser, setSelectedUser] = useState<string>(''); 
+  const [filterStatus, setFilterStatus] = useState('ALL'); // ALL, PENDING, WIN, LOSE, CANCELLED
 
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const limit = 50; 
+  // --- Pagination States ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(50); // จำนวนรายการต่อหน้า
+  const [totalPages, setTotalPages] = useState(1);
 
+  // --- Modal State ---
+  const [selectedTicket, setSelectedTicket] = useState<any>(null);
+
+  // --- Initial Load ---
   useEffect(() => {
-      const fetchMasterData = async () => {
-          try {
-              const [resLottos, resCats] = await Promise.all([
-                  client.get('/play/lottos'),
-                  client.get('/play/categories')
-              ]);
-              setLottos(resLottos.data);
-              setCategories(resCats.data);
-          } catch (err) { console.error(err); }
-      };
-      fetchMasterData();
+    fetchMembers();
   }, []);
 
-  const fetchTickets = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      // ✅ ส่ง date
-      const res = await client.get(`/play/shop_history?skip=${(page-1)*limit}&limit=${limit}&date=${selectedDate}`);
-      let data = res.data;
-      if (statusFilter !== 'ALL') {
-          data = data.filter((t:any) => t.status === statusFilter);
-      }
-      setTickets(data);
-    } catch (err) { console.error(err); } 
-    finally { setIsLoading(false); }
-  }, [page, statusFilter, selectedDate]); // ✅ เพิ่ม selectedDate ใน dependency
+  // --- Reload Data conditions ---
+  useEffect(() => {
+    // เมื่อเปลี่ยน Filter หลัก (วัน/คน) ให้รีเซ็ตไปหน้า 1
+    setCurrentPage(1);
+    fetchHistory(1);
+  }, [selectedDate, selectedUser]);
 
   useEffect(() => {
-    fetchTickets();
-    const interval = setInterval(fetchTickets, 30000);
-    return () => clearInterval(interval);
-  }, [fetchTickets]);
+    // เมื่อเปลี่ยนหน้า ให้โหลดข้อมูลหน้าใหม่
+    fetchHistory(currentPage);
+  }, [currentPage]);
+
+  // --- API Functions ---
+  const fetchMembers = async () => {
+      try {
+          const res = await client.get('/users/members');
+          setMembers(res.data);
+      } catch(err) { console.error("Load members fail", err); }
+  };
+
+  const fetchHistory = async (page = 1) => {
+    setLoading(true);
+    try {
+      // สร้าง URL Query String
+      let url = `/play/shop_history?date=${selectedDate}&page=${page}&limit=${itemsPerPage}`;
+      
+      if (selectedUser) {
+          url += `&user_id=${selectedUser}`;
+      }
+      
+      const res = await client.get(url);
+      
+      // กรณี Backend ส่งมาเป็น Array ตรงๆ (ไม่มี metadata pagination)
+      if (Array.isArray(res.data)) {
+          setTickets(res.data);
+          // ถ้าไม่มี total_pages จากหลังบ้าน ให้คำนวณคร่าวๆ หรือซ่อนปุ่มถัดไปถ้าข้อมูล < limit
+          setTotalPages(res.data.length < itemsPerPage ? page : page + 1); 
+      } else {
+          // กรณี Backend ส่ง format มาตรฐาน { items: [], total_pages: 5 }
+          setTickets(res.data.items || res.data); 
+          setTotalPages(res.data.total_pages || 1);
+      }
+
+    } catch (err) { 
+        console.error(err); 
+    } finally { 
+        setLoading(false); 
+    }
+  };
 
   const handleCancelTicket = async (ticketId: string) => {
-    if(!confirm('⚠️ ยืนยันการยกเลิกโพยนี้?\nเงินจะถูกคืนเข้ากระเป๋าลูกค้าทันที')) return;
-    try {
-        await client.patch(`/play/tickets/${ticketId}/cancel`);
-        alert('ยกเลิกโพยเรียบร้อย');
-        fetchTickets();
-        setSelectedTicket(null);
-    } catch (err: any) { alert(`Error: ${err.response?.data?.detail}`); }
+      if(!confirm("ยืนยันการยกเลิกบิลนี้? เงินจะถูกคืนให้ลูกค้าทันที")) return;
+      try {
+          await client.patch(`/play/tickets/${ticketId}/cancel`);
+          alert("ยกเลิกสำเร็จ");
+          fetchHistory(currentPage); // โหลดหน้าปัจจุบันใหม่
+          setSelectedTicket(null);
+      } catch(err: any) {
+          alert(`Error: ${err.response?.data?.detail}`);
+      }
   };
 
-  const renderWinStatus = (ticket: any) => {
-      if (ticket.status === 'PENDING') return <span className="text-red-500 font-bold">รอผล</span>;
-      if (ticket.status === 'CANCELLED') return <span className="text-gray-400">ยกเลิก</span>;
-      if (ticket.status === 'LOSE') return <span className="text-red-500 font-bold">ไม่ถูกรางวัล</span>;
-      return <span className="text-green-600 font-bold">{Number(calculateWinAmount(ticket)).toLocaleString()}</span>;
-  };
+  // --- Client-Side Logic ---
+  
+  // 1. กรอง Status (ถ้า API ไม่รองรับการส่ง status ให้กรองที่นี่)
+  const filteredTickets = useMemo(() => {
+      if (filterStatus === 'ALL') return tickets;
+      return tickets.filter(t => t.status === filterStatus);
+  }, [tickets, filterStatus]);
 
-  const renderNetProfit = (ticket: any) => {
-      if (ticket.status === 'PENDING' || ticket.status === 'CANCELLED') return <span className="text-gray-400">-</span>;
-      const net = calculateNet(ticket);
-      const isProfit = net >= 0;
-      return <span className={`font-bold ${isProfit ? 'text-green-600' : 'text-red-500'}`}>{isProfit ? '+' : ''}{Number(net).toLocaleString()}</span>;
-  };
+  // 2. คำนวณยอดรวม (Dashboard) จากข้อมูลที่โหลดมา
+  const summary = useMemo(() => {
+      let totalSales = 0;
+      let totalPayout = 0;
+      let profit = 0;
 
-  const groupedTickets = useMemo(() => {
-      if (tickets.length === 0) return [];
-      const catMap = new Map();
-      categories.forEach(c => catMap.set(c.id, c));
-      const lottoMap = new Map();
-      lottos.forEach(l => {
-          const cat = catMap.get(l.category);
-          lottoMap.set(l.id, { name: l.name, color: cat?.color || 'bg-gray-100 text-gray-800' });
-      });
-
-      const groups: any = {};
-      tickets.forEach(ticket => {
-          const key = ticket.lotto_type_id;
-          if (!groups[key]) {
-              groups[key] = { info: lottoMap.get(key) || { name: 'Unknown', color: '' }, items: [] };
+      filteredTickets.forEach(t => {
+          if (t.status !== 'CANCELLED') {
+              totalSales += Number(t.total_amount);
+              // คำนวณยอดจ่าย (เฉพาะบิลที่ถูกรางวัล)
+              const win = calculateWinAmount(t);
+              totalPayout += win;
           }
-          groups[key].items.push(ticket);
       });
-      return Object.values(groups).sort((a: any, b: any) => a.info.name.localeCompare(b.info.name, 'th'));
-  }, [tickets, lottos, categories]);
+      profit = totalSales - totalPayout;
 
-  const handlePrevPage = () => setPage(prev => Math.max(1, prev - 1));
-  const handleNextPage = () => setPage(prev => prev + 1);
+      return { totalSales, totalPayout, profit };
+  }, [filteredTickets]);
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pb-8 animate-fade-in bg-slate-50 min-h-screen font-sans">
+    <div className="animate-fade-in space-y-6 pb-10">
       
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <h1 className="text-xl font-black text-slate-800 flex items-center gap-2"><Ticket className="text-blue-600" /> โพยลูกค้า (Admin)</h1>
-            
-            <div className="flex items-center gap-2">
-                {/* ✅ Date Picker */}
-                <div className="relative">
-                    <Calendar className="absolute left-3 top-2.5 text-slate-400" size={18} />
-                    <input 
-                      type="date" 
-                      value={selectedDate}
-                      onChange={(e) => { setSelectedDate(e.target.value); setPage(1); }}
-                      className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
-                    />
-                </div>
-                <button onClick={fetchTickets} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200"><RefreshCcw size={20} className={isLoading ? 'animate-spin' : ''} /></button>
-            </div>
-        </div>
-        
-        <div className="flex gap-2 mt-4 overflow-x-auto pb-1 scrollbar-hide">
-            {['ALL', 'PENDING', 'WIN', 'LOSE', 'CANCELLED'].map(s => (
-                <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }} className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${statusFilter === s ? 'bg-slate-800 text-white' : 'bg-white text-slate-500'}`}>
-                    {s === 'ALL' ? 'ทั้งหมด' : s}
+      {/* --- Filter Section --- */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4">
+          
+          <div className="flex flex-col md:flex-row gap-4 justify-between items-end md:items-center">
+              <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                  {/* Date Input */}
+                  <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">วันที่</label>
+                      <div className="relative">
+                          <Calendar className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                          <input 
+                            type="date" 
+                            value={selectedDate}
+                            onChange={e => setSelectedDate(e.target.value)}
+                            className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200 w-full md:w-40"
+                          />
+                      </div>
+                  </div>
+
+                  {/* Member Select */}
+                  <div className="flex-1 md:w-64">
+                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">กรองตามสมาชิก</label>
+                      <div className="relative">
+                          <User className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                          <select 
+                            value={selectedUser}
+                            onChange={e => setSelectedUser(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200 appearance-none"
+                          >
+                              <option value="">-- ดูรายการทั้งหมด --</option>
+                              {members.map(m => (
+                                  <option key={m.id} value={m.id}>
+                                      {m.username} {m.full_name ? `(${m.full_name})` : ''}
+                                  </option>
+                              ))}
+                          </select>
+                          <div className="absolute right-3 top-3 pointer-events-none">
+                              <Filter size={14} className="text-slate-400" />
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
+              <button onClick={() => fetchHistory(1)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors text-slate-600">
+                  <RefreshCw size={20} />
+              </button>
+          </div>
+
+          {/* Status Filters */}
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {['ALL', 'PENDING', 'WIN', 'LOSE', 'CANCELLED'].map(f => (
+                <button key={f} onClick={() => setFilterStatus(f)} 
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all ${filterStatus === f ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
+                    {f === 'ALL' ? 'ทั้งหมด' : f === 'PENDING' ? 'รอผล' : f === 'WIN' ? 'ถูกรางวัล' : f === 'LOSE' ? 'ไม่ถูกรางวัล' : 'ยกเลิก'}
                 </button>
             ))}
-        </div>
+          </div>
       </div>
 
-      <div className="space-y-8">
-        {isLoading && tickets.length === 0 ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto"/></div> : 
-         groupedTickets.length === 0 ? <div className="py-20 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">ไม่พบรายการในวันที่เลือก</div> : 
-         groupedTickets.map((group: any, index: number) => (
-            <div key={index} className="animate-slide-up">
-                <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
-                    <span className={`w-1.5 h-6 rounded-full ${group.info.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
-                    {group.info.name} <span className="text-xs font-normal text-slate-400 ml-2 bg-white px-2 py-0.5 rounded-full border">{group.items.length} รายการ</span>
-                </h2>
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm whitespace-nowrap">
-                            <thead className="bg-gray-100 text-gray-600 font-bold uppercase text-xs">
-                                <tr>
-                                    <th className="p-4">1. เวลา</th>
-                                    <th className="p-4">2. ชนิดหวย</th>
-                                    <th className="p-4">3. งวดวันที่</th>
-                                    <th className="p-4 text-right">4. ยอดแทง</th>
-                                    <th className="p-4 text-right">5. ถูกรางวัล</th>
-                                    <th className="p-4 text-right">6. กำไร/ขาดทุน</th>
-                                    <th className="p-4">7. หมายเหตุ</th>
-                                    <th className="p-4 text-center">8. รายละเอียด</th>
-                                    <th className="p-4">9. ผู้ลงบิล</th>
-                                    <th className="p-4 text-center">10. ยกเลิก</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {group.items.map((t: any) => (
-                                    <tr key={t.id} className="hover:bg-blue-50/30 transition-colors">
-                                        <td className="p-4 font-bold text-slate-700">
-                                            {new Date(t.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute:'2-digit' })}
+      {/* --- Summary Cards (Mini Dashboard) --- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex items-center justify-between">
+              <div>
+                  <div className="text-xs text-slate-500 font-bold uppercase">ยอดขายรวม</div>
+                  <div className="text-xl font-black text-blue-600">{summary.totalSales.toLocaleString()}</div>
+              </div>
+              <div className="p-2 bg-blue-50 rounded-lg text-blue-500"><Wallet size={24}/></div>
+          </div>
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex items-center justify-between">
+              <div>
+                  <div className="text-xs text-slate-500 font-bold uppercase">จ่ายรางวัล</div>
+                  <div className="text-xl font-black text-red-500">{summary.totalPayout.toLocaleString()}</div>
+              </div>
+              <div className="p-2 bg-red-50 rounded-lg text-red-500"><Receipt size={24}/></div>
+          </div>
+          <div className={`bg-white p-4 rounded-xl shadow-sm border flex items-center justify-between ${summary.profit >= 0 ? 'border-green-100' : 'border-red-100'}`}>
+              <div>
+                  <div className="text-xs text-slate-500 font-bold uppercase">กำไรสุทธิ</div>
+                  <div className={`text-xl font-black ${summary.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      {summary.profit >= 0 ? '+' : ''}{summary.profit.toLocaleString()}
+                  </div>
+              </div>
+              <div className={`p-2 rounded-lg ${summary.profit >= 0 ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'}`}>
+                   {summary.profit >= 0 ? <RefreshCw size={24}/> : <Ban size={24}/>}
+              </div>
+          </div>
+      </div>
+
+      {/* --- Ticket List --- */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+          <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left whitespace-nowrap">
+                  <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-xs">
+                        <tr>
+                            <th className="p-4">1. เวลา</th>
+                            <th className="p-4">2. ชนิดหวย</th>
+                            <th className="p-4">3. งวดวันที่</th>
+                            <th className="p-4 text-right">4. ยอดแทง</th>
+                            <th className="p-4 text-right">5. ถูกรางวัล</th>
+                            <th className="p-4 text-right">6. กำไรโพย</th>
+                            <th className="p-4">7. หมายเหตุ</th>
+                            <th className="p-4 text-center">8. รายละเอียด</th>
+                            <th className="p-4 text-center">9. ยกเลิก</th>
+                            <th className="p-4">10. ผู้ซื้อ</th>
+
+                        </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {loading ? (
+                          <tr><td colSpan={9} className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-blue-500"/></td></tr>
+                      ) : filteredTickets.length === 0 ? (
+                          <tr><td colSpan={9} className="p-10 text-center text-gray-400">ไม่พบรายการบิลตามเงื่อนไข</td></tr>
+                      ) : (
+                          filteredTickets.map((t) => {
+                              const winAmount = calculateWinAmount(t);
+                              const net = calculateNet(t);
+                              const isProfit = net >= 0;
+
+                              return (
+                                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                                        <td className="p-4 font-mono text-slate-500">
+                                            {new Date(t.created_at).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}
                                         </td>
-                                        <td className="p-4 font-bold text-slate-700">{t.lotto_type?.name}</td>
+                                        
+                                        <td className="p-4 text-blue-600 font-bold">{t.lotto_type?.name}</td>
                                         <td className="p-4 font-mono">{new Date(t.created_at).toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'numeric'})}</td>
-                                        <td className="p-4 text-right font-bold text-slate-700">{Number(t.total_amount).toLocaleString()}</td>
-                                        <td className="p-4 text-right">{renderWinStatus(t)}</td>
-                                        <td className="p-4 text-right">{renderNetProfit(t)}</td>
-                                        <td className="p-4 text-xs text-gray-500">{t.note || '-'}</td>
-                                        <td className="p-4 text-center">
-                                            <button onClick={() => setSelectedTicket(t)} className="text-slate-400 hover:text-blue-600"><Eye size={16} /></button>
+                                        <td className="p-4 text-right font-mono font-bold">
+                                            {Number(t.total_amount).toLocaleString()}
                                         </td>
-                                        <td className="p-4 text-xs font-bold text-blue-600">{t.user?.username}</td>
-                                        <td className="p-4 text-center">
-                                            {t.status === 'PENDING' && <button onClick={() => handleCancelTicket(t.id)} className="text-red-400 hover:text-red-600"><Ban size={16} /></button>}
+                                        <td className="p-4 text-right">
+                                            {t.status === 'WIN' ? <span className="text-green-600 font-bold">{winAmount.toLocaleString()}</span> :
+                                            t.status === 'LOSE' ? <span className="text-red-400 font-bold">-</span> :
+                                            t.status === 'CANCELLED' ? <span className="text-gray-400">ยกเลิก</span> :
+                                            <span className="text-orange-500 text-xs font-bold animate-pulse">รอผล</span>}
                                         </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        ))}
+                                        <td className={`p-4 text-right font-bold ${isProfit ? 'text-green-600' : 'text-red-500'}`}>
+                                            {t.status === 'PENDING' || t.status === 'CANCELLED' ? '-' : `${isProfit ? '+' : ''}${net.toLocaleString()}`}
+                                        </td>
+                                        <td className="p-4 text-xs text-slate-400 truncate max-w-25">{t.note || '-'}</td>
+                                        <td className="p-4 text-center">
+                                            <button onClick={() => setSelectedTicket(t)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                                                <Eye size={18} />
+                                            </button>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            {t.status === 'PENDING' ? (
+                                                <button onClick={() => handleCancelTicket(t.id)} className="p-1.5 text-red-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="ยกเลิกบิล">
+                                                    <Ban size={18} />
+                                                </button>
+                                            ) : <span className="text-gray-300">-</span>}
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-2">
+                                                <div>
+                                                    <div className="font-bold text-slate-700">{t.user?.username}</div>
+                                                    <div className="text-[10px] text-slate-400">#{t.id.substring(0,6)}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                  </tr>
+                              );
+                          })
+                      )}
+                  </tbody>
+              </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+                <button 
+                    disabled={currentPage === 1} 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-100 text-sm font-bold"
+                >
+                    <ChevronLeft size={16} /> ก่อนหน้า
+                </button>
+                <span className="text-sm text-slate-500 font-medium">หน้า {currentPage}</span>
+                <button 
+                    disabled={filteredTickets.length < itemsPerPage && totalPages === currentPage} 
+                    onClick={() => setCurrentPage(p => p + 1)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-100 text-sm font-bold"
+                >
+                    ถัดไป <ChevronRight size={16} />
+                </button>
+          </div>
       </div>
 
-      <div className="flex justify-center items-center gap-4 mt-8">
-          <button 
-            onClick={handlePrevPage} 
-            disabled={page === 1}
-            className="flex items-center gap-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-colors"
-          >
-            <ChevronLeft size={18} /> ก่อนหน้า
-          </button>
-          <span className="text-sm font-bold text-slate-600">หน้า {page}</span>
-          <button 
-            onClick={handleNextPage}
-            disabled={tickets.length < limit}
-            className="flex items-center gap-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-colors"
-          >
-            ถัดไป <ChevronRight size={18} />
-          </button>
-      </div>
-
+      {/* --- Ticket Detail Modal --- */}
       {selectedTicket && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
               <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95">
@@ -215,7 +319,8 @@ export default function ShopHistory() {
                   <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                       <div>
                           <h3 className="font-bold text-lg text-slate-800">รายละเอียดบิล</h3>
-                          <div className="text-xs text-slate-500">#{selectedTicket.id.substring(0, 8)}...</div>
+                          <div className="text-xs text-slate-500">#{selectedTicket.id}</div>
+                          <div className="text-xs text-blue-600 font-bold mt-1">ผู้ซื้อ: {selectedTicket.user?.username}</div>
                       </div>
                       <button onClick={() => setSelectedTicket(null)} className="p-1 hover:bg-gray-200 rounded-full"><X size={20} /></button>
                   </div>
@@ -225,14 +330,17 @@ export default function ShopHistory() {
                         <table className="w-full text-sm">
                             <thead className="bg-gray-100 font-bold text-xs uppercase text-slate-500">
                                 <tr>
-                                    <th className="p-3 rounded-l-lg text-left">เลข</th>
-                                    <th className="p-3 text-left">ประเภท</th>
-                                    <th className="p-3 text-right">ราคา</th>
-                                    <th className="p-3 text-right rounded-r-lg">ผล</th>
-                                </tr>
+                                      <th className="p-3 text-left">เลข</th>
+                                      <th className="p-3 text-left">ประเภท</th>
+                                      <th className="p-3 text-right">เรท</th>
+                                      <th className="p-3 text-right">ราคา</th>
+                                      <th className="p-3 text-right">รวม</th>
+                                      <th className="p-3 text-right">ผล</th>
+                                  </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 {selectedTicket.items?.map((item: any, i: number) => {
+                                    const potentialReward = Number(item.amount) * Number(item.reward_rate);
                                     // ฟังก์ชันแปลภาษา (Inline translation)
                                     const translateType = (type: string) => {
                                         const map: Record<string, string> = {
@@ -247,9 +355,11 @@ export default function ShopHistory() {
                                         <tr key={i} className={item.status === 'WIN' ? 'bg-green-50' : ''}>
                                             <td className="p-3 font-bold text-slate-700">{item.number}</td>
                                             <td className="p-3 text-xs text-slate-500">{translateType(item.bet_type)}</td>
+                                            <td className="p-3 text-right text-gray-500 text-xs">{Number(item.reward_rate).toLocaleString()}</td>
                                             <td className="p-3 text-right font-mono">{Number(item.amount).toLocaleString()}</td>
+                                            <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
                                             <td className="p-3 text-right">
-                                                {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">WIN</span> : 
+                                                {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">+{Number(item.amount * item.reward_rate).toLocaleString()}</span> : 
                                                  item.status === 'LOSE' ? <span className="text-red-400 text-xs">ไม่ถูก</span> : 
                                                  <span className="text-orange-400 text-xs font-medium">รอผล</span>}
                                             </td>
@@ -288,8 +398,7 @@ export default function ShopHistory() {
                       {/* ปุ่มยกเลิก */}
                       {selectedTicket.status === 'PENDING' && (
                           <button 
-                           
-                            onClick={() => typeof handleCancelTicket === 'function' ? handleCancelTicket(selectedTicket.id) : (window as any).handleCancelTicket?.(selectedTicket.id)} 
+                            onClick={() => handleCancelTicket(selectedTicket.id)} 
                             className="w-full py-3 bg-white text-red-600 font-bold rounded-xl border-2 border-red-100 hover:bg-red-50 hover:border-red-200 transition-all shadow-sm"
                           >
                               ยกเลิกบิลคืนเงิน

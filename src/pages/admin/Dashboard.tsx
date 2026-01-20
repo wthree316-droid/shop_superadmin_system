@@ -7,19 +7,22 @@ import {
   TrendingUp, 
   Ticket,
   BarChart3,
-  Calendar as CalendarIcon, // เพิ่มไอคอน
-  RefreshCw
+  Calendar as CalendarIcon,
+  RefreshCw,
+  ArrowRight // เพิ่มไอคอนลูกศร
 } from 'lucide-react';
 
 export default function Dashboard() {
-  // 1. เพิ่ม State สำหรับเลือกวันที่
-  const [selectedDate, setSelectedDate] = useState(() => {
-     // Default เป็นวันนี้ (Local Time)
+  // ✅ 1. แยก State เป็น Start และ End
+  const getToday = () => {
      const d = new Date();
      const offset = d.getTimezoneOffset();
      d.setMinutes(d.getMinutes() - offset);
      return d.toISOString().split('T')[0];
-  });
+  };
+
+  const [startDate, setStartDate] = useState(getToday());
+  const [endDate, setEndDate] = useState(getToday());
 
   const [stats, setStats] = useState({
     total_sales: 0,
@@ -35,22 +38,22 @@ export default function Dashboard() {
     fetchStats();
     fetchTopNumbers();
     
-    // Auto Refresh ทุก 1 นาที (เฉพาะถ้าดูวันปัจจุบัน)
+    // Auto Refresh ถ้าดูวันปัจจุบัน
     const interval = setInterval(() => {
-        const today = new Date().toISOString().split('T')[0];
-        if (selectedDate === today) {
+        const today = getToday();
+        if (startDate === today && endDate === today) {
             fetchStats();
             fetchTopNumbers();
         }
     }, 60000);
     return () => clearInterval(interval);
-  }, [selectedDate]); // <-- Refresh เมื่อเปลี่ยนวันที่
+  }, [startDate, endDate]); // ✅ Reload เมื่อเปลี่ยนวันเริ่มหรือจบ
 
   const fetchStats = async () => {
     setLoading(true);
     try {
-      // ✅ แก้ไขตรงนี้: เรียก /stats/daily และส่ง date_str ไปด้วย
-      const res = await client.get(`/play/stats/daily?date_str=${selectedDate}`);
+      // ✅ เรียก API ใหม่ที่รับช่วงเวลา
+      const res = await client.get(`/play/stats/range?start_date=${startDate}&end_date=${endDate}`);
       setStats(res.data);
     } catch (err) { 
         console.error("Fetch Stats Error:", err); 
@@ -61,14 +64,13 @@ export default function Dashboard() {
 
   const fetchTopNumbers = async () => {
     try {
-        // Top Numbers ถ้า Backend ยังไม่ได้แก้ให้รับวันที่ มันจะโชว์ของวันนี้เสมอ
-        // แต่ถ้าแก้แล้วก็ส่ง param ไปได้: /play/stats/top_numbers?date_str=...
-        const res = await client.get('/play/stats/top_numbers');
+        // ✅ ส่งช่วงเวลาไปหา Top Numbers ด้วย
+        const res = await client.get(`/play/stats/top_numbers?start_date=${startDate}&end_date=${endDate}`);
         setTopNumbers(res.data);
     } catch(err) { console.error(err); }
   };
 
-  // Helper Card Component
+  // Helper Card Component (เหมือนเดิม)
   const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between transition-all hover:shadow-md">
         <div>
@@ -85,26 +87,42 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 animate-fade-in pb-10">
       
-      {/* --- Header & Date Picker --- */}
+      {/* --- Header & Date Picker Range --- */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
           <div>
             <h1 className="text-2xl font-black text-slate-800 tracking-tight">แดชบอร์ดภาพรวม</h1>
-            <p className="text-slate-500 text-sm">สรุปยอดขายและกำไร (ตามเวลาประเทศไทย)</p>
+            <p className="text-slate-500 text-sm">สรุปยอดขายและกำไรตามช่วงเวลา</p>
           </div>
           
-          <div className="flex items-center gap-2">
-              <div className="relative">
-                  <CalendarIcon className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                  <input 
-                    type="date" 
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+          {/* ✅ ส่วนเลือกวันที่แบบช่วง (Range) */}
+          <div className="flex flex-col sm:flex-row items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-auto">
+                      <CalendarIcon className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                      <input 
+                        type="date" 
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full sm:w-auto pl-10 pr-2 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                  </div>
+                  <span className="text-slate-400"><ArrowRight size={16}/></span>
+                  <div className="relative w-full sm:w-auto">
+                      <CalendarIcon className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                      <input 
+                        type="date" 
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        // กันไม่ให้เลือกวันจบ น้อยกว่าวันเริ่ม
+                        min={startDate}
+                        className="w-full sm:w-auto pl-10 pr-2 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                  </div>
               </div>
+              
               <button 
                 onClick={() => { fetchStats(); fetchTopNumbers(); }} 
-                className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors"
+                className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
               >
                   <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
               </button>
@@ -132,7 +150,6 @@ export default function Dashboard() {
             icon={TrendingUp} 
             color={stats.profit >= 0 ? "text-emerald-600" : "text-red-600"} 
         />
-         {/* Card ที่ 4 อาจจะเป็น ยอดคงเหลือลูกค้า หรืออื่นๆ */}
          <StatCard 
             title="จำนวนบิล" 
             value={stats.total_tickets.toLocaleString()} 
@@ -145,7 +162,9 @@ export default function Dashboard() {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
                 <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
-                    <TrendingUp className="text-rose-500" size={20} /> เลขขายดี 10 อันดับแรก
+                    <TrendingUp className="text-rose-500" size={20} /> 
+                    เลขขายดี 10 อันดับแรก 
+                    <span className="text-xs font-normal text-gray-400 ml-2">({startDate} ถึง {endDate})</span>
                 </h3>
             </div>
             <div className="overflow-x-auto">
@@ -176,7 +195,7 @@ export default function Dashboard() {
                             </tr>
                         ))}
                         {topNumbers.length === 0 && (
-                            <tr><td colSpan={4} className="p-10 text-center text-gray-400">ยังไม่มีข้อมูลการขาย</td></tr>
+                            <tr><td colSpan={4} className="p-10 text-center text-gray-400">ยังไม่มีข้อมูลการขายในช่วงเวลานี้</td></tr>
                         )}
                     </tbody>
                 </table>

@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
-import { FileSpreadsheet, ClipboardList, Users, Loader2 } from 'lucide-react';
-import client from '../../api/client'; // ✅ เพิ่ม import client
+import { useState } from 'react';
+import { FileSpreadsheet, ClipboardList, Users } from 'lucide-react';
 
 import History_outside from '../dashboard/History_outside';
 import History from '../dashboard/History';
@@ -8,38 +7,12 @@ import ShopHistory from '../dashboard/ShopHistory';
 
 export default function HistoryMain() {
   const [activeTab, setActiveTab] = useState('outside');
-  const [role, setRole] = useState<string>(''); // เก็บ Role
-  const [loading, setLoading] = useState(true);
 
-  // ✅ 1. ดึงข้อมูล User เมื่อเข้าหน้าเว็บ
-  useEffect(() => {
-      const checkPermission = async () => {
-          try {
-              // เรียก API เพื่อดูว่าเราเป็นใคร (ปกติคือ /users/me หรือตามระบบคุณ)
-              const res = await client.get('/users/me'); 
-              setRole(res.data.role); 
-          } catch (err) {
-              console.error("Auth Error", err);
-          } finally {
-              setLoading(false);
-          }
-      };
-      checkPermission();
-  }, []);
-
-  // ✅ 2. สร้างรายการแท็บพื้นฐาน
   const tabs = [
     { id: 'outside', label: 'โพยไม่แยกประเภท', icon: FileSpreadsheet },
     { id: 'inside', label: 'โพยแยกประเภท', icon: ClipboardList },
+    { id: 'shop', label: 'โพยลูกค้า (ทุกคน)', icon: Users },
   ];
-
-  // ✅ 3. ถ้าเป็น Admin/Superadmin ให้เพิ่มแท็บที่ 3
-  const isAdmin = role === 'admin' || role === 'superadmin';
-  if (isAdmin) {
-      tabs.push({ id: 'shop', label: 'โพยลูกค้า (ทุกคน)', icon: Users });
-  }
-
-  if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin mx-auto"/></div>;
 
   return (
     <div className="space-y-4 md:space-y-6 pb-10 animate-fade-in font-sans">
@@ -85,20 +58,22 @@ export default function HistoryMain() {
 
       {/* --- Content Area --- */}
       <div className="min-h-125 relative">
+            {/* Tab 1: ไม่แยกประเภท (Outside) */}
             {activeTab === 'outside' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <History_outside />
                 </div>
             )}
             
+            {/* Tab 2: แยกประเภท (Inside) */}
             {activeTab === 'inside' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <History />
                 </div>
             )}
 
-            {/* ✅ แสดง ShopHistory เฉพาะเมื่อเป็น Admin เท่านั้น */}
-            {activeTab === 'shop' && isAdmin && (
+            {/* Tab 3: โพยลูกค้าทั้งหมด (ทุกคนเห็นได้) */}
+            {activeTab === 'shop' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ShopHistory />
                 </div>
