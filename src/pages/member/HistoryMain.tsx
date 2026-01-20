@@ -1,16 +1,45 @@
-import { useState } from 'react';
-import { FileSpreadsheet, ClipboardList } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { FileSpreadsheet, ClipboardList, Users, Loader2 } from 'lucide-react';
+import client from '../../api/client'; // ✅ เพิ่ม import client
 
 import History_outside from '../dashboard/History_outside';
 import History from '../dashboard/History';
+import ShopHistory from '../dashboard/ShopHistory'; 
 
 export default function HistoryMain() {
   const [activeTab, setActiveTab] = useState('outside');
+  const [role, setRole] = useState<string>(''); // เก็บ Role
+  const [loading, setLoading] = useState(true);
 
+  // ✅ 1. ดึงข้อมูล User เมื่อเข้าหน้าเว็บ
+  useEffect(() => {
+      const checkPermission = async () => {
+          try {
+              // เรียก API เพื่อดูว่าเราเป็นใคร (ปกติคือ /users/me หรือตามระบบคุณ)
+              const res = await client.get('/users/me'); 
+              setRole(res.data.role); 
+          } catch (err) {
+              console.error("Auth Error", err);
+          } finally {
+              setLoading(false);
+          }
+      };
+      checkPermission();
+  }, []);
+
+  // ✅ 2. สร้างรายการแท็บพื้นฐาน
   const tabs = [
     { id: 'outside', label: 'โพยไม่แยกประเภท', icon: FileSpreadsheet },
     { id: 'inside', label: 'โพยแยกประเภท', icon: ClipboardList },
   ];
+
+  // ✅ 3. ถ้าเป็น Admin/Superadmin ให้เพิ่มแท็บที่ 3
+  const isAdmin = role === 'admin' || role === 'superadmin';
+  if (isAdmin) {
+      tabs.push({ id: 'shop', label: 'โพยลูกค้า (ทุกคน)', icon: Users });
+  }
+
+  if (loading) return <div className="p-10 text-center"><Loader2 className="animate-spin mx-auto"/></div>;
 
   return (
     <div className="space-y-4 md:space-y-6 pb-10 animate-fade-in font-sans">
@@ -22,14 +51,14 @@ export default function HistoryMain() {
                 <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
                     <ClipboardList size={24} />
                 </div>
-                ประวัติโพยของฉัน
+                ประวัติโพย
             </h2>
             <p className="text-sm text-slate-500 mt-1 ml-12">ตรวจสอบรายการแทงและผลรางวัลย้อนหลัง</p>
         </div>
         
         {/* --- Tabs Navigation --- */}
-        <div className="px-4 py-3 bg-slate-50/50 border-b border-gray-100">
-            <div className="flex gap-2 p-1 bg-gray-200/50 rounded-xl w-fit">
+        <div className="px-4 py-3 bg-slate-50/50 border-b border-gray-100 overflow-x-auto">
+            <div className="flex gap-2 p-1 bg-gray-200/50 rounded-xl w-fit min-w-max">
                 {tabs.map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -55,18 +84,23 @@ export default function HistoryMain() {
       </div>
 
       {/* --- Content Area --- */}
-      {/* ไม่ต้องมี Card ครอบซ้อนแล้ว เพราะ Component ลูก (History.tsx) มี Card ของตัวเอง */}
       <div className="min-h-125 relative">
-            {/* Tab 1: ไม่แยกประเภท (Outside) */}
             {activeTab === 'outside' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <History_outside />
                 </div>
             )}
-            {/* Tab 2: แยกประเภท (Inside) */}
+            
             {activeTab === 'inside' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <History />
+                </div>
+            )}
+
+            {/* ✅ แสดง ShopHistory เฉพาะเมื่อเป็น Admin เท่านั้น */}
+            {activeTab === 'shop' && isAdmin && (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <ShopHistory />
                 </div>
             )}
       </div>
