@@ -86,7 +86,16 @@ export default function ShopHistory() {
       const res = await client.get(url);
       const newData = Array.isArray(res.data) ? res.data : (res.data.items || []);
       
-      setTickets(prev => isNewFilter ? newData : [...prev, ...newData]);
+      setTickets(prev => {
+          if (isNewFilter) return newData;
+          
+          // ✅ [แก้ตรงนี้] กรองข้อมูลที่ ID ซ้ำกับของเดิมออก ก่อนนำไปต่อท้าย
+          const existingIds = new Set(prev.map(t => t.id));
+          const uniqueNewData = newData.filter((t: any) => !existingIds.has(t.id));
+          
+          return [...prev, ...uniqueNewData];
+      });
+      
       setHasMore(newData.length === itemsPerPage);
 
     } catch (err) { 

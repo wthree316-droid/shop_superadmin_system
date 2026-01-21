@@ -21,7 +21,11 @@ export default function MemberResults() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const dateStr = selectedDate.toISOString().split('T')[0];
+      // ✅ แก้ไข: แปลงวันที่เป็น YYYY-MM-DD แบบ Local Time (แก้ปัญหา Timezone)
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
 
       const [resLottos, resCats, resResults] = await Promise.all([
         client.get('/play/lottos'),
@@ -41,7 +45,7 @@ export default function MemberResults() {
     }
   };
 
-  // --- Logic การจัดกลุ่มและเรียงลำดับ (ปรับปรุงใหม่) ---
+  // --- Logic การจัดกลุ่มและเรียงลำดับ ---
   const groupedLottos = useMemo(() => {
     if (lottos.length === 0) return [];
 
@@ -52,8 +56,7 @@ export default function MemberResults() {
     const noCatKey = 'uncategorized';
 
     lottos.forEach(lotto => {
-        // ✅ 1. กรองเฉพาะหวยที่มีผลรางวัลแล้วเท่านั้น (ในวันที่เลือก)
-        // ถ้าไม่มีผลใน resultsMap ให้ข้ามไปเลย (ไม่แสดง)
+        // 1. กรองเฉพาะหวยที่มีผลรางวัลแล้วเท่านั้น
         if (!resultsMap[lotto.id]) return;
 
         const catId = lotto.category || noCatKey;
@@ -69,17 +72,14 @@ export default function MemberResults() {
     // 2. แปลงเป็น Array และเรียงลำดับ
     return Object.values(groups)
         .map((group: any) => {
-            // ✅ 3. เรียงหวยในกลุ่มจาก "ล่าสุด -> เก่าสุด" (เวลาปิดดึกสุดอยู่บน)
+            // 3. เรียงหวยในกลุ่มจาก "ล่าสุด -> เก่าสุด"
             group.items.sort((a: any, b: any) => {
                 if (!a.close_time) return 1;
                 if (!b.close_time) return -1;
-                // สลับ a กับ b เพื่อเรียงจากมากไปน้อย (Descending)
                 return b.close_time.localeCompare(a.close_time);
             });
             return group;
-        })
-        // (Optional) เรียงกลุ่มหมวดหมู่ถ้าต้องการ แต่ตอนนี้ปล่อยตามลำดับที่เจอ
-        ; 
+        }); 
   }, [lottos, categories, resultsMap]);
 
   // --- Helpers ---
@@ -178,7 +178,6 @@ export default function MemberResults() {
                                       <tbody className="divide-y divide-slate-100 font-mono font-medium text-slate-600">
                                           {group.items.map((lotto: any) => {
                                               const result = resultsMap[lotto.id];
-                                              // (Logic นี้จริง ๆ ไม่จำเป็นแล้วเพราะเรากรองตั้งแต่แรก แต่ใส่ไว้เพื่อ type safety)
                                               if (!result) return null; 
 
                                               const top3 = result.top_3;
