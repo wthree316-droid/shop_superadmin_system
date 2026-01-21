@@ -1,5 +1,3 @@
-// src/pages/admin/Dashboard.tsx
-
 import { useEffect, useState } from 'react';
 import client from '../../api/client';
 import { 
@@ -9,11 +7,11 @@ import {
   BarChart3,
   Calendar as CalendarIcon,
   RefreshCw,
-  ArrowRight // เพิ่มไอคอนลูกศร
+  ArrowRight,
+  Clock
 } from 'lucide-react';
 
 export default function Dashboard() {
-  // ✅ 1. แยก State เป็น Start และ End
   const getToday = () => {
      const d = new Date();
      const offset = d.getTimezoneOffset();
@@ -28,6 +26,7 @@ export default function Dashboard() {
     total_sales: 0,
     total_tickets: 0,
     total_payout: 0,
+    total_pending: 0,
     profit: 0
   });
   
@@ -38,7 +37,6 @@ export default function Dashboard() {
     fetchStats();
     fetchTopNumbers();
     
-    // Auto Refresh ถ้าดูวันปัจจุบัน
     const interval = setInterval(() => {
         const today = getToday();
         if (startDate === today && endDate === today) {
@@ -47,12 +45,11 @@ export default function Dashboard() {
         }
     }, 60000);
     return () => clearInterval(interval);
-  }, [startDate, endDate]); // ✅ Reload เมื่อเปลี่ยนวันเริ่มหรือจบ
+  }, [startDate, endDate]);
 
   const fetchStats = async () => {
     setLoading(true);
     try {
-      // ✅ เรียก API ใหม่ที่รับช่วงเวลา
       const res = await client.get(`/play/stats/range?start_date=${startDate}&end_date=${endDate}`);
       setStats(res.data);
     } catch (err) { 
@@ -64,21 +61,25 @@ export default function Dashboard() {
 
   const fetchTopNumbers = async () => {
     try {
-        // ✅ ส่งช่วงเวลาไปหา Top Numbers ด้วย
         const res = await client.get(`/play/stats/top_numbers?start_date=${startDate}&end_date=${endDate}`);
         setTopNumbers(res.data);
     } catch(err) { console.error(err); }
   };
 
-  // Helper Card Component (เหมือนเดิม)
+  // ✅ ปรับปรุง StatCard: จัด Layout ใหม่ให้ยืดหดได้ดีขึ้น
   const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between transition-all hover:shadow-md">
-        <div>
-            <p className="text-gray-500 text-sm font-medium mb-1">{title}</p>
-            <h3 className={`text-2xl font-black ${color}`}>{loading ? '...' : value}</h3>
-            {subValue && <p className="text-xs text-gray-400 mt-1">{subValue}</p>}
+    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-3 transition-all hover:shadow-md min-h-27.5">
+        {/* ส่วนข้อความ (ให้ยืดเต็มที่แต่ไม่ล้น) */}
+        <div className="flex-1 min-w-0">
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1 truncate">{title}</p>
+            <h3 className={`text-xl xl:text-2xl font-black truncate ${color}`} title={String(value)}>
+                {loading ? '...' : value}
+            </h3>
+            {subValue && <p className="text-xs text-slate-400 mt-1 truncate">{subValue}</p>}
         </div>
-        <div className={`p-4 rounded-xl ${color.replace('text-', 'bg-').replace('600', '50')} ${color}`}>
+        
+        {/* ส่วนไอคอน (ห้ามโดนบีบ) */}
+        <div className={`shrink-0 p-3.5 rounded-xl ${color.replace('text-', 'bg-').replace('600', '50').replace('500', '50')} ${color}`}>
             <Icon size={24} />
         </div>
     </div>
@@ -87,14 +88,13 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 animate-fade-in pb-10">
       
-      {/* --- Header & Date Picker Range --- */}
+      {/* --- Header & Date Picker --- */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
           <div>
             <h1 className="text-2xl font-black text-slate-800 tracking-tight">แดชบอร์ดภาพรวม</h1>
             <p className="text-slate-500 text-sm">สรุปยอดขายและกำไรตามช่วงเวลา</p>
           </div>
           
-          {/* ✅ ส่วนเลือกวันที่แบบช่วง (Range) */}
           <div className="flex flex-col sm:flex-row items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
               <div className="flex items-center gap-2 w-full sm:w-auto">
                   <div className="relative w-full sm:w-auto">
@@ -113,7 +113,6 @@ export default function Dashboard() {
                         type="date" 
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
-                        // กันไม่ให้เลือกวันจบ น้อยกว่าวันเริ่ม
                         min={startDate}
                         className="w-full sm:w-auto pl-10 pr-2 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
@@ -129,20 +128,29 @@ export default function Dashboard() {
           </div>
       </div>
 
-      {/* --- Stats Grid --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ✅ ปรับปรุง Grid Breakpoints:
+         - sm (มือถือแนวนอน): 2 คอลัมน์
+         - lg (Laptop เล็ก): 3 คอลัมน์ (จะได้ไม่เบียด)
+         - xl (จอใหญ่): 5 คอลัมน์ (เต็มจอสวยๆ)
+      */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatCard 
             title="ยอดขายทั้งหมด" 
             value={`${Number(stats.total_sales).toLocaleString()} ฿`} 
             icon={Banknote} 
             color="text-indigo-600" 
-            subValue={`${stats.total_tickets.toLocaleString()} บิล`}
         />
         <StatCard 
             title="ยอดจ่ายรางวัล" 
             value={`${Number(stats.total_payout).toLocaleString()} ฿`} 
             icon={Ticket} 
             color="text-red-500"
+        />
+        <StatCard 
+            title="รอผลรางวัล" 
+            value={`${Number(stats.total_pending).toLocaleString()} ฿`} 
+            icon={Clock} 
+            color="text-orange-500" 
         />
         <StatCard 
             title="กำไรสุทธิ" 

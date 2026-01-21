@@ -21,7 +21,7 @@ export default function HistoryOutside() {
   // --- Infinite Scroll States (✅ 2. Logic เลื่อนดูเรื่อยๆ) ---
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [itemsPerPage] = useState(20); // โหลดทีละ 20 รายการ
+  const [itemsPerPage] = useState(30); // โหลดทีละ 20 รายการ
 
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
 
@@ -58,8 +58,11 @@ export default function HistoryOutside() {
   const fetchHistory = async (page: number, isNewFilter: boolean) => {
     setLoading(true);
     try {
-      // ✅ ส่ง start_date และ end_date
-      let url = `/play/history?start_date=${startDate}&end_date=${endDate}&page=${page}&limit=${itemsPerPage}`;
+      // ✅ 1. คำนวณ skip
+      const skip = (page - 1) * itemsPerPage;
+
+      // ✅ 2. เปลี่ยน page เป็น skip
+      let url = `/play/history?start_date=${startDate}&end_date=${endDate}&skip=${skip}&limit=${itemsPerPage}`;
       
       if (filterStatus !== 'ALL') {
           url += `&status=${filterStatus}`; 
@@ -74,11 +77,15 @@ export default function HistoryOutside() {
           newData = res.data.items || [];
       }
 
-      if (isNewFilter) {
-          setTickets(newData);
-      } else {
-          setTickets(prev => [...prev, ...newData]);
-      }
+      setTickets(prev => {
+          if (isNewFilter) return newData;
+          
+          // ✅ 3. กรองข้อมูลซ้ำ
+          const existingIds = new Set(prev.map(t => t.id));
+          const uniqueNewData = newData.filter((t: any) => !existingIds.has(t.id));
+          
+          return [...prev, ...uniqueNewData];
+      });
 
       // เช็คว่าหมดหรือยัง
       setHasMore(newData.length === itemsPerPage);

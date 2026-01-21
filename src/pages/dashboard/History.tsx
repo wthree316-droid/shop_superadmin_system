@@ -3,7 +3,7 @@ import client from '../../api/client';
 import { 
   X, RefreshCw, Eye, Layers, Ban,
   TrendingUp, Banknote, ArrowDown, ArrowRight, Loader2,
-  RotateCcw // ✅ 1. เพิ่ม Import ไอคอน
+  RotateCcw
 } from 'lucide-react';
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers';
 
@@ -15,7 +15,7 @@ export default function History() {
   const [loading, setLoading] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   
-  // --- Filter States ---
+  // --- Filter States (✅ ใช้ Date Range) ---
   const getToday = () => new Date().toISOString().split('T')[0];
   const [startDate, setStartDate] = useState(getToday());
   const [endDate, setEndDate] = useState(getToday());
@@ -25,7 +25,7 @@ export default function History() {
   // --- Infinite Scroll States ---
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [itemsPerPage] = useState(50);
+  const [itemsPerPage] = useState(30); 
 
   // --- Observer for Infinite Scroll ---
   const observer = useRef<IntersectionObserver | null>(null);
@@ -40,7 +40,7 @@ export default function History() {
       if (node) observer.current.observe(node);
   }, [loading, hasMore]);
 
-  // --- 1. Load Master Data (Lottos & Categories) Once ---
+  // --- 1. Load Master Data Once ---
   useEffect(() => {
       const fetchMasterData = async () => {
           try {
@@ -81,17 +81,26 @@ export default function History() {
   const fetchHistory = async (page: number, isNewFilter: boolean) => {
     setLoading(true);
     try {
-      const url = `/play/history?start_date=${startDate}&end_date=${endDate}&page=${page}&limit=${itemsPerPage}`;
+      // ✅ 1. คำนวณ skip
+      const skip = (page - 1) * itemsPerPage;
+
+      // ✅ 2. ส่งแบบ start_date/end_date และ skip
+      const url = `/play/history?start_date=${startDate}&end_date=${endDate}&skip=${skip}&limit=${itemsPerPage}`;
       const res = await client.get(url);
       
       const newData = Array.isArray(res.data) ? res.data : (res.data.items || []);
       
-      if (isNewFilter) {
-          setTickets(newData);
-      } else {
-          setTickets(prev => [...prev, ...newData]);
-      }
+      setTickets(prev => {
+          if (isNewFilter) return newData;
+          
+          // ✅ 3. กรองข้อมูลซ้ำ
+          const existingIds = new Set(prev.map(t => t.id));
+          const uniqueNewData = newData.filter((t: any) => !existingIds.has(t.id));
+          
+          return [...prev, ...uniqueNewData];
+      });
       
+      // ถ้าได้ข้อมูลมาน้อยกว่า limit แสดงว่าหมดแล้ว
       setHasMore(newData.length === itemsPerPage);
 
     } catch (err) { 
@@ -173,14 +182,12 @@ export default function History() {
               let totalBet = 0;
               let totalWin = 0;
               let validTicketsCount = 0;
-              let totalCancelled = 0; // ✅ 2. ตัวแปรเก็บยอดบิลยกเลิก
+              let totalCancelled = 0;
 
               lottoGroup.items.forEach((t: any) => {
                   if (t.status === 'CANCELLED') {
-                      // ถ้ายกเลิก ให้บวกเข้า totalCancelled แต่ไม่รวมในยอดแทง
                       totalCancelled += Number(t.total_amount);
                   } else {
-                      // ถ้าไม่ยกเลิก คิดยอดแทงและรางวัลปกติ
                       totalBet += Number(t.total_amount);
                       if (t.status === 'WIN') {
                           totalWin += calculateWinAmount(t);
@@ -189,7 +196,6 @@ export default function History() {
                   }
               });
 
-              // กำไร/ขาดทุน (มุมมองลูกค้า: ได้ - เสีย)
               const netProfit = totalWin - totalBet;
 
               return {
@@ -200,7 +206,7 @@ export default function History() {
                       totalBet,
                       totalWin,
                       netProfit,
-                      totalCancelled // ส่งค่าออกไปแสดงผล
+                      totalCancelled
                   }
               };
           });
@@ -223,6 +229,7 @@ export default function History() {
                   <Layers className="text-blue-600" /> ประวัติ (แยกตามหวย)
               </h1>
               
+              {/* Date Picker */}
               <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
                   <div className="relative">
                       <input 
@@ -320,14 +327,18 @@ export default function History() {
                                                             <button onClick={() => handleCancel(t.id)} className="text-red-400 hover:text-red-600"><Ban size={16} /></button>
                                                         )}
                                                     </td>
-                                                    <td className="p-4 text-xs text-slate-600">{t.user?.username}</td>
+                                                    <td className="p-4 text-xs text-slate-600 text-center">
+                                                        <div className="font-bold bg-slate-100 px-2 py-0.5 rounded-full inline-block border border-slate-200">
+                                                            {t.user?.username}
+                                                        </div>
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
                                 </div>
 
-                                {/* ✅ 3. Footer สรุปยอดของหวยนี้ (เพิ่มยอดยกเลิก) */}
+                                {/* Footer สรุปยอดของหวยนี้ */}
                                 <div className="bg-slate-50 border-t border-gray-200 p-3 flex flex-wrap gap-4 justify-end items-center text-sm">
                                     
                                     {/* ยอดยกเลิก */}

@@ -28,7 +28,7 @@ export default function ShopHistory() {
   // --- Infinite Scroll States ---
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [itemsPerPage] = useState(50); 
+  const [itemsPerPage] = useState(30); 
   
   // --- Modal State ---
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
@@ -80,7 +80,14 @@ export default function ShopHistory() {
   const fetchHistory = async (page: number, isNewFilter: boolean) => {
     setLoading(true);
     try {
-      let url = `/play/shop_history?start_date=${startDate}&end_date=${endDate}&page=${page}&limit=${itemsPerPage}`;
+      // ✅ 1. คำนวณ skip จาก page
+      // สูตร: skip = (หน้าปัจจุบัน - 1) * จำนวนต่อหน้า
+      // ตัวอย่าง: หน้า 1 (skip 0), หน้า 2 (skip 20), หน้า 3 (skip 40)
+      const skip = (page - 1) * itemsPerPage;
+
+      // ✅ 2. เปลี่ยน parameter ใน URL จาก page เป็น skip
+      let url = `/play/shop_history?start_date=${startDate}&end_date=${endDate}&skip=${skip}&limit=${itemsPerPage}`;
+      
       if (selectedUser) url += `&user_id=${selectedUser}`;
       
       const res = await client.get(url);
@@ -89,13 +96,14 @@ export default function ShopHistory() {
       setTickets(prev => {
           if (isNewFilter) return newData;
           
-          // ✅ [แก้ตรงนี้] กรองข้อมูลที่ ID ซ้ำกับของเดิมออก ก่อนนำไปต่อท้าย
+          // กรองข้อมูลที่ ID ซ้ำออก (Logic เดิมที่ดีอยู่แล้ว)
           const existingIds = new Set(prev.map(t => t.id));
           const uniqueNewData = newData.filter((t: any) => !existingIds.has(t.id));
           
           return [...prev, ...uniqueNewData];
       });
       
+      // ถ้าข้อมูลที่ได้มา น้อยกว่า limit แสดงว่าหมดแล้ว
       setHasMore(newData.length === itemsPerPage);
 
     } catch (err) { 

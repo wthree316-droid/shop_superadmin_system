@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import client from '../../api/client';
 import { 
     Store, Users, Server, ShieldCheck, 
-    Trash2, AlertTriangle, 
-    ArrowRight, RefreshCw // ✅ เพิ่มไอคอน
+    Trash2, AlertTriangle, Loader2,
+    ArrowRight, RefreshCw,
+    Banknote, Ticket, Clock, TrendingUp, BarChart3, RotateCcw
 } from 'lucide-react';
 
 export default function SuperDashboard() {
-  // ✅ 1. เพิ่ม State วันที่ (Default = วันนี้)
   const getToday = () => {
      const d = new Date();
      const offset = d.getTimezoneOffset();
@@ -19,24 +19,35 @@ export default function SuperDashboard() {
   const [endDate, setEndDate] = useState(getToday());
   const [loading, setLoading] = useState(false);
 
-  const [stats, setStats] = useState({
+  // Stats ระบบ (จำนวนร้านค้า / ผู้ใช้งาน)
+  const [systemStats, setSystemStats] = useState({
     total_shops: 0,
     total_users: 0,
     active_shops: 0,
     total_tickets: 0
   });
 
+  // Stats การเงินรวม (ยอดขาย / กำไร)
+  const [financialStats, setFinancialStats] = useState({
+    total_sales: 0,
+    total_tickets: 0,
+    total_payout: 0,
+    total_pending: 0,
+    profit: 0
+  });
+
   const [shopStats, setShopStats] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchStats();
+    fetchSystemStats();
+    fetchFinancialStats();
     fetchShopPerformance();
-  }, [startDate, endDate]); // ✅ Reload เมื่อเปลี่ยนวัน
+  }, [startDate, endDate]); 
 
-  const fetchStats = async () => {
+  const fetchSystemStats = async () => {
     try {
         const res = await client.get('/system/stats'); 
-        setStats({
+        setSystemStats({
             total_shops: res.data.total_shops,
             active_shops: res.data.active_shops,
             total_users: res.data.total_users, 
@@ -45,16 +56,24 @@ export default function SuperDashboard() {
     } catch(err) { console.error(err); }
   };
 
+  const fetchFinancialStats = async () => {
+      setLoading(true);
+      try {
+          const res = await client.get(`/play/stats/range?start_date=${startDate}&end_date=${endDate}`);
+          setFinancialStats(res.data);
+      } catch (err) {
+          console.error(err);
+      } finally {
+          setLoading(false);
+      }
+  };
+
   const fetchShopPerformance = async () => {
-    setLoading(true);
     try {
-        // ✅ ส่งวันที่ไปกับ API
         const res = await client.get(`/shops/stats/performance?start_date=${startDate}&end_date=${endDate}`);
         setShopStats(res.data);
     } catch (err) { 
         console.error(err); 
-    } finally {
-        setLoading(false);
     }
   };
 
@@ -67,110 +86,177 @@ export default function SuperDashboard() {
       try {
           await client.delete('/system/cleanup/global');
           alert('ล้างข้อมูลเรียบร้อย ระบบสะอาดเอี่ยม!');
-          fetchStats();
+          // โหลดข้อมูลใหม่ทั้งหมด
+          fetchSystemStats();
+          fetchFinancialStats();
           fetchShopPerformance();
       } catch (err) {
           alert('เกิดข้อผิดพลาดในการล้างข้อมูล');
       }
   };
 
+  // Component การ์ดแสดงผล
+  const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
+    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-3 transition-all hover:shadow-md min-h-27.5">
+        <div className="flex-1 min-w-0">
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1 truncate">{title}</p>
+            <h3 className={`text-xl xl:text-2xl font-black truncate ${color}`} title={String(value)}>
+                {loading ? '...' : value}
+            </h3>
+            {subValue && <p className="text-xs text-slate-400 mt-1 truncate">{subValue}</p>}
+        </div>
+        <div className={`shrink-0 p-3.5 rounded-xl ${color.replace('text-', 'bg-').replace('600', '50').replace('500', '50')} ${color}`}>
+            <Icon size={24} />
+        </div>
+    </div>
+  );
+
   return (
-    <div className="p-6 animate-fade-in text-slate-800 pb-20">
+    <div className="p-6 animate-fade-in text-slate-800 pb-24 space-y-8">
       
-      {/* --- Section 1: Overview Cards --- */}
-      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <Server className="text-purple-600" /> System Overview
-      </h1>
+      {/* --- Header & Filter --- */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+          <div>
+            <h1 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+                <Server className="text-purple-600" /> Super Dashboard
+            </h1>
+            <p className="text-sm text-slate-500">ภาพรวมระบบและยอดการเงินของทุกร้านค้า</p>
+          </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
-              <div className="p-4 bg-purple-100 text-purple-600 rounded-full"><Store size={32} /></div>
-              <div>
-                  <p className="text-sm text-slate-500">Total Shops</p>
-                  <h3 className="text-3xl font-bold text-slate-800">{stats.total_shops}</h3>
-                  <p className="text-xs text-green-600 font-bold">Active: {stats.active_shops}</p>
-              </div>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
-              <div className="p-4 bg-blue-100 text-blue-600 rounded-full"><Users size={32} /></div>
-              <div>
-                  <p className="text-sm text-slate-500">Total Users</p>
-                  <h3 className="text-3xl font-bold text-slate-800">{stats.total_users.toLocaleString()}</h3>
-                  <p className="text-xs text-slate-400">System wide</p>
-              </div>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
-              <div className="p-4 bg-green-100 text-green-600 rounded-full"><ShieldCheck size={32} /></div>
-              <div>
-                  <p className="text-sm text-slate-500">System Status</p>
-                  <h3 className="text-3xl font-bold text-green-600">Online</h3>
-                  <p className="text-xs text-slate-400">Server is running</p>
-              </div>
-          </div>
-      </div>
-      
-      {/* --- Section 2: Shop Performance Table --- */}
-      <div className="mt-8 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        
-        {/* ✅ Header Table + Date Picker */}
-        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <Store className="text-amber-500" /> สรุปยอดขายรายร้าน (ช่วงเวลา)
-                </h3>
-                {/* แสดงวันที่ที่เลือกอยู่ */}
-                <p className="text-xs text-slate-500 mt-1">
-                    ข้อมูลวันที่ {new Date(startDate).toLocaleDateString('th-TH')} ถึง {new Date(endDate).toLocaleDateString('th-TH')}
-                </p>
-            </div>
-
-            {/* ✅ Input เลือกวันที่ */}
-            <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+          <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
                 <div className="relative">
                     <input 
                         type="date" 
                         value={startDate}
                         onChange={(e) => setStartDate(e.target.value)}
-                        className="pl-3 pr-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500"
+                        className="pl-2 pr-1 py-1 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
                     />
                 </div>
-                <span className="text-slate-400"><ArrowRight size={14}/></span>
+                <span className="text-slate-400"><ArrowRight size={16}/></span>
                 <div className="relative">
                     <input 
                         type="date" 
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
                         min={startDate}
-                        className="pl-3 pr-2 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500"
+                        className="pl-2 pr-1 py-1 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
                     />
                 </div>
                 <button 
-                    onClick={() => { fetchStats(); fetchShopPerformance(); }}
-                    className="p-1.5 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors shadow-sm"
+                    onClick={() => { fetchFinancialStats(); fetchShopPerformance(); }} 
+                    className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
                 >
-                    <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                 </button>
-            </div>
+          </div>
+      </div>
+
+      {/* --- Section 1: Financial Overview (Dynamic) --- */}
+      <div>
+          <h3 className="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
+              <Banknote className="text-blue-500"/> สรุปยอดเงินรวม (ทุกร้านค้า)
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <StatCard 
+                title="ยอดขายรวม" 
+                value={`${Number(financialStats.total_sales).toLocaleString()} ฿`} 
+                icon={Banknote} 
+                color="text-indigo-600" 
+            />
+            <StatCard 
+                title="จ่ายรางวัล" 
+                value={`${Number(financialStats.total_payout).toLocaleString()} ฿`} 
+                icon={Ticket} 
+                color="text-red-500"
+            />
+            <StatCard 
+                title="รอผลรางวัล" 
+                value={`${Number(financialStats.total_pending).toLocaleString()} ฿`} 
+                icon={Clock} 
+                color="text-orange-500" 
+            />
+            <StatCard 
+                title="กำไรสุทธิรวม" 
+                value={`${Number(financialStats.profit).toLocaleString()} ฿`} 
+                icon={TrendingUp} 
+                color={financialStats.profit >= 0 ? "text-emerald-600" : "text-red-600"} 
+            />
+            <StatCard 
+                title="จำนวนบิล" 
+                value={financialStats.total_tickets.toLocaleString()} 
+                icon={BarChart3} 
+                color="text-blue-500"
+            />
+          </div>
+      </div>
+
+      {/* --- Section 2: System Health (Static) --- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
+              <div className="p-4 bg-purple-100 text-purple-600 rounded-2xl"><Store size={32} /></div>
+              <div>
+                  <p className="text-sm text-slate-500 font-bold uppercase">Total Shops</p>
+                  <h3 className="text-3xl font-black text-slate-800">{systemStats.total_shops}</h3>
+                  <p className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded-full inline-block mt-1">Active: {systemStats.active_shops}</p>
+              </div>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
+              <div className="p-4 bg-blue-100 text-blue-600 rounded-2xl"><Users size={32} /></div>
+              <div>
+                  <p className="text-sm text-slate-500 font-bold uppercase">Total Users</p>
+                  <h3 className="text-3xl font-black text-slate-800">{systemStats.total_users.toLocaleString()}</h3>
+                  <p className="text-xs text-slate-400 mt-1">All members</p>
+              </div>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
+              <div className="p-4 bg-green-100 text-green-600 rounded-2xl"><ShieldCheck size={32} /></div>
+              <div>
+                  <p className="text-sm text-slate-500 font-bold uppercase">System Status</p>
+                  <h3 className="text-3xl font-black text-green-600">Online</h3>
+                  <p className="text-xs text-slate-400 mt-1">Server running</p>
+              </div>
+          </div>
+      </div>
+      
+      {/* --- Section 3: Shop Performance Table --- */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-6 border-b border-slate-100">
+            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Store className="text-amber-500" /> อันดับยอดขายรายร้าน
+            </h3>
         </div>
         
-        {/* Table Content (เหมือนเดิม) */}
         <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-xs">
                     <tr>
                         <th className="p-4 pl-6">ร้านค้า</th>
                         <th className="p-4 text-right">ยอดขาย</th>
+                        
+                        {/* ✅ แก้ไข: ใช้ div ครอบเนื้อหาข้างใน th แทนการใส่ flex ที่ th */}
+                        <th className="p-4 text-right text-orange-500">
+                            <div className="flex items-center justify-end gap-1">
+                                <Clock size={14}/> รอผล
+                            </div>
+                        </th>
+                        
+                        <th className="p-4 text-right text-slate-400">
+                            <div className="flex items-center justify-end gap-1">
+                                <RotateCcw size={14}/> ยกเลิก/คืน
+                            </div>
+                        </th> 
+                        
                         <th className="p-4 text-right">จ่ายรางวัล</th>
-                        <th className="p-4 text-right">กำไร/ขาดทุน</th>
+                        <th className="p-4 text-right">กำไรสุทธิ</th>
                         <th className="p-4 text-center">สถานะ</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                     {loading ? (
-                        <tr><td colSpan={5} className="p-10 text-center text-slate-400">กำลังโหลดข้อมูล...</td></tr>
+                        <tr><td colSpan={7} className="p-10 text-center text-slate-400"><Loader2 className="animate-spin inline mr-2"/> กำลังโหลดข้อมูล...</td></tr>
                     ) : shopStats.length === 0 ? (
                         <tr>
-                            <td colSpan={5} className="p-8 text-center text-slate-400 italic">
+                            <td colSpan={7} className="p-8 text-center text-slate-400 italic">
                                 ยังไม่มีข้อมูลการขายในช่วงเวลานี้
                             </td>
                         </tr>
@@ -196,6 +282,14 @@ export default function SuperDashboard() {
                                 </td>
                                 <td className="p-4 text-right font-bold text-blue-600 text-base">
                                     {Number(shop.sales).toLocaleString()}
+                                </td>
+                                {/* ✅ ยอดรอผล */}
+                                <td className="p-4 text-right text-orange-500 font-medium">
+                                    {Number(shop.pending) > 0 ? Number(shop.pending).toLocaleString() : '-'}
+                                </td>
+                                {/* ✅ ยอดยกเลิก */}
+                                <td className="p-4 text-right text-slate-400 font-medium">
+                                    {Number(shop.cancelled) > 0 ? Number(shop.cancelled).toLocaleString() : '-'}
                                 </td>
                                 <td className="p-4 text-right text-red-500 font-medium">
                                     {Number(shop.payout) > 0 ? Number(shop.payout).toLocaleString() : '-'}

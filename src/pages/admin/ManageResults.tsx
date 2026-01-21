@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react'; // ✅ มี useRef อยู่แล้ว
 import client from '../../api/client';
 import { 
   X, Trophy, Calendar, 
@@ -8,37 +8,66 @@ import {
 import toast from 'react-hot-toast';
 
 export default function ManageResults() {
+  // ... (State เดิมทั้งหมด) ...
   const [lottos, setLottos] = useState<any[]>([]);
   const [resultsMap, setResultsMap] = useState<any>({}); 
   const [selectedLotto, setSelectedLotto] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  // State สำหรับ Modal
   const [top3, setTop3] = useState('');
   const [bottom2, setBottom2] = useState('');
-  
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [filterDate, setFilterDate] = useState('today'); 
+  
+  const [currentDate, setCurrentDate] = useState(new Date());
 
-  // Refs สำหรับ Auto Focus
+  // Refs
   const topInputRef = useRef<HTMLInputElement>(null);
   const bottomInputRef = useRef<HTMLInputElement>(null);
+  
+  // ✅ [เพิ่ม] Ref สำหรับ date input เพื่อสั่งเปิดปฏิทิน
+  const datePickerRef = useRef<HTMLInputElement>(null);
+
+  // ... (Helper Functions เดิม: getTodayDate, getYesterdayDate, isSameDay, getDateParams, getTodayStr) ...
+  const getTodayDate = () => new Date();
+  
+  const getYesterdayDate = () => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return d;
+  };
+
+  const isSameDay = (d1: Date, d2: Date) => {
+      return d1.getFullYear() === d2.getFullYear() &&
+             d1.getMonth() === d2.getMonth() &&
+             d1.getDate() === d2.getDate();
+  };
 
   const getDateParams = () => {
-      const d = new Date();
-      if (filterDate === 'yesterday') d.setDate(d.getDate() - 1);
+      const d = currentDate;
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const apiDate = `${year}-${month}-${day}`;
+
       return {
           display: d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' }),
           full_display: d.toLocaleDateString('th-TH', { weekday:'long', day: '2-digit', month: 'long', year: 'numeric' }),
-          api: d.toISOString().split('T')[0] 
+          api: apiDate
       };
+  };
+
+  const getTodayStr = () => {
+      const d = new Date();
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
   };
 
   useEffect(() => {
     fetchData();
-  }, [filterDate]);
+  }, [currentDate]);
 
-  // Focus Input เมื่อเปิด Modal
   useEffect(() => {
       if (selectedLotto) {
           setTimeout(() => topInputRef.current?.focus(), 100);
@@ -54,7 +83,6 @@ export default function ManageResults() {
             client.get(`/reward/daily?date=${dateStr}`)
         ]);
         
-        // ✅ 1. เรียงลำดับหวยตามเวลาปิด (เช้า -> ดึก)
         const sortedLottos = resLottos.data.sort((a: any, b: any) => {
             if (!a.close_time) return 1;
             if (!b.close_time) return -1;
@@ -83,7 +111,6 @@ export default function ManageResults() {
     }
   };
 
-  // ✅ Auto Focus Logic: พิมพ์ครบ 3 ตัวบน เด้งไป 2 ตัวล่าง
   const handleTopChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 3);
       setTop3(val);
@@ -124,6 +151,9 @@ export default function ManageResults() {
     }
   };
 
+  const isToday = isSameDay(currentDate, getTodayDate());
+  const isYesterday = isSameDay(currentDate, getYesterdayDate());
+
   return (
     <div className="animate-fade-in p-4 md:p-8 max-w-7xl mx-auto pb-24">
       
@@ -141,32 +171,64 @@ export default function ManageResults() {
            </p>
         </div>
 
-        {/* Date Filter Toggle */}
-        <div className="bg-slate-100 p-1 rounded-xl flex items-center w-full lg:w-auto shadow-inner">
-            <button 
-                onClick={() => setFilterDate('today')}
-                className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                    filterDate === 'today' 
-                    ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' 
-                    : 'text-slate-400 hover:text-slate-600'
-                }`}
-            >
-                วันนี้
-            </button>
-            <button 
-                onClick={() => setFilterDate('yesterday')}
-                className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                    filterDate === 'yesterday' 
-                    ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' 
-                    : 'text-slate-400 hover:text-slate-600'
-                }`}
-            >
-                เมื่อวาน
-            </button>
+        {/* ✅ Date Filter Toggle + Calendar */}
+        <div className="flex items-center gap-2 w-full lg:w-auto">
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center flex-1 lg:flex-none shadow-inner">
+                <button 
+                    onClick={() => setCurrentDate(getTodayDate())}
+                    className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                        isToday
+                        ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' 
+                        : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                >
+                    วันนี้
+                </button>
+                <button 
+                    onClick={() => setCurrentDate(getYesterdayDate())}
+                    className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                        isYesterday
+                        ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' 
+                        : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                >
+                    เมื่อวาน
+                </button>
+            </div>
+
+            {/* ✅ แก้ไขปุ่มปฏิทิน: กดตรงไหนก็ติดแน่นอน */}
+            <div className="relative group">
+                <div 
+                    // 1. เพิ่ม onClick ให้เรียก showPicker()
+                    onClick={() => datePickerRef.current?.showPicker()} 
+                    className={`p-3 rounded-xl transition-all cursor-pointer shadow-sm border flex items-center justify-center ${
+                        !isToday && !isYesterday 
+                        ? 'bg-amber-100 text-amber-600 border-amber-200 ring-2 ring-amber-100' 
+                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                    }`}
+                >
+                    <Calendar size={20} />
+                </div>
+                
+                <input
+                    ref={datePickerRef} // 2. ผูก Ref
+                    type="date"
+                    // 3. ซ่อน Input ไว้ข้างหลัง (z-index ติดลบ) เพื่อไม่ให้ขวางการกด แต่ยังทำงานได้
+                    className="absolute inset-0 w-full h-full opacity-0 z-[-1]" 
+                    value={getDateParams().api} 
+                    max={getTodayStr()}   
+                    onChange={(e) => {
+                        if(e.target.value) {
+                             const [y, m, d] = e.target.value.split('-');
+                             setCurrentDate(new Date(+y, +m - 1, +d));
+                        }
+                    }}
+                />
+            </div>
         </div>
       </div>
 
-      {/* --- Loading State --- */}
+      {/* ... (ส่วนแสดงผลตาราง/Modal เหมือนเดิมทุกอย่าง) ... */}
       {isLoading ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-3">
               <Loader2 className="animate-spin text-amber-500" size={40} />
@@ -174,7 +236,6 @@ export default function ManageResults() {
           </div>
       ) : (
         <>
-            {/* --- Desktop Table View --- */}
             <div className="hidden lg:block bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
                 <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-xs tracking-wider">
@@ -259,18 +320,16 @@ export default function ManageResults() {
                 {lottos.length === 0 && (
                     <div className="p-12 text-center text-slate-400 flex flex-col items-center">
                         <AlertCircle size={48} className="mb-4 opacity-20"/>
-                        <p>ไม่มีรายการหวยสำหรับวันนี้</p>
+                        <p>ไม่มีรายการหวยสำหรับวันที่เลือก</p>
                     </div>
                 )}
             </div>
 
-            {/* --- Mobile Card View --- */}
             <div className="lg:hidden grid grid-cols-1 gap-4">
                 {lottos.map((lotto) => {
                     const result = resultsMap[lotto.id];
                     return (
                         <div key={lotto.id} className="bg-white rounded-3xl p-5 shadow-lg shadow-slate-200/50 border border-slate-100 relative overflow-hidden">
-                            {/* Header Card */}
                             <div className="flex justify-between items-start mb-5">
                                 <div className="flex items-center gap-4">
                                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-bold shadow-inner ${result ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>
@@ -288,7 +347,6 @@ export default function ManageResults() {
                                 </div>
                             </div>
 
-                            {/* Result Display */}
                             {result ? (
                                 <div className="bg-slate-50 rounded-2xl p-4 mb-5 border border-slate-200 flex justify-around items-center relative overflow-hidden">
                                     <div className="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
@@ -322,20 +380,16 @@ export default function ManageResults() {
                     );
                 })}
                 {lottos.length === 0 && (
-                    <div className="text-center py-12 text-slate-400">ยังไม่มีรายการหวย</div>
+                    <div className="text-center py-12 text-slate-400">ยังไม่มีรายการหวยสำหรับวันที่เลือก</div>
                 )}
             </div>
         </>
       )}
 
-      {/* --- Modal ใส่ผล (Clean Design) --- */}
       {selectedLotto && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-4xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 relative ring-1 ring-white/20">
-            
-            {/* Modal Header */}
             <div className={`p-8 pb-6 text-white text-center relative overflow-hidden ${resultsMap[selectedLotto.id] ? 'bg-slate-800' : 'bg-linear-to-br from-amber-400 to-orange-600'}`}>
-                {/* Decoration Circles */}
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
                 <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full blur-2xl -ml-10 -mb-10"></div>
                 
@@ -353,7 +407,6 @@ export default function ManageResults() {
             
             <form onSubmit={handleSubmitReward} className="p-6 pt-8 space-y-8 bg-white">
               <div className="space-y-6">
-                  {/* Input 3 บน */}
                   <div className="relative group">
                       <label className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider group-focus-within:text-amber-500 transition-colors">
                           เลข 3 ตัวบน
@@ -369,12 +422,10 @@ export default function ManageResults() {
                       />
                   </div>
 
-                  {/* Arrow Indicator */}
                   <div className="flex justify-center -my-2 text-slate-300">
                       <ArrowRight className="rotate-90" size={20}/>
                   </div>
 
-                  {/* Input 2 ล่าง */}
                   <div className="relative group">
                       <label className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider group-focus-within:text-amber-500 transition-colors">
                           เลข 2 ตัวล่าง
