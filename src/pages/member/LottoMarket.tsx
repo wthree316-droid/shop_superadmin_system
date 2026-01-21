@@ -22,6 +22,42 @@ const formatTimeRemaining = (diff: number) => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
+// ✅ [แก้ไข 1] Helper: เลือกรูปธงตามชื่อหมวดหมู่ (ใช้ FlagCDN)
+const getCategoryFlag = (label: string) => {
+  const name = label.toLowerCase();
+  
+  // Component ย่อยสำหรับแสดงธง
+  const Flag = ({ code }: { code: string }) => (
+    <img 
+      src={`https://flagcdn.com/w40/${code}.png`} 
+      srcSet={`https://flagcdn.com/w80/${code}.png 2x`}
+      alt={label}
+      className="w-5 h-auto rounded-xs shadow-sm object-cover mr-1.5" // ปรับสไตล์รูปธงตรงนี้
+    />
+  );
+
+  // เช็คคีย์เวิร์ดเพื่อเลือกธง (เพิ่มลดประเทศได้ตามต้องการ)
+  if (name.includes('ไทย') || name.includes('รัฐบาล')) return <Flag code="th" />;
+  if (name.includes('ฮานอย') || name.includes('เวียดนาม')) return <Flag code="vn" />;
+  if (name.includes('ลาว')) return <Flag code="la" />;
+  if (name.includes('มาเล')) return <Flag code="my" />;
+  if (name.includes('จีน')) return <Flag code="cn" />;
+  if (name.includes('เกาหลี')) return <Flag code="kr" />;
+  if (name.includes('ญี่ปุ่น') || name.includes('นิเคอิ')) return <Flag code="jp" />;
+  if (name.includes('ไต้หวัน')) return <Flag code="tw" />;
+  if (name.includes('สิงคโปร์')) return <Flag code="sg" />;
+  if (name.includes('อินเดีย')) return <Flag code="in" />;
+  if (name.includes('รัสเซีย')) return <Flag code="ru" />;
+  if (name.includes('เยอรมัน')) return <Flag code="de" />;
+  if (name.includes('อังกฤษ')) return <Flag code="gb" />;
+  if (name.includes('ดาวโจนส์') || name.includes('อเมริกา')) return <Flag code="us" />;
+  if (name.includes('ฮ่องกง')) return <Flag code="hk" />;
+  if (name.includes('อียิปต์')) return <Flag code="eg" />;
+  
+  // ถ้าไม่ใช่ธง (เช่น หวยหุ้นทั่วไป) ให้คืนค่า null เพื่อไปใช้จุดสีแทน
+  return null;
+};
+
 export default function LottoMarket() {
   const [lottos, setLottos] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -61,19 +97,13 @@ export default function LottoMarket() {
   // 3. ฟังก์ชันกรองหวย
   const getFilteredLottos = (categoryId: string) => {
     const filtered = lottos.filter(l => {
-      // เช็คว่าเป็นหมวดที่เลือก หรือเลือกทั้งหมด
-      // กรณีหวยเก่าที่ไม่มี category id (เป็น null/empty) อาจต้องจัดการเพิ่ม ถ้าต้องการ
       const catMatch = categoryId === 'ALL' || l.category === categoryId;
-      
       const searchMatch = l.name.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      // กรองเฉพาะที่เปิดใช้งาน
       const activeMatch = l.is_active;
-
       return catMatch && searchMatch && activeMatch;
     });
 
-    // เรียงลำดับตามเวลาปิด (ใกล้ปิดขึ้นก่อน)
+    // เรียงลำดับตามเวลาปิด
     return filtered.sort((a, b) => {
       const dateA = getCloseDate(a.close_time);
       const dateB = getCloseDate(b.close_time);
@@ -87,16 +117,13 @@ export default function LottoMarket() {
       const isOpenA = diffA > 0;
       const isOpenB = diffB > 0;
 
-      // อันที่เปิดอยู่ขึ้นก่อนอันที่ปิดแล้ว
       if (isOpenA && !isOpenB) return -1;
       if (!isOpenA && isOpenB) return 1; 
 
-      // ถ้าเปิดอยู่ทั้งคู่ เอาอันที่ใกล้ปิดสุดขึ้นก่อน
       if (isOpenA && isOpenB) {
         return diffA - diffB;
       }
 
-      // ถ้าปิดแล้วทั้งคู่ เรียงตามเวลาปิด (ดึกสุดลงล่าง)
       return dateA.getTime() - dateB.getTime();
     });
   };
@@ -104,10 +131,8 @@ export default function LottoMarket() {
   // --- LottoCard Component ---
   const LottoCard = ({ lotto }: { lotto: any }) => {
       const closeDate = getCloseDate(lotto.close_time);
-      
       const diff = closeDate ? closeDate.getTime() - now.getTime() : 0;
       const isClosed = diff <= 0;
-      
       const timeLeftStr = !isClosed ? formatTimeRemaining(diff) : null;
       const isCritical = !isClosed && diff < 30 * 60 * 1000; 
 
@@ -220,9 +245,16 @@ export default function LottoMarket() {
                 }
               `}
             >
-              {/* ใช้สีจาก DB เป็นจุดเล็กๆ นำหน้าแทน icon */}
-              {filter !== cat.id && cat.id !== 'ALL' && (
-                  <span className={`w-2 h-2 rounded-full ${cat.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
+              {/* ✅ [แก้ไข 2] แสดงธงแทนจุดสี ถ้ามีข้อมูลธง */}
+              {cat.id !== 'ALL' && (
+                  getCategoryFlag(cat.label) ? (
+                      getCategoryFlag(cat.label)
+                  ) : (
+                      // ถ้าไม่มีธง ให้ใช้จุดสีแบบเดิม (แสดงเฉพาะตอนที่ไม่ได้เลือก เพื่อไม่ให้สีตีกับพื้นหลังปุ่ม active)
+                      filter !== cat.id && (
+                          <span className={`w-2 h-2 rounded-full ${cat.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
+                      )
+                  )
               )}
               {cat.id === 'ALL' && <Layers size={14}/>}
               {cat.label}
@@ -235,7 +267,6 @@ export default function LottoMarket() {
       <div className="p-4">
         {filter === 'ALL' && searchTerm === '' ? (
             <div className="space-y-6">
-                {/* วนลูป Categories ที่ดึงมาจาก DB (ข้าม 'ALL' ตัวแรก) */}
                 {displayCategories.slice(1).map(cat => {
                     const catLottos = getFilteredLottos(cat.id);
                     if (catLottos.length === 0) return null;
@@ -243,8 +274,10 @@ export default function LottoMarket() {
                     return (
                         <div key={cat.id}>
                             <h2 className="text-sm font-bold text-gray-700 mb-3 pl-2 border-l-4 border-blue-500 flex items-center gap-2">
-                                {/* ใช้สีพื้นหลังตามหมวดหมู่มาแต่งหัวข้อ */}
-                                <span className={`w-2 h-2 rounded-full ${cat.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
+                                {/* ✅ [แก้ไข 3] แสดงธงที่หัวข้อด้วย ถ้ามี */}
+                                {getCategoryFlag(cat.label) || (
+                                    <span className={`w-2 h-2 rounded-full ${cat.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
+                                )}
                                 {cat.label}
                             </h2>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">

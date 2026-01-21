@@ -1,71 +1,94 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import client from '../../api/client';
 import { 
-  X, RefreshCw, Receipt, ChevronLeft, 
-  ChevronRight, Eye, Ban, Calendar 
+  X, RefreshCw, Receipt, Eye, Ban,
+  Loader2, ArrowDown, ArrowRight // ✅ เพิ่มไอคอน
 } from 'lucide-react';
-import { Loader2 } from 'lucide-react';
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers';
 
 export default function HistoryOutside() {
+  // --- Data States ---
   const [tickets, setTickets] = useState<any[]>([]);     
   const [loading, setLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   
-  // Filter States
+  // --- Filter States (✅ 1. เปลี่ยนเป็นช่วงเวลา) ---
+  const getToday = () => new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(getToday());
+  const [endDate, setEndDate] = useState(getToday());
   const [filterStatus, setFilterStatus] = useState('ALL'); 
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Pagination States
+  // --- Infinite Scroll States (✅ 2. Logic เลื่อนดูเรื่อยๆ) ---
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(20); // จำนวนต่อหน้า
-  const [hasMore, setHasMore] = useState(true); // เช็คว่ามีหน้าถัดไปไหม
+  const [hasMore, setHasMore] = useState(true);
+  const [itemsPerPage] = useState(20); // โหลดทีละ 20 รายการ
 
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
 
-  // ✅ โหลดข้อมูลเมื่อมีการเปลี่ยน หน้า/สถานะ/วันที่
+  // --- Observer for Infinite Scroll ---
+  const observer = useRef<IntersectionObserver | null>(null);
+  const lastTicketRef = useCallback((node: HTMLDivElement) => {
+      if (loading) return;
+      if (observer.current) observer.current.disconnect();
+      observer.current = new IntersectionObserver(entries => {
+          if (entries[0].isIntersecting && hasMore) {
+              setCurrentPage(prev => prev + 1);
+          }
+      });
+      if (node) observer.current.observe(node);
+  }, [loading, hasMore]);
+
+  // --- Reset & Reload Conditions ---
   useEffect(() => {
-    fetchHistory();
-  }, [selectedDate, filterStatus, currentPage]);
-
-  // ✅ เมื่อเปลี่ยน Filter ให้กลับไปหน้า 1
-  const handleFilterChange = (status: string) => {
-    setFilterStatus(status);
+    // เมื่อเปลี่ยนวันที่ หรือ สถานะ ให้ล้างข้อมูลและเริ่มโหลดหน้า 1 ใหม่
+    setTickets([]);
     setCurrentPage(1);
-  };
+    setHasMore(true);
+    setInitialLoad(true);
+    fetchHistory(1, true);
+  }, [startDate, endDate, filterStatus]);
 
-  const fetchHistory = async () => {
+  // --- Load More Effect ---
+  useEffect(() => {
+    if (currentPage > 1) {
+        fetchHistory(currentPage, false);
+    }
+  }, [currentPage]);
+
+  const fetchHistory = async (page: number, isNewFilter: boolean) => {
     setLoading(true);
     try {
-      // ✅ ส่ง page, limit และ status ไปที่ API (Server-Side Pagination)
-      let url = `/play/history?date=${selectedDate}&page=${currentPage}&limit=${itemsPerPage}`;
+      // ✅ ส่ง start_date และ end_date
+      let url = `/play/history?start_date=${startDate}&end_date=${endDate}&page=${page}&limit=${itemsPerPage}`;
       
-      // ถ้า API รองรับการส่ง status ให้ส่งไปด้วย (ถ้าไม่รองรับ อาจต้องดึงมาเยอะๆแล้วกรองเอง)
       if (filterStatus !== 'ALL') {
           url += `&status=${filterStatus}`; 
       }
 
       const res = await client.get(url);
       
-      let data = [];
+      let newData = [];
       if (Array.isArray(res.data)) {
-          data = res.data;
-          // ถ้าข้อมูลที่ได้ น้อยกว่า limit แสดงว่าหมดแล้ว
-          setHasMore(data.length === itemsPerPage);
+          newData = res.data;
       } else {
-          // กรณี API ส่งมาเป็น Object { items: [], total_pages: ... }
-          data = res.data.items || [];
-          setHasMore(currentPage < (res.data.total_pages || 1));
+          newData = res.data.items || [];
       }
 
-      // ⚠️ กรณี API ไม่รองรับ Filter Status แบบ Server-side เราอาจต้องกรองตรงนี้ (แต่ Pagination จะเพี้ยน)
-      // โค้ดนี้สมมติว่า API กรองมาให้แล้ว หรือ Backend ส่งมาทั้งหมดในหน้านั้น
-      setTickets(data);
+      if (isNewFilter) {
+          setTickets(newData);
+      } else {
+          setTickets(prev => [...prev, ...newData]);
+      }
+
+      // เช็คว่าหมดหรือยัง
+      setHasMore(newData.length === itemsPerPage);
 
     } catch (err) {
       console.error(err);
-      setTickets([]);
+      if (isNewFilter) setTickets([]);
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
@@ -74,14 +97,18 @@ export default function HistoryOutside() {
     try {
       await client.patch(`/play/tickets/${ticketId}/cancel`);
       alert('ยกเลิกสำเร็จ! คืนเงินเรียบร้อย');
-      fetchHistory(); 
+      
+      // อัปเดตสถานะในรายการทันที
+      setTickets(prev => prev.map(t => 
+          t.id === ticketId ? { ...t, status: 'CANCELLED' } : t
+      ));
+      
       setSelectedTicket(null);
     } catch (err: any) {
       alert(`ยกเลิกไม่ได้: ${err.response?.data?.detail}`);
     }
   };
 
-  // ... (renderWinStatus, renderNetProfit ใช้เหมือนเดิม) ...
   const renderWinStatus = (ticket: any) => {
       if (ticket.status === 'PENDING') return <span className="text-orange-500 font-bold animate-pulse">รอผล</span>;
       if (ticket.status === 'CANCELLED') return <span className="text-gray-400">ยกเลิก</span>;
@@ -101,23 +128,39 @@ export default function HistoryOutside() {
     <div className="animate-fade-in pb-20 bg-gray-50 min-h-screen flex flex-col font-sans">
       
       {/* Header & Filter */}
-      <div className="bg-white px-4 py-4 shadow-sm sticky top-0 z-10 border-b border-gray-200">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-7xl mx-auto mb-4">
+      <div className="bg-white px-4 py-4 shadow-sm sticky top-0 z-20 border-b border-gray-200">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 max-w-7xl mx-auto mb-4">
               <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
                   <Receipt className="text-blue-600" /> ประวัติการแทง (รวม)
               </h1>
               
+              {/* ✅ Date Range Input */}
               <div className="flex items-center gap-2">
-                  <div className="relative">
-                      <Calendar className="absolute left-3 top-2.5 text-slate-400" size={18} />
-                      <input 
-                        type="date" 
-                        value={selectedDate}
-                        onChange={(e) => { setSelectedDate(e.target.value); setCurrentPage(1); }}
-                        className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
-                      />
+                  <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                      <div className="relative">
+                          <input 
+                            type="date" 
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-28 sm:w-32"
+                          />
+                      </div>
+                      <span className="text-slate-400"><ArrowRight size={16}/></span>
+                      <div className="relative">
+                          <input 
+                            type="date" 
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            min={startDate}
+                            className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-28 sm:w-32"
+                          />
+                      </div>
                   </div>
-                  <button onClick={fetchHistory} className={`p-2 bg-slate-100 rounded-lg hover:bg-slate-200 ${loading ? 'animate-spin' : ''}`}>
+                  
+                  <button 
+                    onClick={() => { setTickets([]); fetchHistory(1, true); }} 
+                    className={`p-2 bg-slate-100 rounded-lg hover:bg-slate-200 text-slate-600 border border-slate-100 ${loading ? 'animate-spin' : ''}`}
+                  >
                       <RefreshCw size={20} />
                   </button>
               </div>
@@ -126,8 +169,8 @@ export default function HistoryOutside() {
           {/* Status Filter Tabs */}
           <div className="max-w-7xl mx-auto flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
             {['ALL', 'PENDING', 'WIN', 'LOSE', 'CANCELLED'].map(f => (
-                <button key={f} onClick={() => handleFilterChange(f)} 
-                    className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap border transition-all ${filterStatus === f ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}>
+                <button key={f} onClick={() => setFilterStatus(f)} 
+                    className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap border transition-all ${filterStatus === f ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
                     {f === 'ALL' ? 'ทั้งหมด' : f}
                 </button>
             ))}
@@ -135,38 +178,43 @@ export default function HistoryOutside() {
       </div>
 
       {/* Content Table */}
-      <div className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full">
-          {loading ? <div className="py-20 text-center text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" /> กำลังโหลด...</div> 
-          : tickets.length === 0 ? <div className="text-center py-20 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">ไม่พบรายการ</div> : (
+      <div className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full space-y-6">
+          {initialLoad && loading ? (
+              <div className="py-20 text-center text-slate-400 flex flex-col items-center gap-2">
+                  <Loader2 className="animate-spin" /> กำลังโหลด...
+              </div> 
+          ) : tickets.length === 0 ? (
+              <div className="text-center py-20 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">ไม่พบรายการในช่วงเวลานี้</div> 
+          ) : (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left whitespace-nowrap">
                         <thead className="bg-gray-100 text-gray-600 font-bold uppercase text-xs">
                             <tr>
-                                <th className="p-4">1. เวลา</th>
-                                <th className="p-4">2. ชนิดหวย</th>
-                                <th className="p-4">3. งวดวันที่</th>
-                                <th className="p-4 text-right">4. ยอดแทง</th>
-                                <th className="p-4 text-right">5. ถูกรางวัล</th>
-                                <th className="p-4 text-right">6. กำไร/ขาดทุน</th>
-                                <th className="p-4">7. หมายเหตุ</th>
+                                <th className="p-4 text-center">1. เวลา</th>
+                                <th className="p-4 text-center">2. ชนิดหวย</th>
+                                <th className="p-4 text-center">3. งวดวันที่</th>
+                                <th className="p-4 text-center">4. ยอดแทง</th>
+                                <th className="p-4 text-center">5. ถูกรางวัล</th>
+                                <th className="p-4 text-center">6. กำไร/ขาดทุน</th>
+                                <th className="p-4 text-center">7. หมายเหตุ</th>
                                 <th className="p-4 text-center">8. รายละเอียด</th>
                                 <th className="p-4 text-center">9. ยกเลิก</th>
-                                <th className="p-4">10. ผู้ลงบิล</th>
+                                <th className="p-4 text-center">10. ผู้ลงบิล</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {tickets.map((t) => (
                                 <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="p-4 font-bold text-slate-700">
+                                    <td className="p-4 text-center font-bold text-slate-700">
                                         {new Date(t.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute:'2-digit' })}
                                     </td>
-                                    <td className="p-4 font-bold text-blue-600">{t.lotto_type?.name}</td>
-                                    <td className="p-4 font-mono">{new Date(t.created_at).toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'numeric'})}</td>
-                                    <td className="p-4 text-right font-bold text-slate-700">{Number(t.total_amount).toLocaleString()}</td>
-                                    <td className="p-4 text-right">{renderWinStatus(t)}</td>
-                                    <td className="p-4 text-right">{renderNetProfit(t)}</td>
-                                    <td className="p-4 text-xs text-gray-500">{t.note || '-'}</td>
+                                    <td className="p-4 text-center font-bold text-blue-600">{t.lotto_type?.name}</td>
+                                    <td className="p-4 text-center font-mono">{new Date(t.created_at).toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'numeric'})}</td>
+                                    <td className="p-4 text-center font-bold text-slate-700">{Number(t.total_amount).toLocaleString()}</td>
+                                    <td className="p-4 text-center">{renderWinStatus(t)}</td>
+                                    <td className="p-4 text-center">{renderNetProfit(t)}</td>
+                                    <td className="p-4 text-center text-xs text-gray-500">{t.note || '-'}</td>
                                     <td className="p-4 text-center">
                                         <button onClick={() => setSelectedTicket(t)} className="text-slate-400 hover:text-blue-600"><Eye size={18} /></button>
                                     </td>
@@ -175,7 +223,11 @@ export default function HistoryOutside() {
                                             <button onClick={() => handleCancel(t.id)} className="text-red-400 hover:text-red-600"><Ban size={16} /></button>
                                         )}
                                     </td>
-                                    <td className="p-4 text-xs text-slate-600">{t.user?.username}</td>
+                                    <td className="p-4 text-xs text-slate-600 text-center">
+                                        <div className="font-bold bg-slate-100 px-2 py-0.5 rounded-full inline-block border border-slate-200">
+                                            {t.user?.username}
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -183,35 +235,25 @@ export default function HistoryOutside() {
                   </div>
               </div>
           )}
+
+          {/* ✅ Infinite Scroll Sentinel */}
+          {hasMore && !initialLoad && (
+              <div ref={lastTicketRef} className="py-8 flex justify-center text-slate-400 text-sm animate-pulse">
+                  {loading ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={16}/> กำลังโหลดเพิ่ม...</span> : <span className="flex items-center gap-2"><ArrowDown size={16}/> เลื่อนลงเพื่อโหลดต่อ</span>}
+              </div>
+          )}
+          
+          {!hasMore && tickets.length > 0 && (
+              <div className="py-8 text-center text-slate-300 text-xs">
+                  --- สิ้นสุดรายการ ---
+              </div>
+          )}
       </div>
 
-      {/* ✅ Pagination Controls (Server Side) */}
-      <div className="p-4 bg-white border-t flex justify-center items-center gap-4 sticky bottom-0 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-          <button 
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
-            disabled={currentPage === 1 || loading} 
-            className="flex items-center gap-1 px-4 py-2 rounded-lg border bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-100 text-sm font-bold"
-          >
-              <ChevronLeft size={18} /> ก่อนหน้า
-          </button>
-          
-          <span className="text-sm font-bold text-slate-600">หน้า {currentPage}</span>
-          
-          <button 
-            onClick={() => setCurrentPage(p => p + 1)} 
-            disabled={!hasMore || loading} 
-            className="flex items-center gap-1 px-4 py-2 rounded-lg border bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-100 text-sm font-bold"
-          >
-              ถัดไป <ChevronRight size={18} />
-          </button>
-      </div>
-
-      {/* ... (Modal ส่วน selectedTicket ใช้เหมือนเดิม) ... */}
+      {/* Modal Detail */}
       {selectedTicket && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
               <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95">
-                  
-                  {/* Header */}
                   <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                       <div>
                           <h3 className="font-bold text-lg text-slate-800">รายละเอียดบิล</h3>
@@ -219,8 +261,6 @@ export default function HistoryOutside() {
                       </div>
                       <button onClick={() => setSelectedTicket(null)} className="p-1 hover:bg-gray-200 rounded-full"><X size={20} /></button>
                   </div>
-
-                  {/* Body */}
                   <div className="p-4 overflow-y-auto bg-white flex-1 custom-scrollbar">
                         <table className="w-full text-sm">
                             <thead className="bg-gray-100 font-bold text-xs uppercase text-slate-500">
@@ -236,7 +276,6 @@ export default function HistoryOutside() {
                             <tbody className="divide-y divide-slate-50">
                                 {selectedTicket.items?.map((item: any, i: number) => {
                                     const potentialReward = Number(item.amount) * Number(item.reward_rate);
-                                    // ฟังก์ชันแปลภาษา (Inline translation)
                                     const translateType = (type: string) => {
                                         const map: Record<string, string> = {
                                             '2up': '2ตัวบน', '2down': '2ตัวล่าง',
@@ -245,7 +284,6 @@ export default function HistoryOutside() {
                                         };
                                         return map[type] || type;
                                     };
-
                                     return (
                                         <tr key={i} className={item.status === 'WIN' ? 'bg-green-50' : ''}>
                                             <td className="p-3 font-bold text-slate-700">{item.number}</td>
@@ -264,11 +302,7 @@ export default function HistoryOutside() {
                             </tbody>
                         </table>
                   </div>
-
-                  {/* Footer & Summary */}
                   <div className="p-4 border-t bg-gray-50 space-y-3">
-                      
-                      {/* ส่วนสรุปยอดเงิน */}
                       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm space-y-2">
                           <div className="flex justify-between items-center text-sm">
                               <span className="text-slate-500">ยอดซื้อรวม:</span>
@@ -277,7 +311,6 @@ export default function HistoryOutside() {
                           <div className="flex justify-between items-center text-sm border-t border-dashed pt-2">
                               <span className="text-slate-500">ผลรางวัลรวม:</span>
                               {(() => {
-                                  // คำนวณยอดถูกรางวัล
                                   const winAmount = calculateWinAmount(selectedTicket);
                                   return winAmount > 0 ? (
                                       <span className="font-bold text-green-600">+{Number(winAmount).toLocaleString()} บาท</span>
@@ -289,19 +322,15 @@ export default function HistoryOutside() {
                               })()}
                           </div>
                       </div>
-
-                      {/* ปุ่มยกเลิก */}
                       {selectedTicket.status === 'PENDING' && (
                           <button 
-                        
-                            onClick={() => typeof handleCancel === 'function' ? handleCancel(selectedTicket.id) : (window as any).handleCancelTicket?.(selectedTicket.id)} 
+                            onClick={() => handleCancel(selectedTicket.id)} 
                             className="w-full py-3 bg-white text-red-600 font-bold rounded-xl border-2 border-red-100 hover:bg-red-50 hover:border-red-200 transition-all shadow-sm"
                           >
                               ยกเลิกบิลคืนเงิน
                           </button>
                       )}
                   </div>
-
               </div>
           </div>
       )}

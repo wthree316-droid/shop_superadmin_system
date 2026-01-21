@@ -52,7 +52,7 @@ const CategoryBadgeSelect = ({ currentId, categories, onChange, isLoading }: any
         : `appearance-none pl-3 pr-8 py-1 rounded-full font-bold text-[10px] cursor-pointer ${activeCat.color} w-full text-center`;
 
     return (
-        <div className="relative inline-block min-w-[120px]">
+        <div className="relative inline-block min-w-30">
             <select
                 value={currentId}
                 onChange={(e) => onChange(e.target.value)}

@@ -252,6 +252,18 @@ export default function BettingRoom() {
         }
     };
 
+    const handleCancelTicket = async (ticketId: string) => {
+        if(!confirm("ยืนยันการยกเลิกโพยนี้? เงินจะถูกคืนทันที")) return;
+        try {
+            await client.patch(`/play/tickets/${ticketId}/cancel`);
+            toast.success("ยกเลิกโพยสำเร็จ");
+            fetchHistory(); // โหลดประวัติใหม่
+            // ถ้าต้องการอัปเดตยอดเงินคงเหลือทันที อาจต้องเรียก fetchMeApi หรือ reload หน้า
+        } catch(err: any) {
+            toast.error(err.response?.data?.detail || 'ยกเลิกไม่สำเร็จ');
+        }
+    };
+
     const handleTabChange = (newTab: typeof tab) => {
         const hasData = bufferNumbers.length > 0 || currentInput.length > 0;
         if (hasData && newTab !== tab) {
@@ -337,10 +349,24 @@ export default function BettingRoom() {
 
         if (tab === 'win') {
             const joined = parts.join('');
-            if (currentInput.length + joined.length > 7) {
+            const config = getInputConfig(); // ดูว่าวิน 2 หรือ 3 ตัว (เพื่อเอาค่า min)
+
+            // 1. ถ้าเลขยาวเกินลิมิตสูงสุด
+            if (joined.length > 7) {
                 return toast.error('ตัวเลขเยอะเกินไปสำหรับโหมดวิน (สูงสุด 7 ตัว)');
             }
-            setCurrentInput(prev => prev + joined);
+
+            // 2. ถ้าเลขครบตามขั้นต่ำแล้ว -> สั่งคำนวณทันที!
+            if (joined.length >= config.min) {
+                handleAddNumberToBuffer(joined); // ส่งเลขที่วางไปคำนวณเลย
+                toast.success('วางและคำนวณอัตโนมัติ');
+            } else {
+                // 3. ถ้าเลขสั้นไป (เช่น วางแค่ 1 ตัว) -> ให้แปะลงกล่องข้อความเฉยๆ รอพิมพ์ต่อ
+                if (currentInput.length + joined.length > 7) {
+                    return toast.error('ตัวเลขรวมกันเกิน 7 ตัว');
+                }
+                setCurrentInput(prev => prev + joined);
+            }
             return;
         }
 
@@ -1324,8 +1350,22 @@ export default function BettingRoom() {
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
-                                                        <div className="text-xs font-bold text-white">{Number(ticket.total_amount).toLocaleString()}</div>
-                                                        <div>{getStatusBadge(ticket.status)}</div>
+                                                        <div className="text-xs font-bold text-white">{Number(ticket.total_amount).toLocaleString()} บาท</div>
+                                                        <div>{getStatusBadge(ticket.status)}
+                                                        
+                                                            {ticket.status === 'PENDING' && (
+                                                                <button 
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation(); // กันไม่ให้กดโดน div หลัก (ถ้ามี onClick)
+                                                                        handleCancelTicket(ticket.id);
+                                                                    }}
+                                                                    className="text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 p-1 rounded transition-colors"
+                                                                    title="ยกเลิกโพยนี้"
+                                                                >
+                                                                    <Trash2 size={12} />
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 {ticket.note && (

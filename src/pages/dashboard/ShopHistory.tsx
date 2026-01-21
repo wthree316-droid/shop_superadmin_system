@@ -1,46 +1,72 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import client from '../../api/client';
 import { 
-    Calendar, User, Filter, 
+    User, Filter, 
     X, Eye, Ban, RefreshCw, Loader2,
-    ChevronLeft, ChevronRight, Wallet, Receipt
+    Banknote, TrendingUp, FileText, ArrowDown, ArrowRight, RotateCcw
 } from 'lucide-react';
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers'; 
+import { useAuth } from '../../contexts/AuthContext'; 
 
 export default function ShopHistory() {
+  const { user } = useAuth(); 
+
   // --- Data States ---
   const [tickets, setTickets] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]); 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   
   // --- Filter States ---
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const getToday = () => new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(getToday());
+  const [endDate, setEndDate] = useState(getToday());
+  
   const [selectedUser, setSelectedUser] = useState<string>(''); 
-  const [filterStatus, setFilterStatus] = useState('ALL'); // ALL, PENDING, WIN, LOSE, CANCELLED
+  const [filterStatus, setFilterStatus] = useState('ALL'); 
 
-  // --- Pagination States ---
+  // --- Infinite Scroll States ---
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(50); // จำนวนรายการต่อหน้า
-  const [totalPages, setTotalPages] = useState(1);
-
+  const [hasMore, setHasMore] = useState(true);
+  const [itemsPerPage] = useState(50); 
+  
   // --- Modal State ---
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
 
+  // --- Observer for Infinite Scroll ---
+  const observer = useRef<IntersectionObserver | null>(null);
+  const lastTicketRef = useCallback((node: HTMLDivElement) => {
+      if (loading) return;
+      if (observer.current) observer.current.disconnect();
+      observer.current = new IntersectionObserver(entries => {
+          if (entries[0].isIntersecting && hasMore) {
+              setCurrentPage(prev => prev + 1);
+          }
+      });
+      if (node) observer.current.observe(node);
+  }, [loading, hasMore]);
+
   // --- Initial Load ---
   useEffect(() => {
-    fetchMembers();
-  }, []);
+    if (user?.role !== 'member') {
+        fetchMembers();
+    }
+  }, [user]);
 
-  // --- Reload Data conditions ---
+  // --- Reset & Reload Conditions ---
   useEffect(() => {
-    // เมื่อเปลี่ยน Filter หลัก (วัน/คน) ให้รีเซ็ตไปหน้า 1
+    setTickets([]);
     setCurrentPage(1);
-    fetchHistory(1);
-  }, [selectedDate, selectedUser]);
+    setHasMore(true);
+    setInitialLoad(true);
+    fetchHistory(1, true);
+  }, [startDate, endDate, selectedUser]); 
 
+  // --- Load More Effect ---
   useEffect(() => {
-    // เมื่อเปลี่ยนหน้า ให้โหลดข้อมูลหน้าใหม่
-    fetchHistory(currentPage);
+    if (currentPage > 1) {
+        fetchHistory(currentPage, false);
+    }
   }, [currentPage]);
 
   // --- API Functions ---
@@ -51,33 +77,23 @@ export default function ShopHistory() {
       } catch(err) { console.error("Load members fail", err); }
   };
 
-  const fetchHistory = async (page = 1) => {
+  const fetchHistory = async (page: number, isNewFilter: boolean) => {
     setLoading(true);
     try {
-      // สร้าง URL Query String
-      let url = `/play/shop_history?date=${selectedDate}&page=${page}&limit=${itemsPerPage}`;
-      
-      if (selectedUser) {
-          url += `&user_id=${selectedUser}`;
-      }
+      let url = `/play/shop_history?start_date=${startDate}&end_date=${endDate}&page=${page}&limit=${itemsPerPage}`;
+      if (selectedUser) url += `&user_id=${selectedUser}`;
       
       const res = await client.get(url);
+      const newData = Array.isArray(res.data) ? res.data : (res.data.items || []);
       
-      // กรณี Backend ส่งมาเป็น Array ตรงๆ (ไม่มี metadata pagination)
-      if (Array.isArray(res.data)) {
-          setTickets(res.data);
-          // ถ้าไม่มี total_pages จากหลังบ้าน ให้คำนวณคร่าวๆ หรือซ่อนปุ่มถัดไปถ้าข้อมูล < limit
-          setTotalPages(res.data.length < itemsPerPage ? page : page + 1); 
-      } else {
-          // กรณี Backend ส่ง format มาตรฐาน { items: [], total_pages: 5 }
-          setTickets(res.data.items || res.data); 
-          setTotalPages(res.data.total_pages || 1);
-      }
+      setTickets(prev => isNewFilter ? newData : [...prev, ...newData]);
+      setHasMore(newData.length === itemsPerPage);
 
     } catch (err) { 
         console.error(err); 
     } finally { 
         setLoading(false); 
+        setInitialLoad(false);
     }
   };
 
@@ -86,88 +102,151 @@ export default function ShopHistory() {
       try {
           await client.patch(`/play/tickets/${ticketId}/cancel`);
           alert("ยกเลิกสำเร็จ");
-          fetchHistory(currentPage); // โหลดหน้าปัจจุบันใหม่
+          setTickets(prev => prev.map(t => 
+              t.id === ticketId ? { ...t, status: 'CANCELLED' } : t
+          ));
           setSelectedTicket(null);
       } catch(err: any) {
           alert(`Error: ${err.response?.data?.detail}`);
       }
   };
 
-  // --- Client-Side Logic ---
-  
-  // 1. กรอง Status (ถ้า API ไม่รองรับการส่ง status ให้กรองที่นี่)
-  const filteredTickets = useMemo(() => {
-      if (filterStatus === 'ALL') return tickets;
-      return tickets.filter(t => t.status === filterStatus);
+  // --- Helper Renders ---
+  const renderWinStatus = (ticket: any) => {
+    if (ticket.status === 'PENDING') return <span className="text-orange-500 font-bold animate-pulse">รอผล</span>;
+    if (ticket.status === 'CANCELLED') return <span className="text-gray-400">ยกเลิก</span>;
+    if (ticket.status === 'LOSE') return <span className="text-red-500 font-bold">ไม่ถูกรางวัล</span>;
+    return <span className="text-green-600 font-bold">{Number(calculateWinAmount(ticket)).toLocaleString()}</span>;
+  };
+
+  const renderNetProfit = (ticket: any) => {
+    if (ticket.status === 'PENDING' || ticket.status === 'CANCELLED') return <span className="text-gray-400">-</span>;
+    const net = calculateNet(ticket);
+    const isProfit = net >= 0;
+    return <span className={`font-bold ${isProfit ? 'text-green-600' : 'text-red-500'}`}>{isProfit ? '+' : ''}{Number(net).toLocaleString()}</span>;
+  };
+
+  // --- Grouping Logic ---
+  const groupedLottos = useMemo(() => {
+      if (tickets.length === 0) return [];
+
+      let filtered = tickets;
+      if (filterStatus !== 'ALL') {
+          filtered = tickets.filter(t => t.status === filterStatus);
+      }
+
+      const groups: Record<string, any> = {};
+
+      filtered.forEach(ticket => {
+          const lottoId = ticket.lotto_type_id;
+          const lottoName = ticket.lotto_type?.name || 'Unknown Lotto';
+
+          if (!groups[lottoId]) {
+              groups[lottoId] = {
+                  id: lottoId,
+                  name: lottoName,
+                  items: []
+              };
+          }
+          groups[lottoId].items.push(ticket);
+      });
+
+      return Object.values(groups).map((group: any) => {
+          let totalBet = 0;
+          let totalWin = 0;
+          let validCount = 0;
+          let totalCancelled = 0; 
+
+          group.items.forEach((t: any) => {
+              if (t.status === 'CANCELLED') {
+                  totalCancelled += Number(t.total_amount);
+              } else {
+                  totalBet += Number(t.total_amount);
+                  if (t.status === 'WIN') {
+                      totalWin += calculateWinAmount(t);
+                  }
+                  validCount++;
+              }
+          });
+
+          const profit = totalBet - totalWin; 
+
+          return {
+              ...group,
+              summary: {
+                  count: group.items.length,
+                  validCount,
+                  totalBet,
+                  totalWin,
+                  profit,
+                  totalCancelled
+              }
+          };
+      });
   }, [tickets, filterStatus]);
 
-  // 2. คำนวณยอดรวม (Dashboard) จากข้อมูลที่โหลดมา
-  const summary = useMemo(() => {
-      let totalSales = 0;
-      let totalPayout = 0;
-      let profit = 0;
-
-      filteredTickets.forEach(t => {
-          if (t.status !== 'CANCELLED') {
-              totalSales += Number(t.total_amount);
-              // คำนวณยอดจ่าย (เฉพาะบิลที่ถูกรางวัล)
-              const win = calculateWinAmount(t);
-              totalPayout += win;
-          }
-      });
-      profit = totalSales - totalPayout;
-
-      return { totalSales, totalPayout, profit };
-  }, [filteredTickets]);
-
   return (
-    <div className="animate-fade-in space-y-6 pb-10">
+    <div className="animate-fade-in space-y-6 pb-20">
       
       {/* --- Filter Section --- */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4">
-          
-          <div className="flex flex-col md:flex-row gap-4 justify-between items-end md:items-center">
-              <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                  {/* Date Input */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4 sticky top-0 z-20">
+          <div className="flex flex-col xl:flex-row gap-4 justify-between items-end xl:items-center">
+              
+              <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto">
+                  
+                  {/* Date Range Input */}
                   <div>
-                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">วันที่</label>
-                      <div className="relative">
-                          <Calendar className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                          <input 
-                            type="date" 
-                            value={selectedDate}
-                            onChange={e => setSelectedDate(e.target.value)}
-                            className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200 w-full md:w-40"
-                          />
-                      </div>
-                  </div>
-
-                  {/* Member Select */}
-                  <div className="flex-1 md:w-64">
-                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">กรองตามสมาชิก</label>
-                      <div className="relative">
-                          <User className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                          <select 
-                            value={selectedUser}
-                            onChange={e => setSelectedUser(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200 appearance-none"
-                          >
-                              <option value="">-- ดูรายการทั้งหมด --</option>
-                              {members.map(m => (
-                                  <option key={m.id} value={m.id}>
-                                      {m.username} {m.full_name ? `(${m.full_name})` : ''}
-                                  </option>
-                              ))}
-                          </select>
-                          <div className="absolute right-3 top-3 pointer-events-none">
-                              <Filter size={14} className="text-slate-400" />
+                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">ช่วงวันที่</label>
+                      <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                          <div className="relative">
+                              <input 
+                                type="date" 
+                                value={startDate}
+                                onChange={e => setStartDate(e.target.value)}
+                                className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
+                              />
+                          </div>
+                          <span className="text-slate-400"><ArrowRight size={16}/></span>
+                          <div className="relative">
+                              <input 
+                                type="date" 
+                                value={endDate}
+                                onChange={e => setEndDate(e.target.value)}
+                                min={startDate}
+                                className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
+                              />
                           </div>
                       </div>
                   </div>
+
+                  {/* Member Select (Hidden for Member Role) */}
+                  {user?.role !== 'member' && (
+                      <div className="flex-1 md:w-64">
+                          <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">กรองตามสมาชิก</label>
+                          <div className="relative">
+                              <User className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                              <select 
+                                value={selectedUser}
+                                onChange={e => setSelectedUser(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200 appearance-none h-10.5"
+                              >
+                                  <option value="">-- ดูรายการทุกคน --</option>
+                                  {members.map(m => (
+                                      <option key={m.id} value={m.id}>
+                                          {m.username} {m.full_name ? `(${m.full_name})` : ''}
+                                      </option>
+                                  ))}
+                              </select>
+                              <div className="absolute right-3 top-3 pointer-events-none">
+                                  <Filter size={14} className="text-slate-400" />
+                              </div>
+                          </div>
+                      </div>
+                  )}
               </div>
 
-              <button onClick={() => fetchHistory(1)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors text-slate-600">
-                  <RefreshCw size={20} />
+              <button onClick={() => { setTickets([]); fetchHistory(1, true); }} className="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors text-slate-600">
+                  <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
               </button>
           </div>
 
@@ -182,135 +261,148 @@ export default function ShopHistory() {
           </div>
       </div>
 
-      {/* --- Summary Cards (Mini Dashboard) --- */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex items-center justify-between">
-              <div>
-                  <div className="text-xs text-slate-500 font-bold uppercase">ยอดขายรวม</div>
-                  <div className="text-xl font-black text-blue-600">{summary.totalSales.toLocaleString()}</div>
-              </div>
-              <div className="p-2 bg-blue-50 rounded-lg text-blue-500"><Wallet size={24}/></div>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex items-center justify-between">
-              <div>
-                  <div className="text-xs text-slate-500 font-bold uppercase">จ่ายรางวัล</div>
-                  <div className="text-xl font-black text-red-500">{summary.totalPayout.toLocaleString()}</div>
-              </div>
-              <div className="p-2 bg-red-50 rounded-lg text-red-500"><Receipt size={24}/></div>
-          </div>
-          <div className={`bg-white p-4 rounded-xl shadow-sm border flex items-center justify-between ${summary.profit >= 0 ? 'border-green-100' : 'border-red-100'}`}>
-              <div>
-                  <div className="text-xs text-slate-500 font-bold uppercase">กำไรสุทธิ</div>
-                  <div className={`text-xl font-black ${summary.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                      {summary.profit >= 0 ? '+' : ''}{summary.profit.toLocaleString()}
-                  </div>
-              </div>
-              <div className={`p-2 rounded-lg ${summary.profit >= 0 ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'}`}>
-                   {summary.profit >= 0 ? <RefreshCw size={24}/> : <Ban size={24}/>}
-              </div>
-          </div>
-      </div>
+      {/* --- Ticket List (Grouped by Lotto) --- */}
+      <div className="space-y-8">
+          {initialLoad && loading ? (
+              <div className="p-20 text-center bg-white rounded-xl border border-gray-100"><Loader2 className="animate-spin mx-auto text-blue-500 mb-2"/> กำลังโหลดข้อมูล...</div>
+          ) : groupedLottos.length === 0 ? (
+              <div className="p-20 text-center bg-white rounded-xl border border-dashed border-gray-200 text-slate-400">ไม่พบรายการโพยในช่วงเวลานี้</div>
+          ) : (
+              groupedLottos.map((group) => (
+                  <div key={group.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-slide-up">
+                      
+                      {/* Header แต่ละหวย */}
+                      <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                          <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">
+                              <Banknote className="text-blue-600" size={20} /> {group.name}
+                          </h3>
+                          <span className="text-xs font-bold bg-white px-2 py-1 rounded-md border border-gray-200 text-slate-500">
+                              {group.items.length} รายการ
+                          </span>
+                      </div>
 
-      {/* --- Ticket List --- */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-          <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left whitespace-nowrap">
-                  <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-xs">
-                        <tr>
-                            <th className="p-4">1. เวลา</th>
-                            <th className="p-4">2. ชนิดหวย</th>
-                            <th className="p-4">3. งวดวันที่</th>
-                            <th className="p-4 text-right">4. ยอดแทง</th>
-                            <th className="p-4 text-right">5. ถูกรางวัล</th>
-                            <th className="p-4 text-right">6. กำไรโพย</th>
-                            <th className="p-4">7. หมายเหตุ</th>
-                            <th className="p-4 text-center">8. รายละเอียด</th>
-                            <th className="p-4 text-center">9. ยกเลิก</th>
-                            <th className="p-4">10. ผู้ซื้อ</th>
-
-                        </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {loading ? (
-                          <tr><td colSpan={9} className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-blue-500"/></td></tr>
-                      ) : filteredTickets.length === 0 ? (
-                          <tr><td colSpan={9} className="p-10 text-center text-gray-400">ไม่พบรายการบิลตามเงื่อนไข</td></tr>
-                      ) : (
-                          filteredTickets.map((t) => {
-                              const winAmount = calculateWinAmount(t);
-                              const net = calculateNet(t);
-                              const isProfit = net >= 0;
-
-                              return (
-                                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="p-4 font-mono text-slate-500">
-                                            {new Date(t.created_at).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}
-                                        </td>
-                                        
-                                        <td className="p-4 text-blue-600 font-bold">{t.lotto_type?.name}</td>
-                                        <td className="p-4 font-mono">{new Date(t.created_at).toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'numeric'})}</td>
-                                        <td className="p-4 text-right font-mono font-bold">
-                                            {Number(t.total_amount).toLocaleString()}
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            {t.status === 'WIN' ? <span className="text-green-600 font-bold">{winAmount.toLocaleString()}</span> :
-                                            t.status === 'LOSE' ? <span className="text-red-400 font-bold">-</span> :
-                                            t.status === 'CANCELLED' ? <span className="text-gray-400">ยกเลิก</span> :
-                                            <span className="text-orange-500 text-xs font-bold animate-pulse">รอผล</span>}
-                                        </td>
-                                        <td className={`p-4 text-right font-bold ${isProfit ? 'text-green-600' : 'text-red-500'}`}>
-                                            {t.status === 'PENDING' || t.status === 'CANCELLED' ? '-' : `${isProfit ? '+' : ''}${net.toLocaleString()}`}
-                                        </td>
-                                        <td className="p-4 text-xs text-slate-400 truncate max-w-25">{t.note || '-'}</td>
-                                        <td className="p-4 text-center">
-                                            <button onClick={() => setSelectedTicket(t)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
-                                                <Eye size={18} />
-                                            </button>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            {t.status === 'PENDING' ? (
-                                                <button onClick={() => handleCancelTicket(t.id)} className="p-1.5 text-red-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="ยกเลิกบิล">
-                                                    <Ban size={18} />
-                                                </button>
-                                            ) : <span className="text-gray-300">-</span>}
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-2">
-                                                <div>
-                                                    <div className="font-bold text-slate-700">{t.user?.username}</div>
-                                                    <div className="text-[10px] text-slate-400">#{t.id.substring(0,6)}</div>
-                                                </div>
-                                            </div>
-                                        </td>
+                      {/* Table */}
+                      <div className="overflow-x-auto">
+                          <table className="w-full text-sm text-left whitespace-nowrap">
+                              <thead className="bg-white text-slate-500 font-bold border-b border-slate-100 text-xs">
+                                    <tr>
+                                      <th className="p-4 text-center">1. เวลา</th>
+                                      <th className="p-4 text-center">2. ชนิดหวย</th>
+                                      <th className="p-4 text-center">3. งวดวันที่</th>
+                                      <th className="p-4 text-center">4. ยอดแทง</th>
+                                      <th className="p-4 text-center">5. ถูกรางวัล</th>
+                                      <th className="p-4 text-center">6. กำไร/ขาดทุน</th>
+                                      <th className="p-4 text-center">7. หมายเหตุ</th>
+                                      <th className="p-4 text-center">8. รายละเอียด</th>
+                                      <th className="p-4 text-center">9. ยกเลิก</th>
+                                      <th className="p-4 text-center">10. ผู้ลงบิล</th>
                                   </tr>
-                              );
-                          })
-                      )}
-                  </tbody>
-              </table>
-          </div>
+                              </thead>
+                              <tbody className="divide-y divide-slate-50">
+                                  {group.items.map((t: any) => {
+                                      return (
+                                          <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="p-4 text-center font-mono text-slate-500">
+                                                    {new Date(t.created_at).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}
+                                                </td>
+                                                
+                                                <td className="p-4 text-center text-blue-600 font-bold">{t.lotto_type?.name}</td>
+                                                <td className="p-4 text-center font-mono">{new Date(t.created_at).toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'numeric'})}</td>
+                                                <td className="p-4 text-center font-mono font-bold">
+                                                    {Number(t.total_amount).toLocaleString()}
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    {renderWinStatus(t)}
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    {renderNetProfit(t)}
+                                                </td>
+                                                <td className="p-4 text-center text-xs text-slate-400">
+                                                    {t.note ? (
+                                                        <span className="flex items-center justify-center gap-1" title={t.note}>
+                                                            <FileText size={12} /> <span className="truncate max-w-25">{t.note}</span>
+                                                        </span>
+                                                    ) : '-'}
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    <button onClick={() => setSelectedTicket(t)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                                                        <Eye size={18} />
+                                                    </button>
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    {t.status === 'PENDING' ? (
+                                                        <button onClick={() => handleCancelTicket(t.id)} className="p-1.5 text-red-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="ยกเลิกบิล">
+                                                            <Ban size={18} />
+                                                        </button>
+                                                    ) : <span className="text-gray-300">-</span>}
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    <div className="flex flex-col items-center justify-center">
+                                                        <div className="font-bold text-slate-700 text-xs bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                                                            {t.user?.username}
+                                                        </div>
+                                                        <div className="text-[9px] text-slate-400 mt-0.5">#{t.id.substring(0,6)}</div>
+                                                    </div>
+                                                </td>
+                                          </tr>
+                                      );
+                                  })}
+                              </tbody>
+                          </table>
+                      </div>
 
-          {/* Pagination Controls */}
-          <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
-                <button 
-                    disabled={currentPage === 1} 
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-100 text-sm font-bold"
-                >
-                    <ChevronLeft size={16} /> ก่อนหน้า
-                </button>
-                <span className="text-sm text-slate-500 font-medium">หน้า {currentPage}</span>
-                <button 
-                    disabled={filteredTickets.length < itemsPerPage && totalPages === currentPage} 
-                    onClick={() => setCurrentPage(p => p + 1)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border bg-white text-slate-600 disabled:opacity-50 hover:bg-slate-100 text-sm font-bold"
-                >
-                    ถัดไป <ChevronRight size={16} />
-                </button>
-          </div>
+                      {/* Footer สรุปยอด */}
+                      <div className="bg-slate-50 border-t border-gray-200 p-3 px-4 flex flex-wrap gap-6 justify-end items-center text-sm shadow-inner">
+                          
+                          {/* ยอดยกเลิก */}
+                          <div className="flex items-center gap-2 opacity-75">
+                              <RotateCcw size={16} className="text-slate-400"/>
+                              <span className="text-slate-500 text-xs uppercase font-bold">ยกเลิก/คืนเงิน:</span>
+                              <span className="font-bold text-slate-600 decoration-slate-300 decoration-1">
+                                  {group.summary.totalCancelled.toLocaleString()}
+                              </span>
+                          </div>
+
+                          <div className="w-px h-6 bg-gray-300 hidden sm:block"></div>
+
+                          <div className="flex items-center gap-2">
+                              <span className="text-slate-500 text-xs uppercase font-bold">รวมยอดขาย:</span>
+                              <span className="font-black text-blue-600 text-lg">{group.summary.totalBet.toLocaleString()}</span>
+                          </div>
+                          <div className="w-px h-6 bg-gray-300 hidden sm:block"></div>
+                          <div className="flex items-center gap-2">
+                              <span className="text-slate-500 text-xs uppercase font-bold">จ่ายรางวัล:</span>
+                              <span className="font-bold text-red-500">{group.summary.totalWin.toLocaleString()}</span>
+                          </div>
+                          <div className="w-px h-6 bg-gray-300 hidden sm:block"></div>
+                          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${group.summary.profit >= 0 ? 'bg-green-100 border-green-200 text-green-700' : 'bg-red-100 border-red-200 text-red-700'}`}>
+                              <TrendingUp size={18} />
+                              <span className="text-xs uppercase font-bold mr-1">กำไรเจ้ามือ:</span>
+                              <span className="font-black text-base">
+                                  {group.summary.profit >= 0 ? '+' : ''}{group.summary.profit.toLocaleString()}
+                              </span>
+                          </div>
+                      </div>
+
+                  </div>
+              ))
+          )}
+          
+          {/* Infinite Scroll Sentinel */}
+          {hasMore && !initialLoad && (
+              <div ref={lastTicketRef} className="py-8 flex justify-center text-slate-400 text-sm animate-pulse">
+                  {loading ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={16}/> กำลังโหลดเพิ่ม...</span> : <span className="flex items-center gap-2"><ArrowDown size={16}/> เลื่อนลงเพื่อโหลดต่อ</span>}
+              </div>
+          )}
+          
+          {!hasMore && tickets.length > 0 && (
+              <div className="py-8 text-center text-slate-300 text-xs">
+                  --- สิ้นสุดรายการ ---
+              </div>
+          )}
       </div>
 
-      {/* --- Ticket Detail Modal --- */}
+      {/* Modal Detail */}
       {selectedTicket && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
               <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95">
@@ -319,7 +411,6 @@ export default function ShopHistory() {
                   <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                       <div>
                           <h3 className="font-bold text-lg text-slate-800">รายละเอียดบิล</h3>
-                          <div className="text-xs text-slate-500">#{selectedTicket.id}</div>
                           <div className="text-xs text-blue-600 font-bold mt-1">ผู้ซื้อ: {selectedTicket.user?.username}</div>
                       </div>
                       <button onClick={() => setSelectedTicket(null)} className="p-1 hover:bg-gray-200 rounded-full"><X size={20} /></button>
@@ -341,7 +432,6 @@ export default function ShopHistory() {
                             <tbody className="divide-y divide-slate-50">
                                 {selectedTicket.items?.map((item: any, i: number) => {
                                     const potentialReward = Number(item.amount) * Number(item.reward_rate);
-                                    // ฟังก์ชันแปลภาษา (Inline translation)
                                     const translateType = (type: string) => {
                                         const map: Record<string, string> = {
                                             '2up': '2ตัวบน', '2down': '2ตัวล่าง',
@@ -359,7 +449,7 @@ export default function ShopHistory() {
                                             <td className="p-3 text-right font-mono">{Number(item.amount).toLocaleString()}</td>
                                             <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
                                             <td className="p-3 text-right">
-                                                {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">+{Number(item.amount * item.reward_rate).toLocaleString()}</span> : 
+                                                {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">WIN</span> : 
                                                  item.status === 'LOSE' ? <span className="text-red-400 text-xs">ไม่ถูก</span> : 
                                                  <span className="text-orange-400 text-xs font-medium">รอผล</span>}
                                             </td>
@@ -372,8 +462,6 @@ export default function ShopHistory() {
 
                   {/* Footer & Summary */}
                   <div className="p-4 border-t bg-gray-50 space-y-3">
-                      
-                      {/* ส่วนสรุปยอดเงิน */}
                       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm space-y-2">
                           <div className="flex justify-between items-center text-sm">
                               <span className="text-slate-500">ยอดซื้อรวม:</span>
@@ -382,7 +470,6 @@ export default function ShopHistory() {
                           <div className="flex justify-between items-center text-sm border-t border-dashed pt-2">
                               <span className="text-slate-500">ผลรางวัลรวม:</span>
                               {(() => {
-                                  // คำนวณยอดถูกรางวัล
                                   const winAmount = calculateWinAmount(selectedTicket);
                                   return winAmount > 0 ? (
                                       <span className="font-bold text-green-600">+{Number(winAmount).toLocaleString()} บาท</span>
@@ -395,7 +482,6 @@ export default function ShopHistory() {
                           </div>
                       </div>
 
-                      {/* ปุ่มยกเลิก */}
                       {selectedTicket.status === 'PENDING' && (
                           <button 
                             onClick={() => handleCancelTicket(selectedTicket.id)} 
