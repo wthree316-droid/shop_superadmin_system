@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as htmlToImage from 'html-to-image';
 import client from '../../api/client';
@@ -19,8 +19,8 @@ import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '
 import toast from 'react-hot-toast';
 
 // --- Sub-Component: ตัวนับถอยหลัง ---
-const CountDownTimer = ({ closeTime, onTimeout }: { closeTime: string; onTimeout?: () => void }) => {
-    const [timeLeft, setTimeLeft] = useState('00:00:00:00');
+const CountDownTimer = ({ closeTime, onTimeout }: { closeTime: string; onTimeout: () => void }) => {
+    const [timeLeft, setTimeLeft] = useState('00:00:00');
 
     useEffect(() => {
         if (!closeTime) return;
@@ -30,14 +30,14 @@ const CountDownTimer = ({ closeTime, onTimeout }: { closeTime: string; onTimeout
             const [hours, minutes] = closeTime.split(':').map(Number);
             
             const target = new Date();
-            target.setHours(hours, minutes, 0);
+            target.setHours(hours, minutes, 0, 0); // ตั้งวินาทีเป็น 0 เพื่อความแม่นยำ
 
             const diff = target.getTime() - now.getTime();
 
             if (diff <= 0) {
-                setTimeLeft("00:00:00:00");
+                setTimeLeft("00:00:00");
                 clearInterval(interval);
-                if (onTimeout) onTimeout();
+                onTimeout(); // เรียกฟังก์ชันเมื่อหมดเวลา
                 return;
             }
 
@@ -104,7 +104,7 @@ export default function BettingRoom() {
     const addButtonRef = useRef<HTMLButtonElement>(null);
     const billRef = useRef<HTMLDivElement>(null);
 
-    // ✅ ฟังก์ชันดึง Focus กลับมาที่ช่องกรอก
+    // Focus Helper
     const focusInput = () => {
         setTimeout(() => {
             if (numberInputRef.current) {
@@ -113,9 +113,7 @@ export default function BettingRoom() {
         }, 50); 
     };
 
-    // ✅ [ใหม่] ฟังก์ชันป้องกันการขโมย Focus เมื่อกดพื้นหลัง
     const handleBackgroundMouseDown = (e: React.MouseEvent) => {
-        // เช็คว่าสิ่งที่คลิกคือ Input หรือ Button หรือไม่
         const target = e.target as HTMLElement;
         const isInteractive = 
             target.tagName === 'INPUT' || 
@@ -125,7 +123,6 @@ export default function BettingRoom() {
             target.closest('a') ||
             target.closest('input');
 
-        // ถ้าไม่ใช่สิ่งที่ต้องพิมพ์หรือกด -> ห้ามขโมย Focus (preventDefault)
         if (!isInteractive) {
             e.preventDefault();
         }
@@ -159,14 +156,16 @@ export default function BettingRoom() {
         } as React.CSSProperties);
     };
 
+    // Data States
     const [lotto, setLotto] = useState<any>(null);
     const [risks, setRisks] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [history, setHistory] = useState<any[]>([]);
+    const [lottoStats, setLottoStats] = useState<any[]>([]); // สถิติผลรางวัล
 
+    // Input States
     const [tab, setTab] = useState<'2' | '3' | '19' | 'run' | 'win'>('2');
     const [winMode, setWinMode] = useState<'2' | '3'>('2'); 
-    
     const [includeDoubles, setIncludeDoubles] = useState(false);
 
     const [currentInput, setCurrentInput] = useState('');
@@ -180,10 +179,11 @@ export default function BettingRoom() {
     const [note, setNote] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleTimeUp = () => {
+    // ✅ ใช้ useCallback เพื่อป้องกันการ re-render loop
+    const handleTimeUp = useCallback(() => {
         alert("⛔ หมดเวลาแทงแล้ว!\nระบบจะพาท่านกลับไปยังหน้าตลาด");
         navigate('/play');
-    };
+    }, [navigate]);
 
     const isItemClosed = (item: CartItem) => {
         return risks.some(r => 
@@ -193,8 +193,34 @@ export default function BettingRoom() {
         );
     };
 
+    const fetchHistory = async (lottoId: string) => {
+        try {
+            const res = await client.get(`/play/history?limit=15&lotto_type_id=${lottoId}`);
+            setHistory(Array.isArray(res.data) ? res.data : []); 
+        } catch (err) {
+            console.error("Fetch history error", err);
+            setHistory([]); 
+        }
+    };
+
+    const fetchLottoStats = async (lottoId: string) => {
+        try {
+            // ดึงผลย้อนหลัง 5 งวด
+            const res = await client.get(`/reward/history?lotto_type_id=${lottoId}&limit=5`);
+            setLottoStats(res.data);
+        } catch (err) { 
+            console.error("Fetch stats error", err); 
+        }
+    };
+
     const fetchData = async () => {
-        if(!id) return;
+        // ✅ แก้ไข 1: ถ้าไม่มี ID ให้หยุดโหลดและ redirect (ป้องกันหมุนค้าง)
+        if(!id) {
+            setLoading(false);
+            navigate('/play');
+            return;
+        }
+
         setLoading(true);
         try {
             const [resLotto, resRisks] = await Promise.all([
@@ -231,24 +257,18 @@ export default function BettingRoom() {
                 applyThemeFromHex(currentLotto.theme_color);
             }
 
-            fetchHistory();
+            // ✅ โหลดข้อมูลเสริม (ทำพร้อมกันและรอให้เสร็จก่อนปิด Loading)
+            await Promise.all([
+                fetchHistory(id),
+                fetchLottoStats(id)
+            ]);
+
         } catch (err) { 
             console.error("Load data error", err);
             toast.error("ไม่พบข้อมูลหวย");
             navigate('/play');
         } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchHistory = async () => {
-        if (!id) return;
-        try {
-            const res = await client.get(`/play/history?limit=15&lotto_type_id=${id}`);
-            setHistory(Array.isArray(res.data) ? res.data : []); 
-        } catch (err) {
-            console.error("Fetch history error", err);
-            setHistory([]); 
+            setLoading(false); // ✅ ปิด Loading เสมอ
         }
     };
 
@@ -257,17 +277,21 @@ export default function BettingRoom() {
         try {
             await client.patch(`/play/tickets/${ticketId}/cancel`);
             toast.success("ยกเลิกโพยสำเร็จ");
-            fetchHistory(); // โหลดประวัติใหม่
-            // ถ้าต้องการอัปเดตยอดเงินคงเหลือทันที อาจต้องเรียก fetchMeApi หรือ reload หน้า
+            if (id) fetchHistory(id); 
         } catch(err: any) {
             toast.error(err.response?.data?.detail || 'ยกเลิกไม่สำเร็จ');
         }
     };
 
+    useEffect(() => {
+        fetchData();
+    }, [id]); // ลบ navigate ออกจาก dependency เพื่อลดการ re-run ที่ไม่จำเป็น
+
+    // ... (ส่วน Logic การจัดการ Tab, Input, Paste, Buffer คงเดิมตามปกติ) ...
     const handleTabChange = (newTab: typeof tab) => {
         const hasData = bufferNumbers.length > 0 || currentInput.length > 0;
         if (hasData && newTab !== tab) {
-            const confirmChange = window.confirm("⚠️ มีรายการเลขที่เลือกค้างอยู่\nการเปลี่ยนรูปแบบจะล้างข้อมูลที่เลือกไว้ทั้งหมด\n\nยืนยันที่จะเปลี่ยนหรือไม่?");
+            const confirmChange = window.confirm("⚠️ มีรายการเลขที่เลือกค้างอยู่\nยืนยันที่จะเปลี่ยนหรือไม่?");
             if (!confirmChange) return; 
         }
         setTab(newTab);
@@ -276,15 +300,11 @@ export default function BettingRoom() {
     const handleWinModeChange = (newMode: typeof winMode) => {
         const hasData = bufferNumbers.length > 0 || currentInput.length > 0;
         if (hasData && newMode !== winMode) {
-            const confirmChange = window.confirm("⚠️ เปลี่ยนรูปแบบการวินเลข ข้อมูลจะถูกล้าง\nยืนยันหรือไม่?");
+            const confirmChange = window.confirm("⚠️ ข้อมูลจะถูกล้าง ยืนยันหรือไม่?");
             if (!confirmChange) return;
         }
         setWinMode(newMode);
     };
-
-    useEffect(() => {
-        fetchData();
-    }, [id, navigate]);
 
     useEffect(() => {
         setBufferNumbers([]);
@@ -327,7 +347,6 @@ export default function BettingRoom() {
                 }, 100);
             }
         }
-        
         if (e.key === 'Enter') {
             e.preventDefault();
             if (currentField === 'number') priceTopRef.current?.focus();
@@ -343,57 +362,38 @@ export default function BettingRoom() {
         e.preventDefault(); 
         const text = e.clipboardData.getData('text');
         if (!text) return;
-
         const parts = text.split(/[^0-9]+/).filter(x => x); 
         if (parts.length === 0) return;
 
         if (tab === 'win') {
             const joined = parts.join('');
-            const config = getInputConfig(); // ดูว่าวิน 2 หรือ 3 ตัว (เพื่อเอาค่า min)
-
-            // 1. ถ้าเลขยาวเกินลิมิตสูงสุด
-            if (joined.length > 7) {
-                return toast.error('ตัวเลขเยอะเกินไปสำหรับโหมดวิน (สูงสุด 7 ตัว)');
-            }
-
-            // 2. ถ้าเลขครบตามขั้นต่ำแล้ว -> สั่งคำนวณทันที!
+            const config = getInputConfig(); 
+            if (joined.length > 7) return toast.error('ตัวเลขสูงสุด 7 ตัว');
             if (joined.length >= config.min) {
-                handleAddNumberToBuffer(joined); // ส่งเลขที่วางไปคำนวณเลย
+                handleAddNumberToBuffer(joined); 
                 toast.success('วางและคำนวณอัตโนมัติ');
             } else {
-                // 3. ถ้าเลขสั้นไป (เช่น วางแค่ 1 ตัว) -> ให้แปะลงกล่องข้อความเฉยๆ รอพิมพ์ต่อ
-                if (currentInput.length + joined.length > 7) {
-                    return toast.error('ตัวเลขรวมกันเกิน 7 ตัว');
-                }
+                if (currentInput.length + joined.length > 7) return toast.error('ตัวเลขรวมกันเกิน 7 ตัว');
                 setCurrentInput(prev => prev + joined);
             }
             return;
         }
 
         const config = getInputConfig();
-
         if (tab === '19') {
             const uniqueInputs = [...new Set(parts.filter(n => n.length === 1))];
             const availableSlots = 3 - root19Inputs.length;
-            
             if (availableSlots <= 0) return toast.error("⚠️ รูดได้สูงสุด 3 ตัวต่อรอบบิล");
-
             const newRoots = uniqueInputs.filter(n => !root19Inputs.includes(n));
-            
             if (newRoots.length === 0) return toast("เลขซ้ำหรือไม่มีเลขใหม่");
-
             const rootsToAdd = newRoots.slice(0, availableSlots);
-            if (newRoots.length > availableSlots) {
-                toast(`นำเข้า ${availableSlots} ตัวแรก (${rootsToAdd.join(', ')}) เนื่องจากครบโควต้า 3 ตัว`);
-            } else {
-                toast.success(`วางเลขรูด ${rootsToAdd.length} ตัวสำเร็จ`);
-            }
+            if (newRoots.length > availableSlots) toast(`นำเข้า ${availableSlots} ตัวแรก (${rootsToAdd.join(', ')}) เนื่องจากครบโควต้า`);
+            else toast.success(`วางเลขรูด ${rootsToAdd.length} ตัวสำเร็จ`);
 
             const allGenNumbers: string[] = [];
             rootsToAdd.forEach(r => {
                 allGenNumbers.push(...generateNumbers(r, '19gate'));
             });
-
             setRoot19Inputs(prev => [...prev, ...rootsToAdd]);
             setBufferNumbers(prev => [...prev, ...allGenNumbers]);
             return;
@@ -401,7 +401,6 @@ export default function BettingRoom() {
 
         const validList: string[] = [];
         let errorCount = 0;
-
         parts.forEach(numStr => {
             if (numStr.length < config.min || numStr.length > config.max) {
                 errorCount++;
@@ -409,15 +408,11 @@ export default function BettingRoom() {
             }
             validList.push(numStr);
         });
-
         if (validList.length > 0) {
             setBufferNumbers(prev => [...prev, ...validList]);
             toast.success(`วางเลขสำเร็จ ${validList.length} รายการ`);
         }
-        
-        if (errorCount > 0) {
-            toast.error(`ข้าม ${errorCount} ตัวที่หลักไม่ครบ/เกิน`);
-        }
+        if (errorCount > 0) toast.error(`ข้าม ${errorCount} ตัวที่หลักไม่ครบ/เกิน`);
     };
 
     const handleScreenshot = async () => {
@@ -434,19 +429,15 @@ export default function BettingRoom() {
                     return true;
                 }
             });
-
             if (!blob) throw new Error('ไม่สามารถสร้างรูปภาพได้');
-
             await navigator.clipboard.write([
                 new ClipboardItem({ 'image/png': blob })
             ]);
-            
             toast.dismiss(toastId);
-            toast.success('คัดลอกรูปแล้ว! กดวาง (Paste) ได้เลย'); 
+            toast.success('คัดลอกรูปแล้ว!'); 
         } catch (error) {
-            console.error("Screenshot error:", error);
             toast.dismiss(toastId);
-            toast.error('คัดลอกไม่สำเร็จ (บราวเซอร์อาจไม่รองรับ)');
+            toast.error('คัดลอกไม่สำเร็จ');
         }
     };
 
@@ -462,36 +453,25 @@ export default function BettingRoom() {
     const handleAddNumberToBuffer = (manualNum?: string) => {
         const numToAdd = manualNum || currentInput;
         if (!numToAdd) return;
-
         const config = getInputConfig();
-        if (numToAdd.length < config.min) {
-            return toast.error(`กรุณาระบุตัวเลขอย่างน้อย ${config.min} ตัว`);
-        }
+        if (numToAdd.length < config.min) return toast.error(`กรุณาระบุตัวเลขอย่างน้อย ${config.min} ตัว`);
 
         if (tab === '19') {
-            if (root19Inputs.length >= 3) {
-                return toast.error("⚠️ รูดได้สูงสุด 3 ตัวต่อรอบบิล");
-            }
-            if (root19Inputs.includes(numToAdd)) {
-                return toast.error("⚠️ เลขนี้รูดไปแล้ว");
-            }
+            if (root19Inputs.length >= 3) return toast.error("⚠️ รูดได้สูงสุด 3 ตัวต่อรอบบิล");
+            if (root19Inputs.includes(numToAdd)) return toast.error("⚠️ เลขนี้รูดไปแล้ว");
             setRoot19Inputs(prev => [...prev, numToAdd]);
         }
 
         let numbersToAdd: string[] = [numToAdd];
-        
-        if (tab === '19') {
-            numbersToAdd = generateNumbers(numToAdd, '19gate');
-        } else if (tab === 'win') {
+        if (tab === '19') numbersToAdd = generateNumbers(numToAdd, '19gate');
+        else if (tab === 'win') {
             const mode = winMode === '2' ? 'win2' : 'win3';
             numbersToAdd = generateNumbers(numToAdd, mode, includeDoubles);
-            if(numbersToAdd.length === 0) return toast.error("จับวินไม่ได้ (เลขซ้ำหรือจำนวนไม่พอ)");
+            if(numbersToAdd.length === 0) return toast.error("จับวินไม่ได้");
         }
 
         setBufferNumbers(prev => [...prev, ...numbersToAdd]);
         setCurrentInput('');
-
-        // ✅ เด้งกลับมาช่องกรอกเสมอ
         focusInput();
     };
 
@@ -513,7 +493,6 @@ export default function BettingRoom() {
                 toast("เลขชุดนี้ถูกเลือกไว้หมดแล้ว");
             }
         }
-        // ✅ เด้งกลับมาช่องกรอกเสมอ
         focusInput();
     };
 
@@ -525,18 +504,14 @@ export default function BettingRoom() {
             newSet.push(...perms);
         });
         setBufferNumbers(newSet); 
-        toast.success(`กลับเลขเรียบร้อย (รวม ${newSet.length} รายการ)`);
-        
-        // ✅ เด้งกลับมาช่องกรอกเสมอ
+        toast.success(`กลับเลขเรียบร้อย`);
         focusInput();
     };
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.code === 'Space') {
-                if (document.activeElement instanceof HTMLInputElement && document.activeElement.type === 'text') {
-                    return;
-                }
+                if (document.activeElement instanceof HTMLInputElement && document.activeElement.type === 'text') return;
                 e.preventDefault();
                 handleReverseBuffer();
             }
@@ -545,22 +520,17 @@ export default function BettingRoom() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [bufferNumbers]);
 
-
     const handleAddBill = () => {
-        if (currentInput && currentInput.length >= getInputConfig().min) {
-            handleAddNumberToBuffer();
-        }
+        if (currentInput && currentInput.length >= getInputConfig().min) handleAddNumberToBuffer();
 
         let pendingNumbers: string[] = [];
         if (currentInput && currentInput.length >= getInputConfig().min && tab === 'win') {
             const mode = winMode === '2' ? 'win2' : 'win3';
-            const generated = generateNumbers(currentInput, mode, includeDoubles);
-            pendingNumbers = generated;
+            pendingNumbers = generateNumbers(currentInput, mode, includeDoubles);
             setCurrentInput('');
         }
         
         const finalNumbersToProcess = [...bufferNumbers, ...pendingNumbers];
-
         if (finalNumbersToProcess.length === 0) return toast.error("กรุณาระบุตัวเลข");
         if (!priceTop && !priceBottom) return toast.error("กรุณาระบุราคาอย่างน้อย 1 ช่อง");
 
@@ -570,13 +540,11 @@ export default function BettingRoom() {
         
         const getMin = (type: string) => {
             const rate = currentRates[type];
-            if (typeof rate === 'object') return Number(rate.min) || 1;
-            return 1;
+            return Number(getRateVal(rate, 'min')) || 1;
         };
         const getMax = (type: string) => {
             const rate = currentRates[type];
-            if (typeof rate === 'object') return Number(rate.max) || 0;
-            return 0; 
+            return Number(getRateVal(rate, 'max')) || 0;
         };
 
         if (pTop > 0) {
@@ -584,9 +552,7 @@ export default function BettingRoom() {
             const minBet = getMin(typeToCheck);
             if (pTop < minBet) return toast.error(`ราคาบน/วิ่งบน ขั้นต่ำ ${minBet} บาท`);
             const maxBet = getMax(typeToCheck);
-            if (maxBet > 0 && pTop > maxBet) {
-                return toast.error(`ราคาบน/วิ่งบน สูงสุดไม่เกิน ${maxBet.toLocaleString()} บาท`);
-            }
+            if (maxBet > 0 && pTop > maxBet) return toast.error(`ราคาบน/วิ่งบน สูงสุดไม่เกิน ${maxBet} บาท`);
         }
 
         if (pBottom > 0) {
@@ -594,9 +560,7 @@ export default function BettingRoom() {
             const minBet = getMin(typeToCheck);
             if (pBottom < minBet) return toast.error(`ราคาล่าง/โต๊ด ขั้นต่ำ ${minBet} บาท`);
             const maxBet = getMax(typeToCheck);
-            if (maxBet > 0 && pBottom > maxBet) {
-                return toast.error(`ราคาล่าง/โต๊ด สูงสุดไม่เกิน ${maxBet.toLocaleString()} บาท`);
-            }
+            if (maxBet > 0 && pBottom > maxBet) return toast.error(`ราคาล่าง/โต๊ด สูงสุดไม่เกิน ${maxBet} บาท`);
         }
         
         const newItems: CartItem[] = [];
@@ -606,48 +570,39 @@ export default function BettingRoom() {
             if (tab === '2' || tab === '19' || (tab === 'win' && winMode === '2')) {
                 if (pTop > 0) newItems.push({ 
                     temp_id: uuidv4(), number: num, bet_type: '2up', amount: pTop, display_text: num,
-                    rate_pay: Number(getRateVal(currentRates['2up'], 'pay')),
-                    batch_id: currentBatchId
+                    rate_pay: Number(getRateVal(currentRates['2up'], 'pay')), batch_id: currentBatchId
                 });
                 if (pBottom > 0) newItems.push({ 
                     temp_id: uuidv4(), number: num, bet_type: '2down', amount: pBottom, display_text: num,
-                    rate_pay: Number(getRateVal(currentRates['2down'], 'pay')),
-                    batch_id: currentBatchId
+                    rate_pay: Number(getRateVal(currentRates['2down'], 'pay')), batch_id: currentBatchId
                 });
             } else if (tab === '3' || (tab === 'win' && winMode === '3')) {
                 if (pTop > 0) newItems.push({ 
                     temp_id: uuidv4(), number: num, bet_type: '3top', amount: pTop, display_text: num,
-                    rate_pay: Number(getRateVal(currentRates['3top'], 'pay')),
-                    batch_id: currentBatchId
+                    rate_pay: Number(getRateVal(currentRates['3top'], 'pay')), batch_id: currentBatchId
                 });
                 if (pBottom > 0) newItems.push({ 
                     temp_id: uuidv4(), number: num, bet_type: '3tod', amount: pBottom, display_text: num,
-                    rate_pay: Number(getRateVal(currentRates['3tod'], 'pay')),
-                    batch_id: currentBatchId
+                    rate_pay: Number(getRateVal(currentRates['3tod'], 'pay')), batch_id: currentBatchId
                 });
             } else if (tab === 'run') {
                 if (pTop > 0) newItems.push({ 
                     temp_id: uuidv4(), number: num, bet_type: 'run_up', amount: pTop, display_text: num,
-                    rate_pay: Number(getRateVal(currentRates['run_up'], 'pay')),
-                    batch_id: currentBatchId
+                    rate_pay: Number(getRateVal(currentRates['run_up'], 'pay')), batch_id: currentBatchId
                 });
                 if (pBottom > 0) newItems.push({ 
                     temp_id: uuidv4(), number: num, bet_type: 'run_down', amount: pBottom, display_text: num,
-                    rate_pay: Number(getRateVal(currentRates['run_down'], 'pay')),
-                    batch_id: currentBatchId
+                    rate_pay: Number(getRateVal(currentRates['run_down'], 'pay')), batch_id: currentBatchId
                 });
             }
         });
 
-        if(newItems.length === 0) {
-            return toast.error("ไม่มีรายการที่เพิ่มได้");
-        }
+        if(newItems.length === 0) return toast.error("ไม่มีรายการที่เพิ่มได้");
 
         setCart(prev => [...newItems, ...prev]); 
         setBufferNumbers([]);
         setPriceTop('');
         setPriceBottom('');
-        
         toast.success(`เพิ่ม ${newItems.length} รายการ`);
     };
 
@@ -664,65 +619,49 @@ export default function BettingRoom() {
     };
 
     const groupItemsInBatch = (batchItems: CartItem[]) => {
-        const itemsByNumber = new Map<string, CartItem[]>();
+        const itemsByNum = new Map<string, CartItem[]>();
         batchItems.forEach(item => {
-            if (!itemsByNumber.has(item.number)) itemsByNumber.set(item.number, []);
-            itemsByNumber.get(item.number)?.push(item);
+            if (!itemsByNum.has(item.number)) itemsByNum.set(item.number, []);
+            itemsByNum.get(item.number)?.push(item);
         });
 
-        const processGrouping = (items: CartItem[]) => {
-            const itemsByNum = new Map<string, CartItem[]>();
-            items.forEach(item => {
-                if (!itemsByNum.has(item.number)) itemsByNum.set(item.number, []);
-                itemsByNum.get(item.number)?.push(item);
+        const groups = new Map<string, any>();
+        const typeOrder = ['2up', '2down', '3top', '3tod', 'run_up', 'run_down'];
+        const sortTypes = (a: string, b: string) => typeOrder.indexOf(a) - typeOrder.indexOf(b);
+
+        itemsByNum.forEach((userItems, number) => {
+            const piles = new Map<string, CartItem[]>();
+            userItems.forEach(item => {
+                const key = `${item.bet_type}:${item.amount}`;
+                if (!piles.has(key)) piles.set(key, []);
+                piles.get(key)?.push(item);
             });
 
-            const groups = new Map<string, any>();
-            const typeOrder = ['2up', '2down', '3top', '3tod', 'run_up', 'run_down'];
-            const sortTypes = (a: string, b: string) => typeOrder.indexOf(a) - typeOrder.indexOf(b);
-
-            itemsByNum.forEach((userItems, number) => {
-                const piles = new Map<string, CartItem[]>();
-                userItems.forEach(item => {
-                    const key = `${item.bet_type}:${item.amount}`;
-                    if (!piles.has(key)) piles.set(key, []);
-                    piles.get(key)?.push(item);
-                });
-
-                while (piles.size > 0) {
-                    const currentSetItems: CartItem[] = [];
-                    for (const [key, stack] of piles.entries()) {
-                        const item = stack.pop();
-                        if (item) currentSetItems.push(item);
-                        if (stack.length === 0) piles.delete(key);
-                    }
-                    if (currentSetItems.length === 0) break;
-
-                    currentSetItems.sort((a, b) => sortTypes(a.bet_type, b.bet_type));
-                    
-                    const sig = currentSetItems.map(i => `${i.bet_type}:${i.amount}`).join('|');
-                    
-                    const labelStr = currentSetItems.map(i => getTypeLabel(i.bet_type)).join(' x ');
-                    const priceStr = currentSetItems.map(i => i.amount).join(' x ');
-
-                    if (!groups.has(sig)) {
-                        groups.set(sig, {
-                            key: uuidv4(), 
-                            labelStr,
-                            priceStr,
-                            instances: [],
-                            allGroupItems: []
-                        });
-                    }
-                    const group = groups.get(sig)!;
-                    group.instances.push({ number, items: currentSetItems });
-                    group.allGroupItems.push(...currentSetItems);
+            while (piles.size > 0) {
+                const currentSetItems: CartItem[] = [];
+                for (const [key, stack] of piles.entries()) {
+                    const item = stack.pop();
+                    if (item) currentSetItems.push(item);
+                    if (stack.length === 0) piles.delete(key);
                 }
-            });
-            return Array.from(groups.values());
-        };
+                if (currentSetItems.length === 0) break;
 
-        return processGrouping(batchItems);
+                currentSetItems.sort((a, b) => sortTypes(a.bet_type, b.bet_type));
+                const sig = currentSetItems.map(i => `${i.bet_type}:${i.amount}`).join('|');
+                const labelStr = currentSetItems.map(i => getTypeLabel(i.bet_type)).join(' x ');
+                const priceStr = currentSetItems.map(i => i.amount).join(' x ');
+
+                if (!groups.has(sig)) {
+                    groups.set(sig, {
+                        key: uuidv4(), labelStr, priceStr, instances: [], allGroupItems: []
+                    });
+                }
+                const group = groups.get(sig)!;
+                group.instances.push({ number, items: currentSetItems });
+                group.allGroupItems.push(...currentSetItems);
+            }
+        });
+        return Array.from(groups.values());
     };
 
     const getGroupedCartItems = () => {
@@ -744,7 +683,6 @@ export default function BettingRoom() {
                 allGroups.push(...batchGroups);
             }
         });
-
         return allGroups;
     };
 
@@ -753,19 +691,10 @@ export default function BettingRoom() {
         setCart(prev => prev.filter(i => !ids.has(i.temp_id)));
     };
 
-    const deleteInstance = (items: CartItem[]) => {
-        const ids = new Set(items.map(i => i.temp_id));
-        setCart(prev => prev.filter(i => !ids.has(i.temp_id)));
-    };
-
     const submitTicket = async () => {
         if (cart.length === 0) return;
-
         const validItems = cart.filter(item => !isItemClosed(item));
-
-        if (validItems.length === 0) {
-            return toast.error("ไม่มีรายการที่สามารถส่งได้ (ติดเลขอั้นปิดรับทั้งหมด)");
-        }
+        if (validItems.length === 0) return toast.error("ติดเลขอั้นปิดรับทั้งหมด");
 
         setIsSubmitting(true);
         const toastId = toast.loading('กำลังส่งโพย...');
@@ -780,7 +709,7 @@ export default function BettingRoom() {
             toast.success(`ส่งโพยสำเร็จ! รหัส: ${res.data.id.slice(0, 8)}`, { duration: 4000 });
             setCart([]);
             setNote('');
-            fetchHistory(); 
+            if(id) fetchHistory(id); 
         } catch (err: any) {
             console.error(err);
             toast.dismiss(toastId);
@@ -788,8 +717,6 @@ export default function BettingRoom() {
         } finally {
             setIsSubmitting(false);
         }
-        
-        // ✅ ส่งแล้วก็ต้องกลับมา Focus
         focusInput();
     };
 
@@ -799,13 +726,11 @@ export default function BettingRoom() {
     }, 0);
     
     const labels = tab === '3' ? { top: '3 ตัวบน', bottom: '3 ตัวโต๊ด' } : (tab === 'run' ? { top: 'วิ่งบน', bottom: 'วิ่งล่าง' } : { top: 'บน', bottom: 'ล่าง' });
-    const activeRates = lotto?.rates || {};
 
     if(loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-500 w-10 h-10"/></div>;
     if(!lotto) return null;
 
     return (
-        // ✅ แปะ handleBackgroundMouseDown ไว้ที่ Main Wrapper เพื่อดักจับทุกการคลิกในหน้านี้
         <div 
             className="flex flex-col h-full bg-white overflow-hidden font-sans"
             style={themeStyles} 
@@ -844,9 +769,6 @@ export default function BettingRoom() {
                                             {lotto.name.charAt(0)}
                                         </div>
                                     )}
-                                    <div className="hidden absolute text-xl font-bold text-gray-400">
-                                        {lotto.name.charAt(0)}
-                                    </div>
                                 </div>
 
                                 <div>
@@ -1094,18 +1016,15 @@ export default function BettingRoom() {
                                                 return (
                                                     <div 
                                                         key={`${group.key}-${inst.number}-${idx}`}
-                                                        onClick={() => deleteInstance(inst.items)} 
-                                                        className="relative group/chip cursor-pointer select-none"
-                                                        title="แตะเพื่อลบ"
+                                                        className="relative group/chip cursor-default select-none"
                                                     >
                                                         <span className={`font-mono font-bold text-base px-2 py-1 rounded border transition-colors flex items-center gap-1
                                                             ${isClosed 
                                                                 ? 'bg-red-100 text-red-500 border-red-200 line-through opacity-75' 
-                                                                : 'text-slate-700 bg-gray-100 border-gray-200 group-hover/chip:bg-red-50 group-hover/chip:text-red-500 group-hover/chip:border-red-200'
+                                                                : 'text-slate-700 bg-gray-100 border-gray-200'
                                                             }
                                                         `}>
                                                             {inst.number}
-                                                            {!isClosed && <Trash2 size={10} className="hidden group-hover/chip:inline opacity-50" />}
                                                         </span>
                                                         
                                                         {isHalf && !isClosed && (
@@ -1220,33 +1139,58 @@ export default function BettingRoom() {
                         </div>
                     </div>
                 </div>
+                
+                {/* ----------------- ส่วน Sidebar ขวา (Desktop) ----------------- */}
                 <div className="hidden lg:flex w-80 bg-[#1e293b] text-white border-l border-gray-700 flex-col shadow-xl z-10 overflow-y-auto">
-                    <div className="p-4 bg-[#0f172a] border-b border-gray-700 flex justify-between items-center">
-                        <div><h3 className="font-bold text-lg text-blue-400">อัตราจ่าย</h3></div>
+                    
+                    {/* ✅ 1. Header สถิติ (แทนที่ Header อัตราจ่ายเดิม) */}
+                    <div className="p-4 bg-[#0f172a] border-b border-gray-700">
+                        <h3 className="font-bold text-lg text-amber-400 flex items-center gap-2">
+                            <History size={18}/> สถิติผลรางวัล
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1">{lotto.name} (5 งวดล่าสุด)</p>
                     </div>
+
                     <div className="p-3 space-y-6">
+                        
+                        {/* ✅ 2. ตารางสถิติ */}
                         <div className="bg-[#1e293b] rounded-lg overflow-hidden border border-gray-700">
                             <table className="w-full text-xs text-center">
                                 <thead className="bg-[#334155] text-white font-bold">
-                                    <tr><th className="p-2 text-left pl-3">ประเภท</th><th className="p-2 text-green-400">จ่าย</th><th className="p-2 text-gray-300">ต่ำ</th><th className="p-2 text-blue-300">สูง</th></tr>
+                                    <tr>
+                                        <th className="p-2 text-left pl-3">งวดวันที่</th>
+                                        <th className="p-2 text-yellow-400">3 บน</th>
+                                        <th className="p-2 text-blue-300">2 บน</th>
+                                        <th className="p-2 text-green-400">2 ล่าง</th>
+                                    </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-700">
-                                    {[{ key: '3top', label: '3 ตัวบน' }, { key: '3tod', label: '3 ตัวโต๊ด' }, { key: '2up', label: '2 ตัวบน' }, { key: '2down', label: '2 ตัวล่าง' }, { key: 'run_up', label: 'วิ่งบน' }, { key: 'run_down', label: 'วิ่งล่าง' }].map((t) => {
-                                        const rate = activeRates[t.key];
+                                    {lottoStats.map((stat: any, idx: number) => {
+                                        const twoTop = stat.top_3 ? stat.top_3.slice(-2) : '-'; // คำนวณ 2 ตัวบน
                                         return (
-                                            <tr key={t.key} className="hover:bg-gray-800 transition-colors">
-                                                <td className="p-2 text-left pl-3 text-gray-300 font-medium">{t.label}</td>
-                                                <td className="p-2 text-green-400 font-bold">{Number(getRateVal(rate, 'pay')).toLocaleString()}</td>
-                                                <td className="p-2 text-gray-400">{Number(getRateVal(rate, 'min')).toLocaleString()}</td>
-                                                <td className="p-2 text-blue-300">{getRateVal(rate, 'max') !== '-' ? Number(getRateVal(rate, 'max')).toLocaleString() : '∞'}</td>
+                                            <tr key={idx} className="hover:bg-gray-800 transition-colors">
+                                                <td className="p-2 text-left pl-3 text-gray-300 font-mono">
+                                                    {new Date(stat.round_date).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit' })}
+                                                </td>
+                                                <td className="p-2 text-yellow-400 font-bold tracking-wider">{stat.top_3}</td>
+                                                <td className="p-2 text-blue-300 font-bold tracking-wider">{twoTop}</td>
+                                                <td className="p-2 text-green-400 font-bold tracking-wider">{stat.bottom_2}</td>
                                             </tr>
                                         );
                                     })}
+                                    {lottoStats.length === 0 && (
+                                        <tr>
+                                            <td colSpan={4} className="p-4 text-center text-gray-500">
+                                                ยังไม่มีผลรางวัล
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
 
-                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1">
+                        {/* ✅ 3. ส่วนเลขอั้น/ปิดรับ (คงไว้) */}
+                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1 mt-4">
                             <Settings2 size={12}/> เลขอั้น / ปิดรับ
                         </h4>
                         <div className="bg-[#0f172a] rounded-lg border border-gray-700 p-3 min-h-25 custom-scrollbar overflow-y-auto max-h-100">
@@ -1331,8 +1275,9 @@ export default function BettingRoom() {
                             )}
                         </div>
 
+                        {/* ✅ 4. ส่วนประวัติโพยล่าสุด (คงไว้) */}
                         <div>
-                            <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1"><History size={12}/> ประวัติโพยล่าสุด</h4>
+                            <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1 mt-4"><History size={12}/> ประวัติโพยล่าสุด</h4>
                             <div className="bg-[#0f172a] rounded-lg border border-gray-700 overflow-hidden">
                                 {history.length === 0 ? (
                                     <div className="text-center text-gray-500 text-xs py-4">ยังไม่มีประวัติ</div>
@@ -1356,7 +1301,7 @@ export default function BettingRoom() {
                                                             {ticket.status === 'PENDING' && (
                                                                 <button 
                                                                     onClick={(e) => {
-                                                                        e.stopPropagation(); // กันไม่ให้กดโดน div หลัก (ถ้ามี onClick)
+                                                                        e.stopPropagation(); 
                                                                         handleCancelTicket(ticket.id);
                                                                     }}
                                                                     className="text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 p-1 rounded transition-colors"

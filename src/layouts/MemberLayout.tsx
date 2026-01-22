@@ -1,10 +1,11 @@
-import { useState } from 'react'; 
+import { useState, useEffect } from 'react'; 
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   Store, List, FileText, LogOut, Wallet, Menu, X, User, Bell, ChevronRight
 } from 'lucide-react';
 import { useShop } from '../hooks/useShop';
+import client from '../api/client'; 
 
 export default function MemberLayout() {
   const { logout, user } = useAuth();
@@ -22,6 +23,38 @@ export default function MemberLayout() {
 
   const sidebarColor = shop?.theme_color || '#4338ca';
 
+  // ✅ 1. เพิ่ม State เก็บเรทของหวยปัจจุบัน
+  const [currentLottoRates, setCurrentLottoRates] = useState<any>(null);
+
+  // ✅ 2. ตรวจสอบ URL เพื่อดึงข้อมูลเรท (ทำงานเมื่อ location เปลี่ยน)
+  useEffect(() => {
+      // เช็คว่าอยู่ในหน้า /play/xxx หรือไม่ (โดยที่ xxx ไม่ใช่ตัวเลขเปล่าๆ หรือ root)
+      // Pattern: /play/UUID
+      const match = location.pathname.match(/\/play\/([a-zA-Z0-9-]+)$/);
+      
+      const fetchRates = async (lottoId: string) => {
+          try {
+              const res = await client.get(`/play/lottos/${lottoId}`);
+              setCurrentLottoRates(res.data.rates);
+          } catch (err) {
+              setCurrentLottoRates(null);
+          }
+      };
+
+      if (match && match[1]) {
+          fetchRates(match[1]);
+      } else {
+          setCurrentLottoRates(null); // ถ้าไม่อยู่หน้าแทง ให้ซ่อน
+      }
+  }, [location.pathname]);
+
+  // ✅ 3. ฟังก์ชัน Helper สำหรับดึงค่าเรท (Copy มาจาก BettingRoom หรือเขียนใหม่ให้สั้นๆ)
+  const getRateDisplay = (rateObj: any) => {
+      if (!rateObj) return '-';
+      if (typeof rateObj === 'object') return Number(rateObj.pay || 0).toLocaleString();
+      return Number(rateObj).toLocaleString();
+  };
+  
   return (
     <div className="flex h-screen bg-[#F0F4F8] font-sans overflow-hidden text-slate-800 relative">
       
@@ -127,6 +160,40 @@ export default function MemberLayout() {
               </Link>
             );
           })}
+
+          {currentLottoRates && (
+               <div className="mt-6 animate-fade-in">
+                   <div className="text-[10px] font-bold text-yellow-200 uppercase px-4 mb-2 tracking-wider border-b border-white/10 pb-1">
+                       อัตราจ่าย (บาทละ)
+                   </div>
+                   <div className="bg-black/20 mx-2 rounded-xl p-3 text-xs space-y-2">
+                       <div className="flex justify-between text-indigo-100">
+                           <span>3 ตัวบน</span>
+                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['3top'])}</span>
+                       </div>
+                       <div className="flex justify-between text-indigo-100">
+                           <span>3 ตัวโต๊ด</span>
+                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['3tod'])}</span>
+                       </div>
+                       <div className="flex justify-between text-indigo-100">
+                           <span>2 ตัวบน</span>
+                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['2up'])}</span>
+                       </div>
+                       <div className="flex justify-between text-indigo-100">
+                           <span>2 ตัวล่าง</span>
+                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['2down'])}</span>
+                       </div>
+                       <div className="flex justify-between text-indigo-100">
+                           <span>วิ่งบน</span>
+                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['run_up'])}</span>
+                       </div>
+                       <div className="flex justify-between text-indigo-100">
+                           <span>วิ่งล่าง</span>
+                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['run_down'])}</span>
+                       </div>
+                   </div>
+               </div>
+           )}
         </nav>
 
         {/* Footer */}

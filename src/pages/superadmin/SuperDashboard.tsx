@@ -19,7 +19,7 @@ export default function SuperDashboard() {
   const [endDate, setEndDate] = useState(getToday());
   const [loading, setLoading] = useState(false);
 
-  // Stats ระบบ (จำนวนร้านค้า / ผู้ใช้งาน)
+  // Stats ระบบ
   const [systemStats, setSystemStats] = useState({
     total_shops: 0,
     total_users: 0,
@@ -27,7 +27,7 @@ export default function SuperDashboard() {
     total_tickets: 0
   });
 
-  // Stats การเงินรวม (ยอดขาย / กำไร)
+  // Stats การเงินรวม
   const [financialStats, setFinancialStats] = useState({
     total_sales: 0,
     total_tickets: 0,
@@ -86,7 +86,6 @@ export default function SuperDashboard() {
       try {
           await client.delete('/system/cleanup/global');
           alert('ล้างข้อมูลเรียบร้อย ระบบสะอาดเอี่ยม!');
-          // โหลดข้อมูลใหม่ทั้งหมด
           fetchSystemStats();
           fetchFinancialStats();
           fetchShopPerformance();
@@ -151,7 +150,7 @@ export default function SuperDashboard() {
           </div>
       </div>
 
-      {/* --- Section 1: Financial Overview (Dynamic) --- */}
+      {/* --- Section 1: Financial Overview --- */}
       <div>
           <h3 className="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
               <Banknote className="text-blue-500"/> สรุปยอดเงินรวม (ทุกร้านค้า)
@@ -190,7 +189,7 @@ export default function SuperDashboard() {
           </div>
       </div>
 
-      {/* --- Section 2: System Health (Static) --- */}
+      {/* --- Section 2: System Health --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
               <div className="p-4 bg-purple-100 text-purple-600 rounded-2xl"><Store size={32} /></div>
@@ -231,9 +230,10 @@ export default function SuperDashboard() {
                 <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-xs">
                     <tr>
                         <th className="p-4 pl-6">ร้านค้า</th>
+                        {/* ✅ เพิ่มคอลัมน์บิล */}
+                        <th className="p-4 text-center w-24">บิล</th>
                         <th className="p-4 text-right">ยอดขาย</th>
                         
-                        {/* ✅ แก้ไข: ใช้ div ครอบเนื้อหาข้างใน th แทนการใส่ flex ที่ th */}
                         <th className="p-4 text-right text-orange-500">
                             <div className="flex items-center justify-end gap-1">
                                 <Clock size={14}/> รอผล
@@ -253,10 +253,10 @@ export default function SuperDashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                     {loading ? (
-                        <tr><td colSpan={7} className="p-10 text-center text-slate-400"><Loader2 className="animate-spin inline mr-2"/> กำลังโหลดข้อมูล...</td></tr>
+                        <tr><td colSpan={8} className="p-10 text-center text-slate-400"><Loader2 className="animate-spin inline mr-2"/> กำลังโหลดข้อมูล...</td></tr>
                     ) : shopStats.length === 0 ? (
                         <tr>
-                            <td colSpan={7} className="p-8 text-center text-slate-400 italic">
+                            <td colSpan={8} className="p-8 text-center text-slate-400 italic">
                                 ยังไม่มีข้อมูลการขายในช่วงเวลานี้
                             </td>
                         </tr>
@@ -280,14 +280,22 @@ export default function SuperDashboard() {
                                         </div>
                                     </div>
                                 </td>
+
+                                {/* ✅ แสดงจำนวนบิล */}
+                                <td className="p-4 text-center">
+                                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-bold border border-slate-200">
+                                        {Number(shop.bill_count || 0).toLocaleString()}
+                                    </span>
+                                </td>
+
                                 <td className="p-4 text-right font-bold text-blue-600 text-base">
                                     {Number(shop.sales).toLocaleString()}
                                 </td>
-                                {/* ✅ ยอดรอผล */}
+                                
                                 <td className="p-4 text-right text-orange-500 font-medium">
                                     {Number(shop.pending) > 0 ? Number(shop.pending).toLocaleString() : '-'}
                                 </td>
-                                {/* ✅ ยอดยกเลิก */}
+                                
                                 <td className="p-4 text-right text-slate-400 font-medium">
                                     {Number(shop.cancelled) > 0 ? Number(shop.cancelled).toLocaleString() : '-'}
                                 </td>

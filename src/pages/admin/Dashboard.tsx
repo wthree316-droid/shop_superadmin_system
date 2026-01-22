@@ -8,7 +8,8 @@ import {
   Calendar as CalendarIcon,
   RefreshCw,
   ArrowRight,
-  Clock
+  Clock,
+  RotateCcw // ✅ เพิ่มไอคอน
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -27,6 +28,7 @@ export default function Dashboard() {
     total_tickets: 0,
     total_payout: 0,
     total_pending: 0,
+    total_cancelled: 0, // ✅ เพิ่ม State รับค่าบิลยกเลิก
     profit: 0
   });
   
@@ -66,30 +68,28 @@ export default function Dashboard() {
     } catch(err) { console.error(err); }
   };
 
-  // ✅ ปรับปรุง StatCard: จัด Layout ใหม่ให้ยืดหดได้ดีขึ้น
+  // StatCard Component
   const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
-    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-3 transition-all hover:shadow-md min-h-27.5">
-        {/* ส่วนข้อความ (ให้ยืดเต็มที่แต่ไม่ล้น) */}
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-4 transition-all hover:shadow-md min-h-30">
         <div className="flex-1 min-w-0">
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1 truncate">{title}</p>
-            <h3 className={`text-xl xl:text-2xl font-black truncate ${color}`} title={String(value)}>
+            <p className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2 truncate">{title}</p>
+            <h3 className={`text-3xl font-black truncate ${color}`} title={String(value)}>
                 {loading ? '...' : value}
             </h3>
             {subValue && <p className="text-xs text-slate-400 mt-1 truncate">{subValue}</p>}
         </div>
         
-        {/* ส่วนไอคอน (ห้ามโดนบีบ) */}
-        <div className={`shrink-0 p-3.5 rounded-xl ${color.replace('text-', 'bg-').replace('600', '50').replace('500', '50')} ${color}`}>
-            <Icon size={24} />
+        <div className={`shrink-0 p-4 rounded-2xl ${color.replace('text-', 'bg-').replace('600', '50').replace('500', '50').replace('700', '50')} ${color}`}>
+            <Icon size={28} />
         </div>
     </div>
   );
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10">
+    <div className="space-y-8 animate-fade-in pb-10">
       
       {/* --- Header & Date Picker --- */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
           <div>
             <h1 className="text-2xl font-black text-slate-800 tracking-tight">แดชบอร์ดภาพรวม</h1>
             <p className="text-slate-500 text-sm">สรุปยอดขายและกำไรตามช่วงเวลา</p>
@@ -128,17 +128,23 @@ export default function Dashboard() {
           </div>
       </div>
 
-      {/* ✅ ปรับปรุง Grid Breakpoints:
-         - sm (มือถือแนวนอน): 2 คอลัมน์
-         - lg (Laptop เล็ก): 3 คอลัมน์ (จะได้ไม่เบียด)
-         - xl (จอใหญ่): 5 คอลัมน์ (เต็มจอสวยๆ)
+      {/* --- Stats Grid (ปรับเป็น 3 คอลัมน์ตามต้องการ) --- */}
+      {/* grid-cols-1 = มือถือ
+          md:grid-cols-2 = แท็บเล็ต
+          lg:grid-cols-3 = จอคอม (แถวละ 3 การ์ด กว้างๆ) 
       */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <StatCard 
             title="ยอดขายทั้งหมด" 
             value={`${Number(stats.total_sales).toLocaleString()} ฿`} 
             icon={Banknote} 
             color="text-indigo-600" 
+        />
+        <StatCard 
+            title="กำไรสุทธิ" 
+            value={`${Number(stats.profit).toLocaleString()} ฿`} 
+            icon={TrendingUp} 
+            color={stats.profit >= 0 ? "text-emerald-600" : "text-red-600"} 
         />
         <StatCard 
             title="ยอดจ่ายรางวัล" 
@@ -153,16 +159,19 @@ export default function Dashboard() {
             color="text-orange-500" 
         />
         <StatCard 
-            title="กำไรสุทธิ" 
-            value={`${Number(stats.profit).toLocaleString()} ฿`} 
-            icon={TrendingUp} 
-            color={stats.profit >= 0 ? "text-emerald-600" : "text-red-600"} 
-        />
-         <StatCard 
             title="จำนวนบิล" 
             value={stats.total_tickets.toLocaleString()} 
             icon={BarChart3} 
             color="text-blue-500"
+
+        />
+        {/* ✅ เพิ่มการ์ดบิลที่ยกเลิก */}
+        <StatCard 
+            title="บิลที่ยกเลิก" 
+            value={stats.total_cancelled.toLocaleString()} 
+            icon={RotateCcw} 
+            color="text-slate-500"
+
         />
       </div>
 
