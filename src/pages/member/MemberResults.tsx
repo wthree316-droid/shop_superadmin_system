@@ -2,7 +2,8 @@ import { useEffect, useState, useMemo } from 'react';
 import client from '../../api/client';
 import { 
   Calendar, Trophy, Copy, 
-  ChevronLeft, ChevronRight, Loader2, Search
+  ChevronLeft, ChevronRight, Loader2, Search,
+  ShieldAlert
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -10,8 +11,11 @@ export default function MemberResults() {
   const [lottos, setLottos] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [resultsMap, setResultsMap] = useState<any>({});
-  const [loading, setLoading] = useState(true);
   
+  // เก็บข้อมูลความเสี่ยง { lotto_id: [RiskItems...] }
+  const [risksMap, setRisksMap] = useState<Record<string, any[]>>({}); 
+
+  const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   useEffect(() => {
@@ -20,8 +24,8 @@ export default function MemberResults() {
 
   const fetchData = async () => {
     setLoading(true);
+    setRisksMap({}); // เคลียร์ค่าความเสี่ยงเก่าก่อน
     try {
-      // ✅ แก้ไข: แปลงวันที่เป็น YYYY-MM-DD แบบ Local Time (แก้ปัญหา Timezone)
       const year = selectedDate.getFullYear();
       const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const day = String(selectedDate.getDate()).padStart(2, '0');
@@ -30,184 +34,223 @@ export default function MemberResults() {
       const [resLottos, resCats, resResults] = await Promise.all([
         client.get('/play/lottos'),
         client.get('/play/categories'),
-        client.get(`/reward/daily?date=${dateStr}`) 
+        client.get(`/reward/daily?date=${dateStr}`)
       ]);
 
       setLottos(resLottos.data);
       setCategories(resCats.data);
       setResultsMap(resResults.data || {});
 
+      setLoading(false);
+
+      // โหลดเลขอั้นทีหลัง (Background)
+      const results = resResults.data || {};
+      const lottoIdsWithResults = Object.keys(results);
+
+      if (lottoIdsWithResults.length > 0) {
+          lottoIdsWithResults.forEach(id => {
+              client.get(`/play/risks/${id}?date=${dateStr}`)
+                .then(res => {
+                    setRisksMap(prev => ({
+                        ...prev,
+                        [id]: res.data
+                    }));
+                })
+                .catch(() => {}); 
+          });
+      }
+
     } catch (err) {
       console.error(err);
-      toast.error("ไม่สามารถโหลดข้อมูลได้");
-    } finally {
       setLoading(false);
     }
   };
 
-  // --- Logic การจัดกลุ่มและเรียงลำดับ ---
+  const handleDateChange = (days: number) => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() + days);
+    setSelectedDate(newDate);
+  };
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success('คัดลอกเรียบร้อย');
+  };
+
+  // Logic เช็คเลขอั้น (สีแดง/ส้ม)
+  const getNumberClass = (lottoId: string, number: string, type: '3top' | '2down' | '2up') => {
+      const risks = risksMap[lottoId];
+      if (!risks) return "text-slate-700";
+
+      const riskItem = risks.find((r: any) => 
+          r.number === number && (r.specific_bet_type === type || r.specific_bet_type === 'ALL')
+      );
+
+      if (riskItem) {
+          if (riskItem.risk_type === 'CLOSE') return "text-red-600 drop-shadow-sm font-black"; 
+          if (riskItem.risk_type === 'HALF') return "text-orange-500 drop-shadow-sm font-black"; 
+      }
+      return "text-slate-700"; 
+  };
+
   const groupedLottos = useMemo(() => {
-    if (lottos.length === 0) return [];
+    if (!lottos.length || !categories.length) return [];
+    
+    const sortedCats = [...categories].sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+    
+    return sortedCats.map(cat => ({
+      ...cat,
+      lottos: lottos
+        .filter(l => l.category === cat.id && resultsMap[l.id]) // กรองเฉพาะที่มีผลแล้ว
+        .sort((a, b) => {
+           if (!a.close_time) return 1;
+           if (!b.close_time) return -1;
+           return a.close_time.localeCompare(b.close_time);
+        })
+    })).filter(group => group.lottos.length > 0);
 
-    const catMap = new Map();
-    categories.forEach(c => catMap.set(c.id, c));
-
-    const groups: any = {};
-    const noCatKey = 'uncategorized';
-
-    lottos.forEach(lotto => {
-        // 1. กรองเฉพาะหวยที่มีผลรางวัลแล้วเท่านั้น
-        if (!resultsMap[lotto.id]) return;
-
-        const catId = lotto.category || noCatKey;
-        if (!groups[catId]) {
-            groups[catId] = {
-                info: catMap.get(catId) || { label: 'หมวดอื่นๆ', color: 'bg-gray-800 text-white' },
-                items: []
-            };
-        }
-        groups[catId].items.push(lotto);
-    });
-
-    // 2. แปลงเป็น Array และเรียงลำดับ
-    return Object.values(groups)
-        .map((group: any) => {
-            // 3. เรียงหวยในกลุ่มจาก "ล่าสุด -> เก่าสุด"
-            group.items.sort((a: any, b: any) => {
-                if (!a.close_time) return 1;
-                if (!b.close_time) return -1;
-                return b.close_time.localeCompare(a.close_time);
-            });
-            return group;
-        }); 
   }, [lottos, categories, resultsMap]);
 
-  // --- Helpers ---
-  const changeDate = (days: number) => {
-      const newDate = new Date(selectedDate);
-      newDate.setDate(selectedDate.getDate() + days);
-      setSelectedDate(newDate);
-  };
-
-  const formatDateDisplay = (date: Date) => {
-      return date.toLocaleDateString('th-TH', { 
-          day: '2-digit', month: '2-digit', year: 'numeric' 
-      });
-  };
-
-  const getTop2 = (top3: string) => {
-      if (!top3 || top3.length < 2) return '-';
-      return top3.slice(-2);
-  };
-
-  const handleCopy = (lottoName: string, top3: string, bottom2: string) => {
-      const text = `${lottoName}\nบน: ${top3}\nล่าง: ${bottom2}`;
-      navigator.clipboard.writeText(text);
-      toast.success(`คัดลอกผล ${lottoName} แล้ว`);
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50 pb-10 font-sans animate-fade-in">
+    <div className="animate-fade-in pb-20 bg-gray-50 min-h-screen font-sans">
       
-      {/* --- Header Section --- */}
-      <div className="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-20">
-          <div className="max-w-5xl mx-auto p-4 md:p-6">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-linear-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-lg shadow-blue-200">
-                        <Trophy size={20} />
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-black text-slate-800 tracking-tight">ตรวจผลรางวัล</h1>
-                        <p className="text-xs text-slate-500">อัพเดทล่าสุดแบบเรียลไทม์</p>
-                    </div>
-                </div>
+      {/* --- Header --- */}
+      <div className="bg-white sticky top-0 z-20 shadow-sm border-b border-gray-200">
+          <div className="max-w-5xl mx-auto px-4 py-3">
+              <div className="flex justify-between items-center mb-4">
+                  <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                      <Trophy className="text-amber-500" /> ผลรางวัล
+                  </h1>
+                  <button 
+                    onClick={() => setSelectedDate(new Date())}
+                    className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors"
+                  >
+                      วันนี้
+                  </button>
+              </div>
 
-                <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-                    <button onClick={() => changeDate(-1)} className="p-2 hover:bg-white rounded-lg transition-colors text-slate-500 shadow-sm">
-                        <ChevronLeft size={20} />
-                    </button>
-                    
-                    <div className="flex items-center gap-2 px-4 min-w-35 justify-center font-bold text-slate-700">
-                        <Calendar size={16} className="text-blue-600 mb-0.5" />
-                        {formatDateDisplay(selectedDate)}
-                    </div>
-
-                    <button onClick={() => changeDate(1)} className="p-2 hover:bg-white rounded-lg transition-colors text-slate-500 shadow-sm" disabled={selectedDate >= new Date()}>
-                        <ChevronRight size={20} />
-                    </button>
-                </div>
-            </div>
+              <div className="flex items-center justify-between bg-slate-100 p-1 rounded-xl">
+                  <button onClick={() => handleDateChange(-1)} className="p-2 hover:bg-white rounded-lg transition-all text-slate-500 hover:text-slate-800 shadow-sm">
+                      <ChevronLeft size={20} />
+                  </button>
+                  <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                      <Calendar size={16} className="text-slate-400"/>
+                      {selectedDate.toLocaleDateString('th-TH', { 
+                          weekday: 'long', 
+                          day: 'numeric', 
+                          month: 'long', 
+                          year: 'numeric' 
+                      })}
+                  </div>
+                  <button onClick={() => handleDateChange(1)} className="p-2 hover:bg-white rounded-lg transition-all text-slate-500 hover:text-slate-800 shadow-sm">
+                      <ChevronRight size={20} />
+                  </button>
+              </div>
           </div>
       </div>
 
       {/* --- Content --- */}
-      <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-8">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-8">
           
           {loading ? (
-              <div className="py-20 flex flex-col items-center justify-center text-slate-400">
-                  <Loader2 className="animate-spin mb-2 text-blue-500" size={40} />
-                  <p>กำลังโหลดผลรางวัล...</p>
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                  <Loader2 size={40} className="animate-spin mb-4 text-blue-500" />
+                  <p className="font-medium animate-pulse">กำลังโหลดผลรางวัล...</p>
               </div>
           ) : (
-              groupedLottos.length > 0 ? (
-                  groupedLottos.map((group: any, idx: number) => (
-                      <div key={idx} className="animate-slide-up" style={{ animationDelay: `${idx * 50}ms` }}>
-                          
+              Object.keys(resultsMap).length > 0 && groupedLottos.length > 0 ? (
+                  groupedLottos.map((cat) => (
+                      <div key={cat.id} className="animate-slide-up">
                           {/* Category Header */}
-                          <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
-                              <span className={`w-1.5 h-6 rounded-full ${group.info.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
-                              {group.info.label} 
-                          </h2>
+                          <div className="flex items-center gap-2 mb-3 px-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                              <h2 className="font-bold text-slate-500 text-sm uppercase tracking-wider">{cat.label}</h2>
+                          </div>
 
-                          {/* Table Card */}
-                          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                               <div className="overflow-x-auto">
-                                  <table className="w-full text-center text-sm whitespace-nowrap">
-                                      <thead>
-                                          <tr className="bg-[#1e40af] text-white font-bold uppercase text-xs tracking-wider">
-                                              <th className="p-4 text-left pl-6">ประเภทหวย</th>
-                                              <th className="p-4 w-32">งวดหวย</th>
-                                              <th className="p-4 w-24">3 ตัวบน</th>
-                                              <th className="p-4 w-24">2 ตัวบน</th>
-                                              <th className="p-4 w-24">2 ตัวล่าง</th>
-                                              <th className="p-4 w-24 pr-6">คัดลอกผล</th>
+                                  <table className="w-full text-sm text-left">
+                                      <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100 uppercase text-xs">
+                                          <tr>
+                                              <th className="p-4 pl-6">หวย</th>
+                                              <th className="p-4 text-center">งวดวันที่</th> {/* ✅ เพิ่มคอลัมน์นี้ */}
+                                              <th className="p-4 text-center">3 ตัวบน</th>
+                                              <th className="p-4 text-center">2 ตัวบน</th>
+                                              <th className="p-4 text-center">2 ตัวล่าง</th>
+                                              <th className="p-4 text-center w-20">คัดลอก</th>
                                           </tr>
                                       </thead>
-                                      <tbody className="divide-y divide-slate-100 font-mono font-medium text-slate-600">
-                                          {group.items.map((lotto: any) => {
+                                      <tbody className="divide-y divide-slate-100">
+                                          {cat.lottos.map((lotto: any) => {
                                               const result = resultsMap[lotto.id];
-                                              if (!result) return null; 
+                                              
+                                              // คำนวณเลข 2 ตัวบน
+                                              const twoTop = result.top_3 ? result.top_3.slice(-2) : '';
 
-                                              const top3 = result.top_3;
-                                              const bottom2 = result.bottom_2;
-                                              const top2 = getTop2(top3);
+                                              // คำนวณ Class สี
+                                              const top3Class = getNumberClass(lotto.id, result.top_3, '3top');
+                                              const top2Class = getNumberClass(lotto.id, twoTop, '2up'); 
+                                              const bottomClass = getNumberClass(lotto.id, result.bottom_2, '2down');
 
                                               return (
                                                   <tr key={lotto.id} className="hover:bg-slate-50 transition-colors">
-                                                      <td className="p-4 text-left pl-6 font-sans">
-                                                          <div className="font-bold text-slate-800">{lotto.name}</div>
-                                                          <div className="text-[10px] text-slate-400 mt-0.5 font-normal">ปิด {lotto.close_time?.substring(0,5)}</div>
+                                                      <td className="p-4 pl-6">
+                                                          <div className="flex items-center gap-3">
+                                                              <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 font-bold overflow-hidden shadow-inner shrink-0">
+                                                                  {lotto.img_url ? <img src={lotto.img_url} className="w-full h-full object-cover"/> : lotto.name[0]}
+                                                              </div>
+                                                              <div>
+                                                                  <div className="font-bold text-slate-800">{lotto.name}</div>
+                                                                  <div className="text-[10px] text-slate-400 font-mono">
+                                                                    ประกาศ: {new Date(result.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute:'2-digit' })} น.
+                                                                  </div>
+                                                              </div>
+                                                          </div>
                                                       </td>
-                                                      <td className="p-4 text-slate-400 text-xs font-sans">
-                                                          {formatDateDisplay(selectedDate)}
+
+                                                      {/* ✅ แสดงงวดวันที่ */}
+                                                      <td className="p-4 text-center">
+                                                          <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-mono font-bold text-xs border border-slate-200">
+                                                              {new Date(result.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                                          </span>
                                                       </td>
-                                                      <td className="p-4">
-                                                          <span className="text-slate-800 font-bold text-lg">{top3}</span>
+                                                      
+                                                      {/* 3 ตัวบน */}
+                                                      <td className="p-4 text-center">
+                                                          <div className={`text-xl font-bold tracking-widest relative inline-block ${top3Class}`}>
+                                                              {result.top_3}
+                                                              {(top3Class.includes('red') || top3Class.includes('orange')) && (
+                                                                  <ShieldAlert size={10} className="absolute -top-1 -right-2 text-current opacity-50"/>
+                                                              )}
+                                                          </div>
                                                       </td>
-                                                      <td className="p-4">
-                                                          <span className="text-slate-800 font-bold text-lg">{top2}</span>
+
+                                                      {/* 2 ตัวบน */}
+                                                      <td className="p-4 text-center">
+                                                          <div className={`text-xl font-bold tracking-widest relative inline-block ${top2Class}`}>
+                                                              {twoTop}
+                                                              {(top2Class.includes('red') || top2Class.includes('orange')) && (
+                                                                  <ShieldAlert size={10} className="absolute -top-1 -right-2 text-current opacity-50"/>
+                                                              )}
+                                                          </div>
                                                       </td>
-                                                      <td className="p-4">
-                                                          <span className="text-blue-600 font-bold text-lg">{bottom2}</span>
+
+                                                      {/* 2 ตัวล่าง */}
+                                                      <td className="p-4 text-center">
+                                                          <div className={`text-xl font-bold tracking-widest relative inline-block ${bottomClass}`}>
+                                                              {result.bottom_2}
+                                                              {(bottomClass.includes('red') || bottomClass.includes('orange')) && (
+                                                                  <ShieldAlert size={10} className="absolute -top-1 -right-2 text-current opacity-50"/>
+                                                              )}
+                                                          </div>
                                                       </td>
-                                                      <td className="p-4 pr-6">
+                                                      
+                                                      <td className="p-4 text-center">
                                                           <button 
-                                                              onClick={() => handleCopy(lotto.name, top3, bottom2)}
-                                                              className="bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 w-full font-sans"
+                                                            onClick={() => handleCopy(`${lotto.name}\nงวด: ${new Date(result.created_at).toLocaleDateString('th-TH')}\nบน: ${result.top_3}\nล่าง: ${result.bottom_2}`)}
+                                                            className="bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 w-full"
                                                           >
-                                                              <Copy size={14} /> คัดลอก
+                                                              <Copy size={14} />
                                                           </button>
                                                       </td>
                                                   </tr>
@@ -220,13 +263,21 @@ export default function MemberResults() {
                       </div>
                   ))
               ) : (
-                  // State ว่าง (ยังไม่มีผลรางวัลออก)
                   <div className="flex flex-col items-center justify-center py-20 text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl bg-white/50">
                       <Search size={48} className="mb-4 opacity-20" />
                       <p className="font-medium text-lg text-slate-600">ยังไม่มีผลรางวัล</p>
                       <p className="text-sm mt-1 text-slate-400">รายการจะปรากฏเมื่อมีการประกาศผลของวันที่เลือก</p>
                   </div>
               )
+          )}
+
+          {/* Legend */}
+          {!loading && Object.keys(resultsMap).length > 0 && groupedLottos.length > 0 && (
+             <div className="flex justify-center gap-6 text-xs font-bold text-slate-500 mt-6 bg-white p-3 rounded-full shadow-sm w-fit mx-auto border border-slate-100">
+                 <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-600"></span> เลขปิด (อั้น)</div>
+                 <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-orange-500"></span> จ่ายครึ่ง</div>
+                 <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-slate-700"></span> ปกติ</div>
+             </div>
           )}
 
       </div>

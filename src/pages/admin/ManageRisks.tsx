@@ -3,7 +3,7 @@ import client from '../../api/client';
 import { 
   ShieldAlert, Search, Trash2, X, AlertTriangle, Ban, 
   Clock, CheckCircle2, Layers, Eraser, AlertOctagon, Zap,
-  Calendar // ✅ เพิ่มไอคอน Calendar
+  Calendar, Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -23,8 +23,9 @@ export default function ManageRisks() {
   const [risks, setRisks] = useState<any[]>([]); 
   const [searchTerm, setSearchTerm] = useState('');
   
-  // ✅ [ใหม่] เพิ่ม State วันที่ (เริ่มต้นเป็นวันนี้)
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  // State วันที่
+  const getToday = () => new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState(getToday());
 
   const [typing, setTyping] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Record<string, string[]>>({});
@@ -33,7 +34,10 @@ export default function ManageRisks() {
   const [shopTheme, setShopTheme] = useState('#2563EB'); 
 
   const [riskType, setRiskType] = useState<'CLOSE' | 'HALF'>('CLOSE');
-  const [isLoading, setIsLoading] = useState(false);
+  
+  // ✅ แยก State: isLoading (บันทึกข้อมูล) กับ isFetching (โหลดข้อมูล) เพื่อความลื่นไหล
+  const [isLoading, setIsLoading] = useState(false); 
+  const [isFetching, setIsFetching] = useState(false);
 
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -63,33 +67,45 @@ export default function ManageRisks() {
       } catch (err) { console.error("Theme fetch error", err); }
   };
 
-  // ✅ แก้ไข: เมื่อเปิด Modal ให้ส่งวันที่ไปด้วย
   const openRiskModal = async (lotto: any) => {
     setSelectedLotto(lotto);
     setRisks([]); 
     setTyping({});
     setPending({}); 
     setGlobalInput('');
+    setIsFetching(true); // ✅ เริ่มโหลด
+
     try {
-      // ส่ง ?date=... ไปหา Backend
       const res = await client.get(`/play/risks/${lotto.id}?date=${selectedDate}`);
       setRisks(res.data);
       
+      // Focus ไปที่ช่องแรกเมื่อโหลดเสร็จ
       setTimeout(() => {
           inputRefs.current['2up']?.focus();
       }, 100);
 
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+        console.error(err); 
+    } finally {
+        setIsFetching(false); // ✅ โหลดเสร็จ
+    }
   };
 
-  // ✅ เมื่อเปลี่ยนวันที่ในขณะที่เปิด Modal อยู่ ให้โหลดข้อมูลใหม่ด้วย
+  // โหลดข้อมูลใหม่เมื่อเปลี่ยนวันที่ (เฉพาะตอนเปิด Modal อยู่)
   useEffect(() => {
       if (selectedLotto) {
           openRiskModal(selectedLotto);
       }
   }, [selectedDate]);
 
-  // ... (ส่วน Logic การกระจายเลข distributeNumbers, handleSmartInput, ฯลฯ เหมือนเดิมเป๊ะๆ) ...
+  // Helper สำหรับปุ่มลัดวันที่
+  const setDateFilter = (type: 'today' | 'yesterday') => {
+      const d = new Date();
+      if (type === 'yesterday') d.setDate(d.getDate() - 1);
+      setSelectedDate(d.toISOString().split('T')[0]);
+  };
+
+  // --- Logic เดิม (distributeNumbers, handleSmartInput, ฯลฯ) ---
   const distributeNumbers = (rawText: string) => {
       const parts = rawText.split(/[^0-9]+/).filter(x => x); 
       if (parts.length === 0) return 0;
@@ -199,7 +215,6 @@ export default function ManageRisks() {
     const hasData = Object.values(pending).some(list => list.length > 0);
     if (!hasData) return toast.error("ยังไม่มีรายการเลขที่เลือก");
 
-    // เช็คว่าเลือกวันปัจจุบันหรือเปล่า (ถ้าเป็นวันอดีต เตือนหน่อยว่ากำลังแก้ประวัติ)
     const today = new Date().toISOString().split('T')[0];
     if (selectedDate < today) {
         if(!confirm(`⚠️ คุณกำลังบันทึกข้อมูลย้อนหลังของวันที่ ${selectedDate}\nต้องการทำรายการต่อหรือไม่?`)) return;
@@ -216,10 +231,6 @@ export default function ManageRisks() {
                     number: num,
                     risk_type: riskType,
                     specific_bet_type: typeKey,
-                    // หมายเหตุ: API post รับ date หรือไม่ ขึ้นอยู่กับการ implement 
-                    // แต่ปกติ post จะบันทึกเป็น created_at ปัจจุบันเสมอ 
-                    // หากต้องการแก้ประวัติ อาจต้องแก้ API เพิ่มเติม 
-                    // *ในที่นี้สมมติว่าบันทึกใหม่ ณ เวลาปัจจุบัน*
                 })
             );
         });
@@ -228,7 +239,6 @@ export default function ManageRisks() {
     try {
       await Promise.all(promises);
       toast.success(`บันทึกสำเร็จ ${promises.length} รายการ`);
-      // รีโหลดข้อมูลของวันที่เลือก
       openRiskModal(selectedLotto);
       setPending({}); setTyping({}); setGlobalInput('');
     } catch (err) { toast.error('เกิดข้อผิดพลาดในการบันทึก'); } 
@@ -273,6 +283,10 @@ export default function ManageRisks() {
   const totalPending = Object.values(pending).reduce((sum, list) => sum + list.length, 0);
   const filteredLottos = lottos.filter(l => l.name.includes(searchTerm) || l.code.includes(searchTerm));
 
+  // เช็คว่าเป็นวันปัจจุบันหรือไม่ (เพื่อ Highlight ปุ่ม)
+  const isToday = selectedDate === getToday();
+  const isYesterday = selectedDate === new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
   return (
     <div className="animate-fade-in p-4 max-w-400 mx-auto font-sans">
       
@@ -285,16 +299,32 @@ export default function ManageRisks() {
            <p className="text-slate-500 mt-1 font-medium">ตั้งค่าความเสี่ยงและปิดรับตัวเลข</p>
         </div>
 
-        {/* ✅ [ใหม่] ส่วนเลือกวันที่ + ค้นหา */}
-        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-center">
+            
+            {/* ✅ [ใหม่] ปุ่มลัด วันนี้/เมื่อวาน */}
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center shadow-inner h-11">
+                <button 
+                    onClick={() => setDateFilter('today')}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all h-full flex items-center ${isToday ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                    วันนี้
+                </button>
+                <button 
+                    onClick={() => setDateFilter('yesterday')}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all h-full flex items-center ${isYesterday ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                    เมื่อวาน
+                </button>
+            </div>
+
             {/* Date Picker */}
             <div className="relative">
-                <Calendar className="absolute left-3 top-2.5 text-slate-400" size={20} />
+                <Calendar className="absolute left-3 top-3 text-slate-400" size={18} />
                 <input 
                     type="date" 
                     value={selectedDate}
                     onChange={(e) => setSelectedDate(e.target.value)}
-                    className="pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all shadow-sm font-bold text-slate-700 w-full"
+                    className="pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all shadow-sm font-bold text-slate-700 w-full h-11"
                 />
             </div>
 
@@ -303,7 +333,7 @@ export default function ManageRisks() {
                 <input 
                     type="text" 
                     placeholder="ค้นหาชื่อหวย..." 
-                    className="w-full pl-11 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all shadow-sm" 
+                    className="w-full pl-11 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all shadow-sm h-11" 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -316,7 +346,6 @@ export default function ManageRisks() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
          {filteredLottos.map((lotto) => (
              <div key={lotto.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-pointer" onClick={() => openRiskModal(lotto)}>
-                 {/* ... (ส่วนแสดงผล Card หวย เหมือนเดิม) ... */}
                  <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-4">
                         <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shadow-inner shrink-0 group-hover:scale-105 transition-transform">
@@ -343,8 +372,8 @@ export default function ManageRisks() {
 
       {/* Modal */}
       {selectedLotto && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 md:p-6">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl h-full max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 md:p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl h-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                   
                   {/* Modal Header */}
                   <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white shrink-0 z-20 shadow-sm">
@@ -357,9 +386,12 @@ export default function ManageRisks() {
                                   {selectedLotto.name}
                               </h3>
                               {/* ✅ แสดงวันที่ที่กำลังดูข้อมูลอยู่ */}
-                              <p className="text-slate-500 text-sm font-medium flex items-center gap-1">
-                                  <Calendar size={14}/> ข้อมูลประจำวันที่: <span className="text-blue-600 font-bold">{new Date(selectedDate).toLocaleDateString('th-TH')}</span>
-                              </p>
+                              <div className="flex items-center gap-2 text-slate-500 text-sm font-medium mt-0.5">
+                                  <Calendar size={14}/> วันที่: 
+                                  <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                                      {new Date(selectedDate).toLocaleDateString('th-TH', { dateStyle: 'long' })}
+                                  </span>
+                              </div>
                           </div>
                       </div>
                       <button onClick={() => setSelectedLotto(null)} className="p-2.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
@@ -372,8 +404,8 @@ export default function ManageRisks() {
                       {/* Left Panel (Form) */}
                       <div className="w-full lg:w-5/12 bg-white border-r border-slate-200 overflow-y-auto custom-scrollbar flex flex-col shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] z-10">
                           <div className="p-6 pb-24">
-                              {/* ... (Code ส่วน Input Form เหมือนเดิม) ... */}
                               
+                              {/* ปุ่มเลือกประเภทความเสี่ยง */}
                               <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 flex mb-4 shadow-inner">
                                   <button onClick={() => setRiskType('CLOSE')} className={`flex-1 py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${riskType === 'CLOSE' ? 'bg-red-500 text-white shadow-md' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}>
                                       <Ban size={18} /> ปิดรับ (ไม่ขาย)
@@ -383,6 +415,7 @@ export default function ManageRisks() {
                                   </button>
                               </div>
 
+                              {/* ช่องทางลัด */}
                               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-6 relative group focus-within:ring-2 focus-within:ring-blue-200 transition-all">
                                   <div className="flex items-center gap-3">
                                       <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><Zap size={20} /></div>
@@ -398,6 +431,7 @@ export default function ManageRisks() {
                                   {totalPending > 0 && <button onClick={clearAllPending} className="text-xs text-red-500 hover:text-red-700 font-bold flex items-center gap-1 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"><Eraser size={14}/> ล้างทั้งหมด ({totalPending})</button>}
                               </div>
 
+                              {/* Input Grid */}
                               <div className="grid gap-4">
                                   {BET_TYPES.map((type) => (
                                       <div key={type.key} className="bg-slate-50 p-3 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors group focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300">
@@ -438,37 +472,46 @@ export default function ManageRisks() {
                           </div>
 
                           <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
-                              <div className="grid gap-6">
-                                  {BET_TYPES.map(type => {
-                                      const items = groupedRisks[type.key] || [];
-                                      if (items.length === 0) return null;
-                                      return (
-                                          <div key={type.key} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                                              <div className={`px-5 py-3 flex justify-between items-center border-b ${type.color.replace('bg-', 'bg-opacity-10 ').replace('text-', 'text-slate-700 ')}`}>
-                                                  <div className="flex items-center gap-2"><span className={`w-2 h-6 rounded-full ${type.color.split(' ')[1].replace('bg-', 'bg-')}`}></span><span className="font-bold text-sm">{type.label}</span></div>
-                                                  <span className="bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-md text-xs font-bold">{items.length}</span>
+                              
+                              {/* ✅ แสดง Loader ขณะดึงข้อมูล */}
+                              {isFetching ? (
+                                  <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                      <Loader2 size={40} className="animate-spin mb-2 text-blue-500" />
+                                      <p className="font-medium animate-pulse">กำลังโหลดข้อมูล...</p>
+                                  </div>
+                              ) : (
+                                  <div className="grid gap-6">
+                                      {BET_TYPES.map(type => {
+                                          const items = groupedRisks[type.key] || [];
+                                          if (items.length === 0) return null;
+                                          return (
+                                              <div key={type.key} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow animate-slide-up">
+                                                  <div className={`px-5 py-3 flex justify-between items-center border-b ${type.color.replace('bg-', 'bg-opacity-10 ').replace('text-', 'text-slate-700 ')}`}>
+                                                      <div className="flex items-center gap-2"><span className={`w-2 h-6 rounded-full ${type.color.split(' ')[1].replace('bg-', 'bg-')}`}></span><span className="font-bold text-sm">{type.label}</span></div>
+                                                      <span className="bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-md text-xs font-bold">{items.length}</span>
+                                                  </div>
+                                                  <div className="p-4 flex flex-wrap gap-2.5">
+                                                      {items.map(risk => (
+                                                          <div key={risk.id} className={`group relative flex items-center gap-2 pl-3 pr-1 py-1.5 rounded-lg border text-base font-mono font-bold select-none cursor-default transition-all hover:shadow-sm hover:scale-105 ${risk.risk_type === 'CLOSE' ? 'bg-red-50 text-red-600 border-red-100 hover:border-red-300' : 'bg-orange-50 text-orange-600 border-orange-100 hover:border-orange-300'}`}>
+                                                              {risk.number}
+                                                              <div className="h-4 w-px bg-current opacity-20 mx-1"></div>
+                                                              <button onClick={() => handleDeleteRisk(risk.id)} className="p-1 rounded-md hover:bg-white text-current opacity-60 hover:opacity-100 transition-all" title="ลบรายการนี้"><X size={14} /></button>
+                                                              <span className={`absolute -top-2.5 -right-1 text-[9px] px-1.5 rounded-full text-white font-sans shadow-sm border border-white ${risk.risk_type === 'CLOSE' ? 'bg-red-500' : 'bg-orange-400'}`}>{risk.risk_type === 'CLOSE' ? 'ปิด' : 'ครึ่ง'}</span>
+                                                          </div>
+                                                      ))}
+                                                  </div>
                                               </div>
-                                              <div className="p-4 flex flex-wrap gap-2.5">
-                                                  {items.map(risk => (
-                                                      <div key={risk.id} className={`group relative flex items-center gap-2 pl-3 pr-1 py-1.5 rounded-lg border text-base font-mono font-bold select-none cursor-default transition-all hover:shadow-sm hover:scale-105 ${risk.risk_type === 'CLOSE' ? 'bg-red-50 text-red-600 border-red-100 hover:border-red-300' : 'bg-orange-50 text-orange-600 border-orange-100 hover:border-orange-300'}`}>
-                                                          {risk.number}
-                                                          <div className="h-4 w-px bg-current opacity-20 mx-1"></div>
-                                                          <button onClick={() => handleDeleteRisk(risk.id)} className="p-1 rounded-md hover:bg-white text-current opacity-60 hover:opacity-100 transition-all" title="ลบรายการนี้"><X size={14} /></button>
-                                                          <span className={`absolute -top-2.5 -right-1 text-[9px] px-1.5 rounded-full text-white font-sans shadow-sm border border-white ${risk.risk_type === 'CLOSE' ? 'bg-red-500' : 'bg-orange-400'}`}>{risk.risk_type === 'CLOSE' ? 'ปิด' : 'ครึ่ง'}</span>
-                                                      </div>
-                                                  ))}
-                                              </div>
+                                          );
+                                      })}
+                                      {risks.length === 0 && (
+                                          <div className="h-64 flex flex-col items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                                              <div className="bg-white p-4 rounded-full shadow-sm mb-3"><AlertOctagon size={40} className="text-slate-200" /></div>
+                                              <p className="font-bold text-slate-400">ยังไม่มีการจำกัดความเสี่ยง</p>
+                                              <p className="text-xs">เลือกประเภทและกรอกตัวเลขทางซ้ายมือ</p>
                                           </div>
-                                      );
-                                  })}
-                                  {risks.length === 0 && (
-                                      <div className="h-64 flex flex-col items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                                          <div className="bg-white p-4 rounded-full shadow-sm mb-3"><AlertOctagon size={40} className="text-slate-200" /></div>
-                                          <p className="font-bold text-slate-400">ยังไม่มีการจำกัดความเสี่ยง</p>
-                                          <p className="text-xs">เลือกประเภทและกรอกตัวเลขทางซ้ายมือ</p>
-                                      </div>
-                                  )}
-                              </div>
+                                      )}
+                                  </div>
+                              )}
                           </div>
                       </div>
 
