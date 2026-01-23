@@ -151,11 +151,23 @@ export default function ManageLottoTemplates() {
         client.get('/play/categories') 
       ]);
       const sortedLottos = resLottos.data.sort((a: any, b: any) => {
-          // ถ้าไม่มีเวลา ให้ไปอยู่ท้ายสุด (23:59)
-          const timeA = a.close_time || '23:59';
-          const timeB = b.close_time || '23:59';
-          return timeA.localeCompare(timeB);
-      });
+        // ฟังก์ชันแปลงเวลาเป็น "คะแนน" เพื่อใช้เรียงลำดับ
+        const getTimeScore = (timeStr: string | null) => {
+            if (!timeStr) return 9999; // ไม่มีเวลา เอาไว้ท้ายสุด
+            const [h, m] = timeStr.split(':').map(Number);
+            
+            // 🔥 Logic สำคัญ: ถ้าเวลาน้อยกว่า 05:00 (ตี 5) ให้ถือว่าเป็นของวันถัดไป (บวก 24 ชม.)
+            // ทำให้ 01:00 มีค่ามากกว่า 23:00 และไปอยู่ท้ายตาราง
+            if (h < 5) return (h + 24) * 60 + m; 
+            
+            return h * 60 + m;
+        };
+
+        const scoreA = getTimeScore(a.close_time);
+        const scoreB = getTimeScore(b.close_time);
+
+        return scoreA - scoreB;
+    });
       setLottos(sortedLottos);
       setRateProfiles(resRates.data);
       setCategories(resCats.data);

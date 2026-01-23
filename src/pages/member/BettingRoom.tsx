@@ -12,7 +12,7 @@ import {
   History, 
   FileText,
   Camera,
-  Check
+  Check, Copy
 } from 'lucide-react';
 import { type CartItem } from '../../types/lotto';
 import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '../../types/lottoLogic';
@@ -115,7 +115,10 @@ export default function BettingRoom() {
 
     const handleBackgroundMouseDown = (e: React.MouseEvent) => {
         const target = e.target as HTMLElement;
+        const isSelectable = target.closest('.selectable-text');
+
         const isInteractive = 
+            isSelectable ||
             target.tagName === 'INPUT' || 
             target.tagName === 'BUTTON' || 
             target.tagName === 'A' ||
@@ -686,6 +689,18 @@ export default function BettingRoom() {
         return allGroups;
     };
 
+    // ฟังก์ชันคัดลอกเลขในกลุ่ม
+    const copyGroupNumbers = (instances: any[]) => {
+        // ดึงเฉพาะตัวเลขออกมา ต่อกันด้วย , (เช่น 001,002,003)
+        const textToCopy = instances.map(inst => inst.number).join(',');
+        
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            toast.success('คัดลอกตัวเลขเรียบร้อย!');
+        }).catch(() => {
+            toast.error('คัดลอกไม่สำเร็จ');
+        });
+    };
+
     const deleteGroup = (items: CartItem[]) => {
         const ids = new Set(items.map(i => i.temp_id));
         setCart(prev => prev.filter(i => !ids.has(i.temp_id)));
@@ -1016,7 +1031,7 @@ export default function BettingRoom() {
                                                 return (
                                                     <div 
                                                         key={`${group.key}-${inst.number}-${idx}`}
-                                                        className="relative group/chip cursor-default select-none"
+                                                        className="relative group/chip cursor-text selectable-text"
                                                     >
                                                         <span className={`font-mono font-bold text-base px-2 py-1 rounded border transition-colors flex items-center gap-1
                                                             ${isClosed 
@@ -1038,15 +1053,27 @@ export default function BettingRoom() {
                                             })}
                                         </div>
 
-                                        <div 
-                                            className="w-10 bg-gray-50 border-l border-gray-100 flex items-center justify-center shrink-0 hover:bg-red-50 transition-colors cursor-pointer"
+                                        <div className="w-10 bg-gray-50 border-l border-gray-100 flex flex-col shrink-0">
+                                        {/* ปุ่ม Copy */}
+                                        <button 
+                                            onClick={() => copyGroupNumbers(group.instances)}
                                             data-ignore="true"
-                                            onClick={() => deleteGroup(group.allGroupItems)}
+                                            className="flex-1 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border-b border-gray-100"
+                                            title="คัดลอกตัวเลขทั้งหมด"
                                         >
-                                            <button className="text-gray-400 hover:text-red-500 transition-colors">
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </div>
+                                            <Copy size={16} />
+                                        </button>
+
+                                        {/* ปุ่ม Delete (ถังขยะ) */}
+                                        <button 
+                                            onClick={() => deleteGroup(group.allGroupItems)}
+                                            className="flex-1 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                            title="ลบรายการนี้"
+                                            data-ignore="true"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
                                     </div>
                                 ))}
                                 

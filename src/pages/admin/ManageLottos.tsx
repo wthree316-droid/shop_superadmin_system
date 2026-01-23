@@ -342,10 +342,23 @@ export default function ManageLottos() {
       ]);
 
       const sortedLottos = resLottos.data.sort((a: any, b: any) => {
-          if (!a.close_time) return 1;
-          if (!b.close_time) return -1;
-          return a.close_time.localeCompare(b.close_time);
-      });
+        // ฟังก์ชันแปลงเวลาเป็น "คะแนน" เพื่อใช้เรียงลำดับ
+        const getTimeScore = (timeStr: string | null) => {
+            if (!timeStr) return 9999; // ไม่มีเวลา เอาไว้ท้ายสุด
+            const [h, m] = timeStr.split(':').map(Number);
+            
+            // 🔥 Logic สำคัญ: ถ้าเวลาน้อยกว่า 05:00 (ตี 5) ให้ถือว่าเป็นของวันถัดไป (บวก 24 ชม.)
+            // ทำให้ 01:00 มีค่ามากกว่า 23:00 และไปอยู่ท้ายตาราง
+            if (h < 5) return (h + 24) * 60 + m; 
+            
+            return h * 60 + m;
+        };
+
+        const scoreA = getTimeScore(a.close_time);
+        const scoreB = getTimeScore(b.close_time);
+
+        return scoreA - scoreB;
+    });
 
       setLottos(sortedLottos);
       setRateProfiles(resRates.data);
@@ -843,33 +856,29 @@ export default function ManageLottos() {
                                             </div>
                                             
                                             <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                {isSystem ? (
-                                                    <div title="หมวดหมู่ของระบบ ไม่สามารถแก้ไขได้" className="p-1.5 text-gray-300 cursor-not-allowed">
+                                                {/* ✅ 1. ปุ่มแก้ไข: แสดงตลอดเวลา (เอาเงื่อนไข isSystem ออก) */}
+                                                <button 
+                                                    onClick={() => startEditCategory(cat)}
+                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                    title="แก้ไข"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+
+                                                {/* ✅ 2. ปุ่มลบ: แสดงเฉพาะที่ไม่ใช่ของระบบ (ป้องกันการลบหมวดมาตรฐานทิ้ง) */}
+                                                {!isSystem ? (
+                                                    <button 
+                                                        onClick={() => handleDeleteCategory(cat.id)}
+                                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                        title="ลบ"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                ) : (
+                                                    /* ถ้าเป็นของระบบ ให้แสดงแม่กุญแจเฉพาะตรงส่วนลบ (เพื่อให้รู้ว่าลบไม่ได้) */
+                                                    <div title="หมวดหมู่มาตรฐาน (ลบไม่ได้)" className="p-1.5 text-gray-200 cursor-not-allowed">
                                                         <Lock size={14} />
                                                     </div>
-                                                ) : (
-                                                    <>
-                                                        {/* ✅ แสดงปุ่มแก้ไขเสมอ (ไม่ว่าจะเป็นของระบบหรือไม่) */}
-                                                        <button 
-                                                            onClick={() => startEditCategory(cat)}
-                                                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                                                            title="แก้ไข"
-                                                        >
-                                                            <Pencil size={14} />
-                                                        </button>
-
-                                                        {/* ปุ่มลบ: ถ้าอยากให้ลบได้เฉพาะของที่สร้างเอง ให้คงเงื่อนไข !isSystem ไว้ */}
-                                                        {/* แต่ถ้าอยากให้ลบได้หมด ก็เอาเงื่อนไข !isSystem && ออกได้เลยครับ */}
-                                                        {!isSystem && (
-                                                            <button 
-                                                                onClick={() => handleDeleteCategory(cat.id)}
-                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                                                title="ลบ"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        )}
-                                                    </>
                                                 )}
                                             </div>
                                         </div>

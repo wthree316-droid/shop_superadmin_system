@@ -2,16 +2,52 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import client from '../../api/client';
 import { 
-  Sparkles, Search, Clock, Layers
+  Sparkles, Search, Clock, Layers, 
+  TrendingUp, Crown,  
+  Globe 
 } from 'lucide-react';
 
 // --- Helper Functions ---
-const getCloseDate = (timeStr: string) => {
-  if (!timeStr) return null;
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date;
+
+// ในไฟล์ LottoMarket.tsx
+
+// ✅ [แก้ไขรอบ 2] ปรับปรุง Logic คำนวณวันปิด โดยใช้ Open Time ช่วยเช็ค
+const getCloseDate = (lotto: any, now: Date) => {
+  if (!lotto.close_time) return null;
+  
+  const [cH, cM] = lotto.close_time.split(':').map(Number);
+  
+  // ตั้งต้นวันปิดเป็น "วันนี้" ไว้ก่อน
+  const closeDate = new Date(now);
+  closeDate.setHours(cH, cM, 0, 0);
+
+  // ถ้าไม่มี open_time ให้ใช้ Logic เดิม (เดาจากเวลาปัจจุบัน)
+  if (!lotto.open_time) {
+      if (cH < 12 && now.getHours() >= 12) {
+           closeDate.setDate(closeDate.getDate() + 1);
+      }
+      return closeDate;
+  }
+
+  // ดึงเวลาเปิดมาเทียบ
+  const [oH, oM] = lotto.open_time.split(':').map(Number);
+
+  // เช็คว่าเป็นหวยข้ามวันหรือไม่? (เวลาเปิด มากกว่า เวลาปิด เช่น เปิด 05:00, ปิด 01:00)
+  const isCrossDay = oH > cH || (oH === cH && oM > cM);
+
+  if (isCrossDay) {
+      // ถ้าเป็นหวยข้ามวัน และตอนนี้เลยเวลาเปิดมาแล้ว (เช่น ตอนนี้ 08:00, เปิด 05:00)
+      // แสดงว่าเวลาปิดต้องเป็น "ของพรุ่งนี้" (ตี 1 พรุ่งนี้)
+      if (now.getHours() > oH || (now.getHours() === oH && now.getMinutes() >= oM)) {
+          closeDate.setDate(closeDate.getDate() + 1);
+      }
+      // แต่ถ้าตอนนี้ตี 00:30 (ยังไม่ถึงเวลาปิดตี 1) -> ก็ใช้วันปิดเป็น "วันนี้" ได้เลย (ถูกต้องแล้ว)
+  } 
+  // ถ้าไม่ใช่หวยข้ามวัน (เช่น เปิด 08:00 ปิด 16:00) 
+  // แล้วเวลาปัจจุบันเลยเวลาปิดไปแล้ว (เช่น ตอนนี้ 17:00)
+  // ปกติมันจะถือว่าปิด (Diff ติดลบ) ซึ่งถูกต้องแล้ว ไม่ต้องบวกวันเพิ่ม
+  
+  return closeDate;
 };
 
 const formatTimeRemaining = (diff: number) => {
@@ -22,21 +58,36 @@ const formatTimeRemaining = (diff: number) => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-// ✅ [แก้ไข 1] Helper: เลือกรูปธงตามชื่อหมวดหมู่ (ใช้ FlagCDN)
 const getCategoryFlag = (label: string) => {
   const name = label.toLowerCase();
   
-  // Component ย่อยสำหรับแสดงธง
   const Flag = ({ code }: { code: string }) => (
     <img 
       src={`https://flagcdn.com/w40/${code}.png`} 
       srcSet={`https://flagcdn.com/w80/${code}.png 2x`}
       alt={label}
-      className="w-5 h-auto rounded-xs shadow-sm object-cover mr-1.5" // ปรับสไตล์รูปธงตรงนี้
+      className="w-5 h-auto rounded-xs shadow-sm object-cover mr-1.5"
     />
   );
 
-  // เช็คคีย์เวิร์ดเพื่อเลือกธง (เพิ่มลดประเทศได้ตามต้องการ)
+  const IconBadge = ({ icon: Icon, color }: any) => (
+    <div className={`w-5 h-3.5 flex items-center justify-center rounded-xs shadow-sm mr-1.5 ${color}`}>
+       <Icon size={12} strokeWidth={3} className="text-white" />
+    </div>
+  );
+
+  if (name.includes('vip')) return <IconBadge icon={Crown} color="bg-gradient-to-r from-yellow-400 to-amber-500" />;
+
+  // 2. หวยหุ้น (ทั่วไป)
+  if (name.includes('หุ้น') || name.includes('stock')) return <IconBadge icon={TrendingUp} color="bg-blue-500" />;
+
+  // 3. หวยอื่นๆ (ใช้รูปภาพ Emoji ลูกเต๋า หรือ กล่องสุ่ม จาก CDN)
+  // หมายเหตุ: ใช้ CDN ของ emojicdn หรือ fluents (Microsoft style)
+  if (name.includes('อื่น') || name.includes('etc')) {
+       return <IconBadge icon={Search} color="bg-blue-500" />;
+  }
+
+  // --- เช็คประเทศ (Logic เดิม) ---
   if (name.includes('ไทย') || name.includes('รัฐบาล')) return <Flag code="th" />;
   if (name.includes('ฮานอย') || name.includes('เวียดนาม')) return <Flag code="vn" />;
   if (name.includes('ลาว')) return <Flag code="la" />;
@@ -50,12 +101,11 @@ const getCategoryFlag = (label: string) => {
   if (name.includes('รัสเซีย')) return <Flag code="ru" />;
   if (name.includes('เยอรมัน')) return <Flag code="de" />;
   if (name.includes('อังกฤษ')) return <Flag code="gb" />;
-  if (name.includes('ดาวโจนส์') || name.includes('อเมริกา')) return <Flag code="us" />;
+  if (name.includes('ดาวโจนส์') || name.includes('อเมริกา') || name.includes('us')) return <Flag code="us" />;
   if (name.includes('ฮ่องกง')) return <Flag code="hk" />;
   if (name.includes('อียิปต์')) return <Flag code="eg" />;
   
-  // ถ้าไม่ใช่ธง (เช่น หวยหุ้นทั่วไป) ให้คืนค่า null เพื่อไปใช้จุดสีแทน
-  return null;
+  return <Globe size={16} className="text-gray-400 mr-1.5" />;
 };
 
 export default function LottoMarket() {
@@ -66,7 +116,6 @@ export default function LottoMarket() {
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
-  // 1. ดึงข้อมูล Lottos และ Categories
   useEffect(() => {
     const fetchData = async () => {
         try {
@@ -86,7 +135,6 @@ export default function LottoMarket() {
     return () => clearInterval(timer);
   }, []);
 
-  // 2. รวมหมวดหมู่ "ทั้งหมด" เข้ากับหมวดหมู่จาก DB
   const displayCategories = useMemo(() => {
       return [
           { id: 'ALL', label: 'ทั้งหมด', color: 'bg-blue-600 text-white' },
@@ -94,7 +142,7 @@ export default function LottoMarket() {
       ];
   }, [categories]);
 
-  // 3. ฟังก์ชันกรองหวย
+  // 3. ฟังก์ชันกรองหวย (Update Logic)
   const getFilteredLottos = (categoryId: string) => {
     const filtered = lottos.filter(l => {
       const catMatch = categoryId === 'ALL' || l.category === categoryId;
@@ -105,8 +153,9 @@ export default function LottoMarket() {
 
     // เรียงลำดับตามเวลาปิด
     return filtered.sort((a, b) => {
-      const dateA = getCloseDate(a.close_time);
-      const dateB = getCloseDate(b.close_time);
+
+      const dateA = getCloseDate(a, now);
+      const dateB = getCloseDate(b, now);
 
       if (!dateA) return 1;
       if (!dateB) return -1;
@@ -117,9 +166,11 @@ export default function LottoMarket() {
       const isOpenA = diffA > 0;
       const isOpenB = diffB > 0;
 
+      // หวยที่เปิดอยู่ ขึ้นก่อน หวยที่ปิดแล้ว
       if (isOpenA && !isOpenB) return -1;
       if (!isOpenA && isOpenB) return 1; 
 
+      // ถ้าเปิดอยู่ทั้งคู่ ให้เรียงตามเวลาที่เหลือน้อยที่สุดขึ้นก่อน (Urgency)
       if (isOpenA && isOpenB) {
         return diffA - diffB;
       }
@@ -130,7 +181,8 @@ export default function LottoMarket() {
 
   // --- LottoCard Component ---
   const LottoCard = ({ lotto }: { lotto: any }) => {
-      const closeDate = getCloseDate(lotto.close_time);
+      // ✅ [แก้ไข 3] ส่ง now เข้าไป
+      const closeDate = getCloseDate(lotto, now);
       const diff = closeDate ? closeDate.getTime() - now.getTime() : 0;
       const isClosed = diff <= 0;
       const timeLeftStr = !isClosed ? formatTimeRemaining(diff) : null;
@@ -245,12 +297,10 @@ export default function LottoMarket() {
                 }
               `}
             >
-              {/* ✅ [แก้ไข 2] แสดงธงแทนจุดสี ถ้ามีข้อมูลธง */}
               {cat.id !== 'ALL' && (
                   getCategoryFlag(cat.label) ? (
                       getCategoryFlag(cat.label)
                   ) : (
-                      // ถ้าไม่มีธง ให้ใช้จุดสีแบบเดิม (แสดงเฉพาะตอนที่ไม่ได้เลือก เพื่อไม่ให้สีตีกับพื้นหลังปุ่ม active)
                       filter !== cat.id && (
                           <span className={`w-2 h-2 rounded-full ${cat.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
                       )
@@ -274,7 +324,6 @@ export default function LottoMarket() {
                     return (
                         <div key={cat.id}>
                             <h2 className="text-sm font-bold text-gray-700 mb-3 pl-2 border-l-4 border-blue-500 flex items-center gap-2">
-                                {/* ✅ [แก้ไข 3] แสดงธงที่หัวข้อด้วย ถ้ามี */}
                                 {getCategoryFlag(cat.label) || (
                                     <span className={`w-2 h-2 rounded-full ${cat.color.split(' ')[0].replace('text', 'bg').replace('100', '500')}`}></span>
                                 )}
@@ -293,7 +342,6 @@ export default function LottoMarket() {
             </div>
         )}
 
-        {/* กรณีค้นหาแล้วไม่เจอ */}
         {getFilteredLottos(filter).length === 0 && (
             <div className="text-center py-20 text-gray-400 text-sm flex flex-col items-center">
                 <Search className="mb-2 opacity-30" size={48} />

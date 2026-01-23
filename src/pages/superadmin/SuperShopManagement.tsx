@@ -447,7 +447,7 @@ export default function SuperShopManagement() {
               
               <div className="pt-2">
                 <button type="submit" disabled={isSubmitting} className="w-full py-3.5 bg-slate-800 text-white rounded-xl font-bold hover:bg-black shadow-lg shadow-slate-300 hover:shadow-xl hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
-                    {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <span>{isEditMode ? 'บันทึกการแก้ไข' : 'ยืนยันและไปต่อ &rarr;'}</span>}
+                    {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <span>{isEditMode ? 'บันทึกการแก้ไข' : 'ยืนยันและไปต่อ'}</span>}
                 </button>
               </div>
             </form>
