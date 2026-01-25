@@ -11,7 +11,7 @@ import {
 
 export default function Login() {
   const { shop } = useShop(); 
-  const { login, user } = useAuth();
+  const { login} = useAuth();
   const navigate = useNavigate();
 
   // State
@@ -26,38 +26,34 @@ export default function Login() {
   // 1. ส่วนรับ Token จาก URL (Impersonate / Auto Login)
   // ----------------------------------------------------
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tokenFromUrl = params.get('token');
+  const params = new URLSearchParams(window.location.search);
+  const tokenFromUrl = params.get('token');
 
-    if (tokenFromUrl) {
-        const autoLogin = async () => {
-            try {
-                localStorage.setItem('token', tokenFromUrl);
-                await login(tokenFromUrl);
-                
-                toast.success('เข้าสู่ระบบด้วยสิทธิ์ Admin สำเร็จ');
-                navigate('/admin/dashboard'); 
-                
-            } catch (err) {
-                console.error(err);
-                toast.error('Token ไม่ถูกต้องหรือหมดอายุ');
-                navigate('/login');
-            }
-        };
-        autoLogin();
-    }
-  }, []); 
+  if (tokenFromUrl) {
+      const autoLogin = async () => {
+          try {
+              // 1. เก็บ Token
+              localStorage.setItem('token', tokenFromUrl);
+              
+              // 2. เรียก Login Context (เพื่อให้ state 'user' อัปเดต)
+              await login(tokenFromUrl); 
+              
+              toast.success('ยืนยันตัวตนสำเร็จ');
+              
+              // 3. ล้าง Token ออกจาก URL เพื่อความสวยงามและปลอดภัย (Optional)
+              window.history.replaceState({}, document.title, window.location.pathname);
 
-  // ----------------------------------------------------
-  // 2. ส่วน Redirect ตาม Role
-  // ----------------------------------------------------
-  useEffect(() => {
-      if (user) {
-          if (user.role === 'superadmin') navigate('/super/dashboard');
-          else if (user.role === 'admin') navigate('/admin/dashboard');
-          else if (user.role === 'member') navigate('/play');
-      }
-  }, [user, navigate]);
+          } catch (err) {
+              console.error(err);
+              toast.error('Token ไม่ถูกต้องหรือหมดอายุ');
+              // ถ้า Login ไม่ผ่าน ค่อยดีดกลับหน้า Login ปกติ (ซึ่งก็คือหน้านี้แหละ แต่อาจจะล้างค่า)
+              localStorage.removeItem('token');
+              navigate('/login');
+          }
+      };
+      autoLogin();
+  }
+}, []); // Run ครั้งเดียวตอนโหลดหน้า
 
   // Function Login ปกติ
   const handleLogin = async (e: React.FormEvent) => {

@@ -96,7 +96,7 @@ export default function MemberLayout() {
                 {displayLogo ? (
                     /* กรณีมี Logo ร้าน: ใส่กรอบทองหรูๆ */
                     <div className="group mb-3 relative">
-                        <div className="w-20 h-20 rounded-full p-[2px] bg-gradient-to-b from-[#d4af37] via-[#fcd34d] to-[#8a6e28] shadow-[0_0_20px_rgba(212,175,55,0.3)]">
+                        <div className="w-20 h-20 rounded-full p-0.5 bg-linear-to-b from-[#d4af37] via-[#fcd34d] to-[#8a6e28] shadow-[0_0_20px_rgba(212,175,55,0.3)]">
                             <div className="w-full h-full rounded-full bg-black/80 flex items-center justify-center overflow-hidden backdrop-blur-sm">
                                 <img 
                                     src={displayLogo} 
@@ -111,7 +111,7 @@ export default function MemberLayout() {
                     /* กรณีไม่มี Logo: ใช้ NTLOT Text Art */
                     <div className="flex flex-col items-center mb-1">
                         <Crown className="w-8 h-8 text-[#d4af37] mb-1 drop-shadow-[0_0_8px_rgba(212,175,55,0.6)]" strokeWidth={1.5} />
-                        <h1 className="text-3xl font-black tracking-[0.2em] bg-gradient-to-b from-[#FFF] via-[#d4af37] to-[#8a6e28] bg-clip-text text-transparent drop-shadow-sm select-none"
+                        <h1 className="text-3xl font-black tracking-[0.2em] bg-linear-to-b from-[#FFF] via-[#d4af37] to-[#8a6e28] bg-clip-text text-transparent drop-shadow-sm select-none"
                             style={{ fontFamily: "serif" }} 
                         >
                             NTLOT
@@ -120,7 +120,7 @@ export default function MemberLayout() {
                 )}
 
                 {/* ชื่อร้าน / ชื่อระบบ */}
-                <h2 className="text-sm font-bold text-white tracking-widest uppercase mt-1 text-shadow-sm opacity-90 truncate max-w-[200px]">
+                <h2 className="text-sm font-bold text-white tracking-widest uppercase mt-1 text-shadow-sm opacity-90 truncate max-w-50">
                     {displayShopName}
                 </h2>
                 {displayLogo && <p className="text-[10px] text-[#d4af37] mt-0.5 tracking-wider font-medium">PREMIUM MEMBER</p>}
@@ -140,7 +140,7 @@ export default function MemberLayout() {
         {/* Credit Card (Colorful Glass) */}
         <div className="px-5 mt-6 mb-2">
           <Link to="/profile">
-            <div className="bg-gradient-to-r from-yellow-600/90 to-yellow-900/90 border border-yellow-500/30 rounded-2xl p-4 text-white shadow-lg shadow-yellow-900/20 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
+            <div className="bg-linear-to-r from-yellow-600/90 to-yellow-900/90 border border-yellow-500/30 rounded-2xl p-4 text-white shadow-lg shadow-yellow-900/20 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-white/20 rounded-full blur-2xl -mr-10 -mt-10 group-hover:bg-white/30 transition-colors"></div>
                 
                 <div className="flex justify-between items-start mb-3 relative z-10">
@@ -156,7 +156,7 @@ export default function MemberLayout() {
                 </div>
                 
                 <div className="flex items-center justify-between text-xs text-yellow-100/80 font-medium relative z-10 border-t border-white/10 pt-2 mt-1">
-                    <span className="flex items-center gap-1 truncate max-w-[100px]"><User size={12}/> {user?.username}</span>
+                    <span className="flex items-center gap-1 truncate max-w-25"><User size={12}/> {user?.username}</span>
                     <span className="bg-black/20 px-2 py-0.5 rounded-full text-[10px] uppercase">Member</span>
                 </div>
             </div>
@@ -241,7 +241,7 @@ export default function MemberLayout() {
                </button>
                <div>
                   <h2 className="font-bold text-slate-800 text-base md:text-lg flex items-center gap-2">
-                   ยินดีต้อนรับ, <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-600">{user?.full_name?.split(' ')[0] || user?.username}</span> 👋
+                   ยินดีต้อนรับ, <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-700 to-indigo-600">{user?.full_name?.split(' ')[0] || user?.username}</span> 👋
                   </h2>
                </div>
            </div>
@@ -251,7 +251,7 @@ export default function MemberLayout() {
                   <Bell size={18} />
                   <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
               </button>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#d4af37] to-[#8a6e28] p-0.5">
+              <div className="w-9 h-9 rounded-full bg-linear-to-tr from-[#d4af37] to-[#8a6e28] p-0.5">
                   <div className="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden">
                       <User size={18} className="text-slate-700" />
                   </div>

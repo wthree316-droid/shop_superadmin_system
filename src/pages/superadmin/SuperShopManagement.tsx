@@ -134,51 +134,38 @@ export default function SuperShopManagement() {
   };
 
   const handleImpersonate = (shopId: string) => {
-      confirmAction('เข้าใช้งานในฐานะ Admin ของร้านนี้?', async () => {
-          try {
-              // 1. ยิง API ขอ Token
-              const res = await client.post(`/users/impersonate/${shopId}`);
-              const { access_token, shop_subdomain } = res.data;
-              localStorage.setItem('super_backup_token', localStorage.getItem('token') || '');
+    confirmAction('เข้าใช้งานในฐานะ Admin ของร้านนี้?', async () => {
+        try {
+            // 1. ขอ Token จาก Cloud Run (Backend)
+            const res = await client.post(`/users/impersonate/${shopId}`);
+            const { access_token, shop_subdomain } = res.data;
 
-              // 2. คำนวณ URL ปลายทาง
-              const currentHost = window.location.hostname; // e.g., localhost หรือ admin.mysite.com
-              const protocol = window.location.protocol; // http: หรือ https:
-              const port = window.location.port ? `:${window.location.port}` : '';
-              
-              let targetUrl = '';
+            // 2. เตรียม URL
+            const protocol = window.location.protocol;
+            
+            // ✅ ดึงค่าโดเมนหลักจาก ENV (ชัวร์ที่สุดสำหรับ Vercel)
+            // ถ้าไม่มี ENV (เช่นตอน Local) ให้ใช้ fallback เดิม
+            const rootDomain = import.meta.env.VITE_ROOT_DOMAIN || window.location.hostname.split('.').slice(-2).join('.');
 
-              // กรณี Localhost (ต้อง Setup hosts file ก่อนถึงจะ work 100% แต่ถ้าไม่ setup ก็ใช้วิธีเดิมแก้ขัด)
-              if (currentHost.includes('localhost') || currentHost.includes('127.0.0.1')) {
-                  // ถ้า Localhost ปกติ Subdomain จะยากหน่อย อาจจะใช้ท่า Token Swap เดิมไปก่อน
-                  // หรือถ้าคุณ set /etc/hosts ไว้แล้ว เช่น shop1.localhost ก็ใช้แบบนี้:
-                  // targetUrl = `${protocol}//${shop_subdomain}.localhost${port}/login?token=${access_token}`;
-                  
-                  // 🔥 แบบง่ายสำหรับ Localhost: Login เลยไม่ต้องเปลี่ยน Domain (แต่ Logo อาจจะไม่ตรงเป๊ะตาม ShopContext)
-                  localStorage.setItem('token', access_token);
-                  window.location.href = '/admin/dashboard'; // บังคับ Refresh เพื่อโหลด Context ใหม่
-                  return; 
+            // เช็ค Localhost
+            if (window.location.hostname.includes('localhost')) {
+                 localStorage.setItem('token', access_token);
+                 window.location.href = '/admin/dashboard';
+                 return;
+            }
 
-              } else {
-                  // กรณี Production (เช่น admin.mysite.com -> shop1.mysite.com)
-                  // สมมติ domain หลักคือ mysite.com
-                  const domainParts = currentHost.split('.');
-                  const rootDomain = domainParts.slice(-2).join('.'); // mysite.com
-                  
-                  targetUrl = `${protocol}//${shop_subdomain}.${rootDomain}${port}/login?token=${access_token}`;
-              }
+            // 3. สร้าง URL ปลายทาง
+            
+            const targetUrl = `${protocol}//${shop_subdomain}.${rootDomain}/login?token=${access_token}`;
 
-              // 3. Redirect ไปร้านนั้น
-              toast.success(`กำลังสลับไปร้านค้า: ${shop_subdomain}...`);
-              setTimeout(() => {
-                  window.location.href = targetUrl;
-              }, 1000);
+            // 4. Redirect
+            window.location.href = targetUrl;
 
-          } catch(err: any) {
-              toast.error(err.response?.data?.detail || 'เข้าระบบไม่ได้');
-          }
-      }, 'เข้าสู่ระบบ');
-  };
+        } catch (err: any) {
+            toast.error('เข้าสู่ระบบไม่ได้');
+        }
+    }, 'ยืนยัน');
+};
 
   const openCreateModal = () => {
       setNewShop({ name: '', code: '', subdomain: '', logo_url: '' });
