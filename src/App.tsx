@@ -36,11 +36,21 @@ import Profile from './pages/member/Profile';
 // --- Logic การ Redirect ตาม Role ---
 const RedirectBasedOnRole = () => {
   const { user, isLoading } = useAuth();
-  if (isLoading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-gray-400"/></div>;
+  // 1. ถ้ากำลังโหลด User อยู่ ให้หมุนติ้วๆ รอก่อน (อย่าเพิ่งดีด)
+  if (isLoading) {
+      return (
+          <div className="h-screen flex items-center justify-center bg-slate-50">
+             <Loader2 className="animate-spin text-blue-600" size={40} />
+          </div>
+      );
+  }
+
+  // 2. ถ้าโหลดเสร็จแล้ว แต่ไม่มี User ค่อยดีดไป Login
   if (!user) return <Navigate to="/login" />;
 
+  // 3. ถ้ามี User ก็ไปตาม Role
   switch (user.role) {
-    case 'superadmin': return <Navigate to="/super/dashboard" />; // แก้ให้ไป dashboard ก่อน
+    case 'superadmin': return <Navigate to="/super/dashboard" />;
     case 'admin': return <Navigate to="/admin/dashboard" />;
     case 'member': return <Navigate to="/play" />;
     default: return <div className="text-center p-10 text-red-500">Unknown Role</div>;

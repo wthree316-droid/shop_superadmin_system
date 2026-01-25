@@ -2,58 +2,62 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useShop } from '../contexts/ShopContext';
 import { loginApi } from '../api/auth';
-import client from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { 
-  Loader2, User, Lock, Eye, EyeOff, ShieldCheck, UserPlus, LogIn, Crown
+  Loader2, User, Lock, Eye, EyeOff, ShieldCheck, Crown
 } from 'lucide-react';
 
 export default function Login() {
   const { shop } = useShop(); 
-  const { login} = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
-  // State
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  // State (เหลือเท่าที่ใช้สำหรับการ Login)
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   // ----------------------------------------------------
   // 1. ส่วนรับ Token จาก URL (Impersonate / Auto Login)
   // ----------------------------------------------------
-  useEffect(() => {
-  const params = new URLSearchParams(window.location.search);
-  const tokenFromUrl = params.get('token');
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tokenFromUrl = params.get('token');
 
-  if (tokenFromUrl) {
-      const autoLogin = async () => {
-          try {
-              // 1. เก็บ Token
-              localStorage.setItem('token', tokenFromUrl);
-              
-              // 2. เรียก Login Context (เพื่อให้ state 'user' อัปเดต)
-              await login(tokenFromUrl); 
-              
-              toast.success('ยืนยันตัวตนสำเร็จ');
-              
-              // 3. ล้าง Token ออกจาก URL เพื่อความสวยงามและปลอดภัย (Optional)
-              window.history.replaceState({}, document.title, window.location.pathname);
+        if (tokenFromUrl) {
+            const autoLogin = async () => {
+                try {
+                    // 1. เก็บ Token
+                    localStorage.setItem('token', tokenFromUrl);
+                    
+                    // 2. เรียก Login Context
+                    await login(tokenFromUrl); 
+                    
+                    toast.success('ยืนยันตัวตนสำเร็จ');
+                    
+                    // 3. ล้าง URL
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    
+                    // 4. ไปหน้าแรก (ให้ App.tsx ตัดสินใจต่อ)
+                    // ✅ เพิ่ม setTimeout เล็กน้อยเพื่อให้ State อัปเดตทัน
+                    setTimeout(() => {
+                        navigate('/', { replace: true });
+                    }, 100);
 
-          } catch (err) {
-              console.error(err);
-              toast.error('Token ไม่ถูกต้องหรือหมดอายุ');
-              // ถ้า Login ไม่ผ่าน ค่อยดีดกลับหน้า Login ปกติ (ซึ่งก็คือหน้านี้แหละ แต่อาจจะล้างค่า)
-              localStorage.removeItem('token');
-              navigate('/login');
-          }
-      };
-      autoLogin();
-  }
-}, []); // Run ครั้งเดียวตอนโหลดหน้า
+                } catch (err: any) {
+                    console.error("Auto Login Failed:", err);
+                    // ✅ แสดง Error ให้เห็นชัดๆ ว่าทำไมเข้าไม่ได้
+                    toast.error(err.response?.data?.detail || 'Token ไม่ถูกต้อง หรือ หมดอายุ');
+                    
+                    localStorage.removeItem('token');
+                    // ไม่ต้อง navigate('/login') เพราะตอนนี้ก็อยู่หน้า login อยู่แล้ว
+                }
+            };
+            autoLogin();
+        }
+    }, [login, navigate]);
 
   // Function Login ปกติ
   const handleLogin = async (e: React.FormEvent) => {
@@ -78,44 +82,14 @@ export default function Login() {
     }
   };
 
-  // Function Register
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!shop) return toast.error("สมัครสมาชิกได้เฉพาะหน้าร้านค้าเท่านั้น");
-    
-    setIsLoading(true);
-    try {
-        await client.post('/auth/register', {
-            username,
-            password,
-            full_name: fullName,
-            shop_id: shop.id
-        });
-        
-        toast.success('สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ');
-        setIsRegisterMode(false);
-        setPassword('');
-    } catch (err: any) {
-        const msg = err.response?.data?.detail || 'สมัครสมาชิกไม่สำเร็จ';
-        toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
-    } finally {
-        setIsLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#050505] p-4 font-sans animate-fade-in relative overflow-hidden">
       
       {/* --- Background Effects (Gold & Black Theme) --- */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-          {/* Radial Gradient พื้นหลัง */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--tw-gradient-stops))] from-[#1a1a1a] via-[#000000] to-[#000000]"></div>
-          
-          {/* Golden Glows */}
           <div className="absolute top-[-20%] left-[20%] w-125 h-125 bg-[#FFD700]/10 rounded-full blur-[120px]"></div>
           <div className="absolute bottom-[-10%] right-[-10%] w-100 h-100 bg-[#B8860B]/10 rounded-full blur-[100px]"></div>
-          
-          {/* Grid Texture จางๆ */}
           <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150"></div>
       </div>
 
@@ -128,7 +102,6 @@ export default function Login() {
         {/* Header Section */}
         <div className="pt-10 pb-2 px-8 text-center relative">
             
-            {/* โลโก้ NTLOT หรือ โลโก้ร้าน */}
             <div className="flex flex-col items-center justify-center mb-6">
                 {shop?.logo_url ? (
                     <div className="w-24 h-24 mb-4 rounded-full p-1 bg-linear-to-b from-[#d4af37] to-[#8a6e28]">
@@ -137,16 +110,14 @@ export default function Login() {
                         </div>
                     </div>
                 ) : (
-                    // NTLOT Styled Logo
                     <div className="relative mb-2">
                          <div className="absolute -inset-4 bg-[#d4af37]/20 blur-xl rounded-full"></div>
                          <Crown className="w-10 h-10 text-[#d4af37] mx-auto mb-2 drop-shadow-[0_0_10px_rgba(212,175,55,0.8)]" strokeWidth={1.5} />
                     </div>
                 )}
                 
-                {/* Text: NTLOT (Metallic Gold Style) */}
                 <h1 className="text-5xl font-black tracking-[0.2em] bg-linear-to-b from-[#FFF] via-[#d4af37] to-[#8a6e28] bg-clip-text text-transparent drop-shadow-sm select-none"
-                    style={{ fontFamily: "'Cinzel', serif" }} // *ถ้าอยากได้ Font หรูๆ แนะนำ import Google Font: Cinzel
+                    style={{ fontFamily: "'Cinzel', serif" }} 
                 >
                     NTLOT
                 </h1>
@@ -159,13 +130,13 @@ export default function Login() {
             <div className="h-px w-full bg-linear-to-r from-transparent via-[#333] to-transparent my-4"></div>
 
             <h2 className="text-xl font-bold text-white tracking-wide">
-                {isRegisterMode ? 'Create Account' : 'Welcome Back'}
+                Welcome Back
             </h2>
         </div>
 
         {/* Form Section */}
         <div className="p-8 pt-4">
-            <form onSubmit={isRegisterMode ? handleRegister : handleLogin} className="space-y-5">
+            <form onSubmit={handleLogin} className="space-y-5">
                 
                 {/* Username */}
                 <div className="space-y-2 group/input">
@@ -206,23 +177,6 @@ export default function Login() {
                     </div>
                 </div>
 
-                {/* Full Name (Register Only) */}
-                {isRegisterMode && (
-                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2 group/input">
-                        <label className="text-[10px] font-bold text-[#d4af37] uppercase ml-1 tracking-wider opacity-80">Full Name</label>
-                        <div className="relative">
-                            <input 
-                                type="text" 
-                                className="w-full pl-11 pr-4 py-3.5 bg-black/40 border border-[#333] rounded-xl text-white placeholder-gray-600 focus:bg-black/60 focus:ring-1 focus:ring-[#d4af37]/50 focus:border-[#d4af37] outline-none transition-all font-medium shadow-inner"
-                                placeholder="ชื่อ-นามสกุล"
-                                value={fullName}
-                                onChange={(e) => setFullName(e.target.value)}
-                            />
-                            <UserPlus className="absolute left-3.5 top-3.5 text-gray-500 group-focus-within/input:text-[#d4af37] transition-colors" size={20} />
-                        </div>
-                    </div>
-                )}
-
                 {/* Action Button */}
                 <button 
                     type="submit" 
@@ -233,33 +187,16 @@ export default function Login() {
                     }}
                 >
                     <div className="absolute inset-0 bg-white/20 group-hover/btn:translate-x-full transition-transform duration-500 ease-in-out skew-x-12 -ml-20 w-1/2 h-full"></div>
-                    {isLoading ? <Loader2 className="animate-spin" size={20} /> : (isRegisterMode ? 'CONFIRM REGISTER' : 'LOGIN ACCESS')}
+                    {isLoading ? <Loader2 className="animate-spin" size={20} /> : 'LOGIN ACCESS'}
                 </button>
             </form>
 
-            {/* Switch Mode */}
-            {shop && (
-                <div className="mt-8 pt-6 border-t border-white/5 text-center">
-                    <p className="text-xs text-gray-500 mb-4">
-                        {isRegisterMode ? 'Already have an account?' : 'Don\'t have an account?'}
-                    </p>
-                    <button 
-                        onClick={() => { setIsRegisterMode(!isRegisterMode); setPassword(''); }}
-                        className="text-sm font-bold px-6 py-2 rounded-lg hover:bg-white/5 transition-colors flex items-center gap-2 mx-auto border border-white/10 text-[#d4af37]"
-                    >
-                        {isRegisterMode ? <><LogIn size={16}/> Back to Login</> : <><UserPlus size={16}/> Create Account</>}
-                    </button>
+            <div className="mt-8 flex justify-center opacity-40 hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                    <ShieldCheck size={12} className="text-[#d4af37]" />
+                    <span className="tracking-widest">SECURE SYSTEM</span>
                 </div>
-            )}
-
-            {!shop && (
-                <div className="mt-8 flex justify-center opacity-40 hover:opacity-100 transition-opacity">
-                    <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
-                        <ShieldCheck size={12} className="text-[#d4af37]" />
-                        <span className="tracking-widest">SECURE SYSTEM</span>
-                    </div>
-                </div>
-            )}
+            </div>
 
         </div>
       </div>

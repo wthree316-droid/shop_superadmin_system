@@ -133,39 +133,37 @@ export default function SuperShopManagement() {
     });
   };
 
-  const handleImpersonate = (shopId: string) => {
-    confirmAction('เข้าใช้งานในฐานะ Admin ของร้านนี้?', async () => {
-        try {
-            // 1. ขอ Token จาก Cloud Run (Backend)
-            const res = await client.post(`/users/impersonate/${shopId}`);
-            const { access_token, shop_subdomain } = res.data;
+    const handleImpersonate = (shopId: string) => {
+        confirmAction('เข้าใช้งานในฐานะ Admin ของร้านนี้?', async () => {
+            try {
+                const res = await client.post(`/users/impersonate/${shopId}`);
+                const { access_token, shop_subdomain } = res.data;
+                const currentHost = window.location.hostname;
 
-            // 2. เตรียม URL
-            const protocol = window.location.protocol;
-            
-            // ✅ ดึงค่าโดเมนหลักจาก ENV (ชัวร์ที่สุดสำหรับ Vercel)
-            // ถ้าไม่มี ENV (เช่นตอน Local) ให้ใช้ fallback เดิม
-            const rootDomain = import.meta.env.VITE_ROOT_DOMAIN || window.location.hostname.split('.').slice(-2).join('.');
+                // --- CASE: LOCALHOST ---
+                if (currentHost.includes('localhost') || currentHost === '127.0.0.1') {
+                    localStorage.setItem('token', access_token);
+                    // บังคับโหลดใหม่เพื่อให้ Context เปลี่ยน
+                    window.location.href = '/admin/dashboard';
+                    return;
+                }
 
-            // เช็ค Localhost
-            if (window.location.hostname.includes('localhost')) {
-                 localStorage.setItem('token', access_token);
-                 window.location.href = '/admin/dashboard';
-                 return;
+                // --- CASE: PRODUCTION ---
+                const protocol = window.location.protocol; // https:
+                const rootDomain = import.meta.env.VITE_ROOT_DOMAIN || currentHost.split('.').slice(-2).join('.');
+                
+                // สร้าง URL (เช็คให้แน่ใจว่าไม่มี slash เกิน)
+                const targetUrl = `${protocol}//${shop_subdomain}.${rootDomain}/login?token=${access_token}`;
+
+                console.log('Redirecting to:', targetUrl); // ✅ ดู Log ก่อนไป
+
+                window.location.href = targetUrl;
+
+            } catch (err: any) {
+                toast.error('เข้าสู่ระบบไม่ได้');
             }
-
-            // 3. สร้าง URL ปลายทาง
-            
-            const targetUrl = `${protocol}//${shop_subdomain}.${rootDomain}/login?token=${access_token}`;
-
-            // 4. Redirect
-            window.location.href = targetUrl;
-
-        } catch (err: any) {
-            toast.error('เข้าสู่ระบบไม่ได้');
-        }
-    }, 'ยืนยัน');
-};
+        }, 'ยืนยัน');
+    };
 
   const openCreateModal = () => {
       setNewShop({ name: '', code: '', subdomain: '', logo_url: '' });
