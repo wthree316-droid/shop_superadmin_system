@@ -22,9 +22,6 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Theme Color (Override เป็นธีมทองดำ ถ้าไม่มีค่าจากร้าน)
-  const mainColor = shop?.theme_color || '#d4af37'; // Default Gold
-
   // ----------------------------------------------------
   // 1. ส่วนรับ Token จาก URL (Impersonate / Auto Login)
   // ----------------------------------------------------
