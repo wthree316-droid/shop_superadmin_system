@@ -68,7 +68,7 @@ export default function Login() {
         await login(res.access_token);
         
         toast.success('เข้าสู่ระบบสำเร็จ');
-        
+        navigate('/');
     } catch (err: any) {
         console.error("Login Error:", err);
         const msg = err.response?.data?.detail || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
