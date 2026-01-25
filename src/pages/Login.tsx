@@ -6,7 +6,7 @@ import client from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { 
-  Loader2, User, Lock, Eye, EyeOff, ShieldCheck, UserPlus, LogIn, Crown, Star
+  Loader2, User, Lock, Eye, EyeOff, ShieldCheck, UserPlus, LogIn, Crown
 } from 'lucide-react';
 
 export default function Login() {
@@ -113,11 +113,11 @@ export default function Login() {
       {/* --- Background Effects (Gold & Black Theme) --- */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
           {/* Radial Gradient พื้นหลัง */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#000000] to-[#000000]"></div>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--tw-gradient-stops))] from-[#1a1a1a] via-[#000000] to-[#000000]"></div>
           
           {/* Golden Glows */}
-          <div className="absolute top-[-20%] left-[20%] w-[500px] h-[500px] bg-[#FFD700]/10 rounded-full blur-[120px]"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-[#B8860B]/10 rounded-full blur-[100px]"></div>
+          <div className="absolute top-[-20%] left-[20%] w-125 h-125 bg-[#FFD700]/10 rounded-full blur-[120px]"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-100 h-100 bg-[#B8860B]/10 rounded-full blur-[100px]"></div>
           
           {/* Grid Texture จางๆ */}
           <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150"></div>
@@ -127,7 +127,7 @@ export default function Login() {
       <div className="w-full max-w-md bg-[#111]/80 backdrop-blur-2xl rounded-3xl shadow-[0_0_50px_-12px_rgba(212,175,55,0.25)] border border-[#d4af37]/30 overflow-hidden relative z-10 group">
         
         {/* Shine Effect on Card Border */}
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#d4af37] to-transparent opacity-50"></div>
+        <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-[#d4af37] to-transparent opacity-50"></div>
 
         {/* Header Section */}
         <div className="pt-10 pb-2 px-8 text-center relative">
@@ -135,7 +135,7 @@ export default function Login() {
             {/* โลโก้ NTLOT หรือ โลโก้ร้าน */}
             <div className="flex flex-col items-center justify-center mb-6">
                 {shop?.logo_url ? (
-                    <div className="w-24 h-24 mb-4 rounded-full p-1 bg-gradient-to-b from-[#d4af37] to-[#8a6e28]">
+                    <div className="w-24 h-24 mb-4 rounded-full p-1 bg-linear-to-b from-[#d4af37] to-[#8a6e28]">
                         <div className="w-full h-full rounded-full bg-black flex items-center justify-center overflow-hidden">
                              <img src={shop.logo_url} alt="Logo" className="w-20 h-20 object-contain" />
                         </div>
@@ -149,7 +149,7 @@ export default function Login() {
                 )}
                 
                 {/* Text: NTLOT (Metallic Gold Style) */}
-                <h1 className="text-5xl font-black tracking-[0.2em] bg-gradient-to-b from-[#FFF] via-[#d4af37] to-[#8a6e28] bg-clip-text text-transparent drop-shadow-sm select-none"
+                <h1 className="text-5xl font-black tracking-[0.2em] bg-linear-to-b from-[#FFF] via-[#d4af37] to-[#8a6e28] bg-clip-text text-transparent drop-shadow-sm select-none"
                     style={{ fontFamily: "'Cinzel', serif" }} // *ถ้าอยากได้ Font หรูๆ แนะนำ import Google Font: Cinzel
                 >
                     NTLOT
@@ -160,7 +160,7 @@ export default function Login() {
                 </p>
             </div>
 
-            <div className="h-px w-full bg-gradient-to-r from-transparent via-[#333] to-transparent my-4"></div>
+            <div className="h-px w-full bg-linear-to-r from-transparent via-[#333] to-transparent my-4"></div>
 
             <h2 className="text-xl font-bold text-white tracking-wide">
                 {isRegisterMode ? 'Create Account' : 'Welcome Back'}
