@@ -32,6 +32,7 @@ export default function Login() {
                     // 1. เก็บ Token
                     localStorage.setItem('token', tokenFromUrl);
                     
+                    localStorage.setItem('is_impersonating', 'true');
                     // 2. เรียก Login Context
                     await login(tokenFromUrl); 
                     
