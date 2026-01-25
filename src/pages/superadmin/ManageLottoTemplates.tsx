@@ -6,9 +6,6 @@ import {
 } from 'lucide-react';
 import type { LottoType, RateProfile } from '../../types/lotto';
 
-// ❌ ลบ CATEGORIES แบบ Hardcode ออกไปเลยครับ
-// เราจะใช้ข้อมูลจาก Database แทน
-
 const DAYS = [
   { id: 'SUN', label: 'อาทิตย์' }, { id: 'MON', label: 'จันทร์' }, { id: 'TUE', label: 'อังคาร' },
   { id: 'WED', label: 'พุธ' }, { id: 'THU', label: 'พฤหัส' }, { id: 'FRI', label: 'ศุกร์' }, { id: 'SAT', label: 'เสาร์' },
@@ -119,6 +116,7 @@ const TimeSelector = ({ label, value, onChange, iconColorClass }: any) => {
 
 // --- 3. Main Component ---
 export default function ManageLottoTemplates() {
+
   const [lottos, setLottos] = useState<LottoType[]>([]);
   const [rateProfiles, setRateProfiles] = useState<RateProfile[]>([]);
   
@@ -135,6 +133,9 @@ export default function ManageLottoTemplates() {
   
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [scheduleType, setScheduleType] = useState('weekly'); // 'weekly' | 'monthly'
+  const [monthlyDates, setMonthlyDates] = useState<number[]>([1, 16]); // Default หวยไทย
 
   // Load Data
   useEffect(() => {
@@ -188,18 +189,19 @@ export default function ManageLottoTemplates() {
     setEditingId(null);
     setFormData({
         ...INITIAL_FORM_STATE,
-        // ✅ ตั้งค่า Default หมวดหมู่แรก ถ้ามี
         category: categories.length > 0 ? categories[0].id : ''
     });
+    // ✅ [เพิ่มใหม่] Reset ค่าเมื่อสร้างใหม่
+    setScheduleType('weekly');
+    setMonthlyDates([1, 16]);
     setShowModal(true);
   };
 
-  const openEditModal = (lotto: LottoType) => {
+  const openEditModal = (lotto: any) => { // เปลี่ยน Type เป็น any ชั่วคราวเพื่อให้เข้าถึง rules ได้ง่าย
     setEditingId(lotto.id);
     setFormData({
       name: lotto.name,
       code: lotto.code,
-      // ✅ ใช้ค่าจาก DB หรือถ้าไม่มีให้ใช้ตัวแรก
       category: lotto.category || (categories.length > 0 ? categories[0].id : ''),
       img_url: lotto.img_url || '',
       rate_profile_id: lotto.rate_profile_id || '',
@@ -209,6 +211,16 @@ export default function ManageLottoTemplates() {
       result_time: formatTimeForInput(lotto.result_time || '16:00:00'),
       api_link: lotto.api_link || ''
     });
+
+    // ✅ [เพิ่มใหม่] ดึงค่า config จาก rules มาใส่ State
+    const rules = lotto.rules || {};
+    if (rules.schedule_type === 'monthly') {
+        setScheduleType('monthly');
+        setMonthlyDates(rules.close_dates || [1, 16]);
+    } else {
+        setScheduleType('weekly');
+    }
+
     setShowModal(true);
   };
 
@@ -235,12 +247,22 @@ export default function ManageLottoTemplates() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
+      // ✅ [แก้ไข] สร้าง payload ที่รวม rules เข้าไป
       const payload = { 
           ...formData, 
-          is_template: true // ระบุว่าเป็นแม่แบบ
+          rate_profile_id: formData.rate_profile_id || null, 
+          
+          is_template: true,
+          rules: {
+            schedule_type: scheduleType,
+            close_dates: scheduleType === 'monthly' ? monthlyDates : undefined
+          },
+          open_days: scheduleType === 'monthly' ? [] : formData.open_days
       };
 
       if (editingId) {
+        // ต้องส่ง rules เดิมไปด้วยไหม? ถ้าต้องการ merge ให้ดึง lottos.find มาก่อน
+        // แต่ถ้าแม่แบบปกติ rules ไม่ซับซ้อน ทับไปเลยก็ได้ครับ
         await client.put(`/play/lottos/${editingId}`, payload);
         alert('แก้ไขแม่แบบสำเร็จ!');
       } else {
@@ -496,25 +518,85 @@ export default function ManageLottoTemplates() {
                                 <Clock size={18} className="text-amber-500" /> ตั้งค่าเวลา (ค่าเริ่มต้น)
                             </h4>
                             <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-200 space-y-4">
+                                
+                                {/* ✅ [เพิ่มใหม่] ส่วนเลือกรูปแบบ รายวัน vs รายเดือน */}
                                 <div>
-                                    <label className="block text-xs font-bold mb-2 text-gray-500 uppercase tracking-wider">วันเปิดรับ</label>
-                                    <div className="flex gap-2 flex-wrap">
-                                        {DAYS.map(d => (
-                                            <button 
-                                                type="button" 
-                                                key={d.id} 
-                                                onClick={() => toggleDay(d.id)}
-                                                className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
-                                                    formData.open_days.includes(d.id) 
-                                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md scale-105' 
-                                                    : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400 hover:text-gray-600'
-                                                }`}
-                                            >
-                                                {d.label[0]}
-                                            </button>
-                                        ))}
+                                    <label className="block text-xs font-bold mb-2 text-gray-500 uppercase tracking-wider">รูปแบบการออกผล</label>
+                                    <div className="flex gap-4 mb-4">
+                                        <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-lg border border-gray-200 hover:border-amber-400 transition-colors">
+                                            <input 
+                                                type="radio" 
+                                                className="w-4 h-4 text-amber-500 focus:ring-amber-500"
+                                                checked={scheduleType === 'weekly'} 
+                                                onChange={() => setScheduleType('weekly')}
+                                            />
+                                            <span className="text-sm font-bold text-slate-700">รายวัน / สัปดาห์</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-lg border border-gray-200 hover:border-amber-400 transition-colors">
+                                            <input 
+                                                type="radio" 
+                                                className="w-4 h-4 text-amber-500 focus:ring-amber-500"
+                                                checked={scheduleType === 'monthly'} 
+                                                onChange={() => setScheduleType('monthly')}
+                                            />
+                                            <span className="text-sm font-bold text-slate-700">ระบุวันที่ (เช่น หวยไทย)</span>
+                                        </label>
                                     </div>
                                 </div>
+
+                                {/* ✅ Case 1: เลือกแบบ Weekly (แสดงปุ่ม จ-อา เดิม) */}
+                                {scheduleType === 'weekly' && (
+                                    <div className="animate-in fade-in slide-in-from-top-2">
+                                        <label className="block text-xs font-bold mb-2 text-gray-500 uppercase tracking-wider">วันเปิดรับ</label>
+                                        <div className="flex gap-2 flex-wrap">
+                                            {DAYS.map(d => (
+                                                <button 
+                                                    type="button" 
+                                                    key={d.id} 
+                                                    onClick={() => toggleDay(d.id)}
+                                                    className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
+                                                        formData.open_days.includes(d.id) 
+                                                        ? 'bg-amber-500 text-white border-amber-500 shadow-md scale-105' 
+                                                        : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400 hover:text-gray-600'
+                                                    }`}
+                                                >
+                                                    {d.label[0]}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ✅ Case 2: เลือกแบบ Monthly (แสดงปุ่มตัวเลข 1-31) */}
+                                {scheduleType === 'monthly' && (
+                                    <div className="animate-in fade-in slide-in-from-top-2">
+                                        <label className="block text-xs font-bold mb-2 text-gray-500 uppercase tracking-wider">เลือกวันที่หวยออก</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {[...Array(31)].map((_, i) => {
+                                                const date = i + 1;
+                                                const isSelected = monthlyDates.includes(date);
+                                                return (
+                                                    <button
+                                                        key={date}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (isSelected) setMonthlyDates(monthlyDates.filter(d => d !== date));
+                                                            else setMonthlyDates([...monthlyDates, date].sort((a,b)=>a-b));
+                                                        }}
+                                                        className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
+                                                            isSelected 
+                                                            ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105' 
+                                                            : 'bg-white text-gray-400 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+                                                        }`}
+                                                    >
+                                                        {date}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="text-[10px] text-gray-400 mt-2">* เลือกวันที่ต้องการให้ระบบปิดรับและออกผล (เช่น วันที่ 1 และ 16)</p>
+                                    </div>
+                                )}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <TimeSelector 
                                         label="เวลาเปิด" 

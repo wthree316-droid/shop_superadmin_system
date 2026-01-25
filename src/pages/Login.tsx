@@ -1,283 +1,273 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useShop } from '../hooks/useShop';
-import { loginApi, fetchMeApi } from '../api/auth'; // เรียก API Login
-import client from '../api/client'; // เรียก client ตรงๆ สำหรับ Register
+import { useShop } from '../contexts/ShopContext';
+import { loginApi } from '../api/auth';
+import client from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { 
-  Loader2, User, Lock, Eye, EyeOff, ShieldCheck, Store, UserPlus, LogIn
+  Loader2, User, Lock, Eye, EyeOff, ShieldCheck, UserPlus, LogIn, Crown, Star
 } from 'lucide-react';
 
 export default function Login() {
-  const { shop } = useShop(); // ดึงข้อมูลร้าน (และสีธีม)
-  const { login } = useAuth();
-  const navigate = useNavigate(); // ✅ ประกาศแล้วต้องใช้ใน handleLogin หรือ handleRegister
+  const { shop } = useShop(); 
+  const { login, user } = useAuth();
+  const navigate = useNavigate();
 
-  // State สลับโหมด (Login / Register)
+  // State
   const [isRegisterMode, setIsRegisterMode] = useState(false);
-
-  // Form States
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState(''); // เพิ่มสำหรับสมัคร
-  const [confirmPassword, setConfirmPassword] = useState(''); // เพิ่มสำหรับสมัคร
-  
+  const [fullName, setFullName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- ฟังก์ชันสมัครสมาชิก ---
+  // Theme Color (Override เป็นธีมทองดำ ถ้าไม่มีค่าจากร้าน)
+  const mainColor = shop?.theme_color || '#d4af37'; // Default Gold
+
+  // ----------------------------------------------------
+  // 1. ส่วนรับ Token จาก URL (Impersonate / Auto Login)
+  // ----------------------------------------------------
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('token');
+
+    if (tokenFromUrl) {
+        const autoLogin = async () => {
+            try {
+                localStorage.setItem('token', tokenFromUrl);
+                await login(tokenFromUrl);
+                
+                toast.success('เข้าสู่ระบบด้วยสิทธิ์ Admin สำเร็จ');
+                navigate('/admin/dashboard'); 
+                
+            } catch (err) {
+                console.error(err);
+                toast.error('Token ไม่ถูกต้องหรือหมดอายุ');
+                navigate('/login');
+            }
+        };
+        autoLogin();
+    }
+  }, []); 
+
+  // ----------------------------------------------------
+  // 2. ส่วน Redirect ตาม Role
+  // ----------------------------------------------------
+  useEffect(() => {
+      if (user) {
+          if (user.role === 'superadmin') navigate('/super/dashboard');
+          else if (user.role === 'admin') navigate('/admin/dashboard');
+          else if (user.role === 'member') navigate('/play');
+      }
+  }, [user, navigate]);
+
+  // Function Login ปกติ
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+        const formData = new URLSearchParams();
+        formData.append('username', username);
+        formData.append('password', password);
+
+        const res = await loginApi(formData);
+        await login(res.access_token);
+        
+        toast.success('เข้าสู่ระบบสำเร็จ');
+        
+    } catch (err: any) {
+        console.error("Login Error:", err);
+        const msg = err.response?.data?.detail || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+        toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  // Function Register
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!shop) return toast.error("สมัครสมาชิกได้เฉพาะหน้าร้านค้าเท่านั้น");
     
-    // 1. Validation
-    if (!username || !password || !fullName || !confirmPassword) {
-        return toast.error('กรุณากรอกข้อมูลให้ครบทุกช่อง');
-    }
-    if (password !== confirmPassword) {
-        return toast.error('รหัสผ่านไม่ตรงกัน');
-    }
-    // *สำคัญ* ต้องมีร้านสังกัดเท่านั้นถึงจะสมัครได้ (Subdomain Check)
-    if (!shop?.id) {
-        return toast.error('ไม่สามารถสมัครผ่านลิงก์กลางได้ กรุณาขอลิงก์จากร้านค้า');
-    }
-
-    setIsSubmitting(true);
+    setIsLoading(true);
     try {
-        // 2. ยิง API Register (ใช้ client ยิงไปที่ endpoint ที่เราเพิ่งสร้าง)
         await client.post('/auth/register', {
             username,
             password,
             full_name: fullName,
-            shop_id: shop.id // ✅ ส่ง ID ร้านไปด้วย เพื่อผูก User กับร้านนี้
+            shop_id: shop.id
         });
-
+        
         toast.success('สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ');
-        setIsRegisterMode(false); // สลับกลับไปหน้า Login
+        setIsRegisterMode(false);
         setPassword('');
-        setConfirmPassword('');
     } catch (err: any) {
-        console.error(err);
-        toast.error(err.response?.data?.detail || 'สมัครไม่สำเร็จ');
+        const msg = err.response?.data?.detail || 'สมัครสมาชิกไม่สำเร็จ';
+        toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
-        setIsSubmitting(false);
+        setIsLoading(false);
     }
   };
-
-  // --- ฟังก์ชันเข้าสู่ระบบ ---
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if(!username || !password) return toast.error('กรุณากรอกข้อมูลให้ครบ');
-
-    setIsSubmitting(true);
-    const toastId = toast.loading('กำลังตรวจสอบ...', { position: 'bottom-center' });
-
-    try {
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('password', password);
-
-      // 1. ขอ Token
-      const data = await loginApi(formData);
-      localStorage.setItem('token', data.access_token);
-
-      // 2. ขอข้อมูล User เพื่อเช็ค Role
-      const userData = await fetchMeApi(); 
-      await login(data.access_token); // อัปเดต Context
-      
-      toast.success(`ยินดีต้อนรับ ${userData.username}`, { id: toastId });
-
-      // ✅ 3. ใช้ navigate ตรงนี้ (แก้ปัญหา value never read)
-      switch (userData.role) {
-        case 'superadmin':
-          navigate('/super/dashboard');
-          break;
-        case 'admin':
-          navigate('/admin/dashboard');
-          break;
-        case 'member':
-          navigate('/play');
-          break;
-        default:
-          navigate('/unauthorized');
-      }
-      
-    } catch (err: any) {
-      toast.error('เข้าสู่ระบบไม่สำเร็จ: ' + (err.response?.data?.detail || 'ข้อมูลผิดพลาด'), { id: toastId });
-      localStorage.removeItem('token');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // ดึงสีธีมจากร้าน (ถ้าไม่มีใช้สี Default)
-  const themeColor = shop?.theme_color || '#2563EB'; // Default Blue
 
   return (
-    <div className="min-h-screen bg-[#0f172a] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-[#050505] p-4 font-sans animate-fade-in relative overflow-hidden">
       
-      {/* Background Effect (เปลี่ยนสีตามธีม) */}
+      {/* --- Background Effects (Gold & Black Theme) --- */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-          <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] rounded-full opacity-20 blur-[100px]" style={{ backgroundColor: themeColor }}></div>
-          <div className="absolute top-[20%] -right-[10%] w-[40%] h-[40%] rounded-full bg-purple-600/10 blur-[100px]"></div>
+          {/* Radial Gradient พื้นหลัง */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#000000] to-[#000000]"></div>
+          
+          {/* Golden Glows */}
+          <div className="absolute top-[-20%] left-[20%] w-[500px] h-[500px] bg-[#FFD700]/10 rounded-full blur-[120px]"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-[#B8860B]/10 rounded-full blur-[100px]"></div>
+          
+          {/* Grid Texture จางๆ */}
+          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150"></div>
       </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8 relative z-10">
-        {/* Logo */}
-        <div className={`w-24 h-24 mx-auto rounded-2xl flex items-center justify-center mb-4 shadow-2xl overflow-hidden ${shop ? 'bg-white p-1' : 'bg-slate-800 border border-slate-700'}`}>
-            {shop?.logo_url ? (
-                <img src={shop.logo_url} className="w-full h-full object-cover rounded-xl" alt="Shop Logo" />
-            ) : shop ? (
-                <Store size={48} style={{ color: themeColor }} />
-            ) : (
-                <ShieldCheck size={48} className="text-white" />
-            )}
-        </div>
+      {/* --- Login Card --- */}
+      <div className="w-full max-w-md bg-[#111]/80 backdrop-blur-2xl rounded-3xl shadow-[0_0_50px_-12px_rgba(212,175,55,0.25)] border border-[#d4af37]/30 overflow-hidden relative z-10 group">
+        
+        {/* Shine Effect on Card Border */}
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#d4af37] to-transparent opacity-50"></div>
 
-        {/* Shop Name */}
-        {shop ? (
-            <>
-                <h1 className="text-3xl font-black text-white tracking-tight">{shop.name}</h1>
-                <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-white/80 text-xs font-mono backdrop-blur-md">
-                    <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: themeColor }}></span>
-                    {shop.subdomain}.yoursite.com
-                </div>
-            </>
-        ) : (
-            <>
-                <h1 className="text-3xl font-black text-white tracking-tight">SYSTEM ADMIN</h1>
-                <p className="mt-2 text-sm text-slate-400">ระบบจัดการสำหรับผู้ดูแลระบบสูงสุด</p>
-            </>
-        )}
-      </div>
-
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm relative z-10">
-        <div className="bg-white/95 backdrop-blur-xl py-8 px-6 shadow-2xl rounded-2xl sm:px-8 border border-white/10">
+        {/* Header Section */}
+        <div className="pt-10 pb-2 px-8 text-center relative">
             
-            {/* Header Form */}
-            <div className="mb-6 text-center">
-                <h2 className="text-xl font-bold text-slate-800">
-                    {isRegisterMode ? 'สมัครสมาชิกใหม่' : 'เข้าสู่ระบบ'}
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                    {isRegisterMode ? 'กรอกข้อมูลเพื่อเริ่มต้นใช้งาน' : 'ใส่ชื่อผู้ใช้และรหัสผ่านของคุณ'}
+            {/* โลโก้ NTLOT หรือ โลโก้ร้าน */}
+            <div className="flex flex-col items-center justify-center mb-6">
+                {shop?.logo_url ? (
+                    <div className="w-24 h-24 mb-4 rounded-full p-1 bg-gradient-to-b from-[#d4af37] to-[#8a6e28]">
+                        <div className="w-full h-full rounded-full bg-black flex items-center justify-center overflow-hidden">
+                             <img src={shop.logo_url} alt="Logo" className="w-20 h-20 object-contain" />
+                        </div>
+                    </div>
+                ) : (
+                    // NTLOT Styled Logo
+                    <div className="relative mb-2">
+                         <div className="absolute -inset-4 bg-[#d4af37]/20 blur-xl rounded-full"></div>
+                         <Crown className="w-10 h-10 text-[#d4af37] mx-auto mb-2 drop-shadow-[0_0_10px_rgba(212,175,55,0.8)]" strokeWidth={1.5} />
+                    </div>
+                )}
+                
+                {/* Text: NTLOT (Metallic Gold Style) */}
+                <h1 className="text-5xl font-black tracking-[0.2em] bg-gradient-to-b from-[#FFF] via-[#d4af37] to-[#8a6e28] bg-clip-text text-transparent drop-shadow-sm select-none"
+                    style={{ fontFamily: "'Cinzel', serif" }} // *ถ้าอยากได้ Font หรูๆ แนะนำ import Google Font: Cinzel
+                >
+                    NTLOT
+                </h1>
+                
+                <p className="text-[#888] text-xs mt-2 uppercase tracking-widest font-medium">
+                    {shop ? shop.name : 'Premium Lottery System'}
                 </p>
             </div>
 
-            <form onSubmit={isRegisterMode ? handleRegister : handleLogin} className="space-y-4">
-              
-              {/* Username */}
-              <div>
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <User className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <input 
-                        value={username} 
-                        onChange={e => setUsername(e.target.value)}
-                        className="w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:border-transparent outline-none transition-all text-slate-800 font-bold placeholder-slate-300 bg-slate-50 focus:bg-white"
-                        style={{ '--tw-ring-color': themeColor } as any} 
-                        placeholder="ชื่อผู้ใช้ (Username)"
-                        disabled={isSubmitting}
-                    />
-                </div>
-              </div>
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-[#333] to-transparent my-4"></div>
 
-              {/* Full Name (เฉพาะสมัคร) */}
-              {isRegisterMode && (
-                  <div className="animate-in fade-in slide-in-from-top-2">
+            <h2 className="text-xl font-bold text-white tracking-wide">
+                {isRegisterMode ? 'Create Account' : 'Welcome Back'}
+            </h2>
+        </div>
+
+        {/* Form Section */}
+        <div className="p-8 pt-4">
+            <form onSubmit={isRegisterMode ? handleRegister : handleLogin} className="space-y-5">
+                
+                {/* Username */}
+                <div className="space-y-2 group/input">
+                    <label className="text-[10px] font-bold text-[#d4af37] uppercase ml-1 tracking-wider opacity-80">Username</label>
                     <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <UserPlus className="h-5 w-5 text-slate-400" />
-                        </div>
                         <input 
-                            value={fullName} 
-                            onChange={e => setFullName(e.target.value)}
-                            className="w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:border-transparent outline-none transition-all text-slate-800 font-bold placeholder-slate-300 bg-slate-50 focus:bg-white"
-                            style={{ '--tw-ring-color': themeColor } as any}
-                            placeholder="ชื่อ-นามสกุลจริง"
-                            disabled={isSubmitting}
+                            type="text" 
+                            required
+                            className="w-full pl-11 pr-4 py-3.5 bg-black/40 border border-[#333] rounded-xl text-white placeholder-gray-600 focus:bg-black/60 focus:ring-1 focus:ring-[#d4af37]/50 focus:border-[#d4af37] outline-none transition-all font-medium shadow-inner"
+                            placeholder="กรอกชื่อผู้ใช้งาน"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
                         />
+                        <User className="absolute left-3.5 top-3.5 text-gray-500 group-focus-within/input:text-[#d4af37] transition-colors" size={20} />
                     </div>
-                  </div>
-              )}
-
-              {/* Password */}
-              <div>
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Lock className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <input 
-                        type={showPassword ? "text" : "password"}
-                        value={password} 
-                        onChange={e => setPassword(e.target.value)}
-                        className="w-full pl-10 pr-10 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:border-transparent outline-none transition-all text-slate-800 font-bold placeholder-slate-300 bg-slate-50 focus:bg-white"
-                        style={{ '--tw-ring-color': themeColor } as any}
-                        placeholder="รหัสผ่าน"
-                        disabled={isSubmitting}
-                    />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
-                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
                 </div>
-              </div>
 
-              {/* Confirm Password (เฉพาะสมัคร) */}
-              {isRegisterMode && (
-                  <div className="animate-in fade-in slide-in-from-top-2">
+                {/* Password */}
+                <div className="space-y-2 group/input">
+                    <label className="text-[10px] font-bold text-[#d4af37] uppercase ml-1 tracking-wider opacity-80">Password</label>
                     <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <ShieldCheck className="h-5 w-5 text-slate-400" />
-                        </div>
                         <input 
-                            type="password"
-                            value={confirmPassword} 
-                            onChange={e => setConfirmPassword(e.target.value)}
-                            className="w-full pl-10 pr-10 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:border-transparent outline-none transition-all text-slate-800 font-bold placeholder-slate-300 bg-slate-50 focus:bg-white"
-                            style={{ '--tw-ring-color': themeColor } as any}
-                            placeholder="ยืนยันรหัสผ่านอีกครั้ง"
-                            disabled={isSubmitting}
+                            type={showPassword ? "text" : "password"} 
+                            required
+                            className="w-full pl-11 pr-11 py-3.5 bg-black/40 border border-[#333] rounded-xl text-white placeholder-gray-600 focus:bg-black/60 focus:ring-1 focus:ring-[#d4af37]/50 focus:border-[#d4af37] outline-none transition-all font-medium shadow-inner"
+                            placeholder="กรอกรหัสผ่าน"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                         />
+                        <Lock className="absolute left-3.5 top-3.5 text-gray-500 group-focus-within/input:text-[#d4af37] transition-colors" size={20} />
+                        <button 
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3.5 top-3.5 text-gray-500 hover:text-white transition-colors"
+                        >
+                            {showPassword ? <EyeOff size={20}/> : <Eye size={20}/>}
+                        </button>
                     </div>
-                  </div>
-              )}
-              
-              {/* ปุ่ม Action (ใช้สี Theme Color) */}
-              <button 
-                type="submit" 
-                disabled={isSubmitting}
-                className="w-full text-white font-bold py-3.5 rounded-xl shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
-                style={{ backgroundColor: themeColor, boxShadow: `0 10px 15px -3px ${themeColor}40` }}
-              >
-                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : (isRegisterMode ? 'ยืนยันการสมัคร' : 'เข้าสู่ระบบ')}
-              </button>
+                </div>
+
+                {/* Full Name (Register Only) */}
+                {isRegisterMode && (
+                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2 group/input">
+                        <label className="text-[10px] font-bold text-[#d4af37] uppercase ml-1 tracking-wider opacity-80">Full Name</label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                className="w-full pl-11 pr-4 py-3.5 bg-black/40 border border-[#333] rounded-xl text-white placeholder-gray-600 focus:bg-black/60 focus:ring-1 focus:ring-[#d4af37]/50 focus:border-[#d4af37] outline-none transition-all font-medium shadow-inner"
+                                placeholder="ชื่อ-นามสกุล"
+                                value={fullName}
+                                onChange={(e) => setFullName(e.target.value)}
+                            />
+                            <UserPlus className="absolute left-3.5 top-3.5 text-gray-500 group-focus-within/input:text-[#d4af37] transition-colors" size={20} />
+                        </div>
+                    </div>
+                )}
+
+                {/* Action Button */}
+                <button 
+                    type="submit" 
+                    disabled={isLoading}
+                    className="w-full py-4 rounded-xl font-bold text-black uppercase tracking-wider shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:shadow-[0_0_30px_rgba(212,175,55,0.5)] hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 mt-4 relative overflow-hidden group/btn"
+                    style={{ 
+                        background: 'linear-gradient(135deg, #b8860b 0%, #ffd700 50%, #b8860b 100%)',
+                    }}
+                >
+                    <div className="absolute inset-0 bg-white/20 group-hover/btn:translate-x-full transition-transform duration-500 ease-in-out skew-x-12 -ml-20 w-1/2 h-full"></div>
+                    {isLoading ? <Loader2 className="animate-spin" size={20} /> : (isRegisterMode ? 'CONFIRM REGISTER' : 'LOGIN ACCESS')}
+                </button>
             </form>
 
-            {/* Toggle Switch (เฉพาะหน้าร้านค้า) */}
+            {/* Switch Mode */}
             {shop && (
-                <div className="mt-6 pt-6 border-t border-slate-100 text-center">
-                    <p className="text-sm text-slate-500 mb-3">
-                        {isRegisterMode ? 'มีบัญชีอยู่แล้ว?' : 'ยังไม่มีบัญชีสมาชิก?'}
+                <div className="mt-8 pt-6 border-t border-white/5 text-center">
+                    <p className="text-xs text-gray-500 mb-4">
+                        {isRegisterMode ? 'Already have an account?' : 'Don\'t have an account?'}
                     </p>
                     <button 
                         onClick={() => { setIsRegisterMode(!isRegisterMode); setPassword(''); }}
-                        className="text-sm font-bold bg-slate-50 px-4 py-2 rounded-lg hover:bg-slate-100 transition-colors flex items-center gap-2 mx-auto border border-slate-200"
-                        style={{ color: themeColor }}
+                        className="text-sm font-bold px-6 py-2 rounded-lg hover:bg-white/5 transition-colors flex items-center gap-2 mx-auto border border-white/10 text-[#d4af37]"
                     >
-                        {isRegisterMode ? <><LogIn size={16}/> กลับไปเข้าสู่ระบบ</> : <><UserPlus size={16}/> สมัครสมาชิกใหม่</>}
+                        {isRegisterMode ? <><LogIn size={16}/> Back to Login</> : <><UserPlus size={16}/> Create Account</>}
                     </button>
                 </div>
             )}
 
             {!shop && (
-                <div className="mt-6 flex justify-center">
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-                        <ShieldCheck size={12} />
-                        <span>SECURE CONTEXT: GLOBAL SYSTEM</span>
+                <div className="mt-8 flex justify-center opacity-40 hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                        <ShieldCheck size={12} className="text-[#d4af37]" />
+                        <span className="tracking-widest">SECURE SYSTEM</span>
                     </div>
                 </div>
             )}
+
         </div>
       </div>
     </div>

@@ -5,13 +5,11 @@ import {
     Search, CheckCircle, Loader2, Building2, LogIn, Globe,
     AlertTriangle, ShieldCheck
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast'; 
 import { confirmAction } from '../../utils/toastUtils';
 
 export default function SuperShopManagement() {
   const [shops, setShops] = useState<any[]>([]);
-  const { login } = useAuth();
 
   // Modal States
   const [showShopModal, setShowShopModal] = useState(false);
@@ -136,23 +134,48 @@ export default function SuperShopManagement() {
   };
 
   const handleImpersonate = (shopId: string) => {
-      // ✅ ใช้ confirmAction แทน confirm()
       confirmAction('เข้าใช้งานในฐานะ Admin ของร้านนี้?', async () => {
           try {
-              const currentToken = localStorage.getItem('token');
-              if (currentToken) {
-                  localStorage.setItem('super_backup_token', currentToken);
-              }
-              
+              // 1. ยิง API ขอ Token
               const res = await client.post(`/users/impersonate/${shopId}`);
-              await login(res.data.access_token);
+              const { access_token, shop_subdomain } = res.data;
+              localStorage.setItem('super_backup_token', localStorage.getItem('token') || '');
+
+              // 2. คำนวณ URL ปลายทาง
+              const currentHost = window.location.hostname; // e.g., localhost หรือ admin.mysite.com
+              const protocol = window.location.protocol; // http: หรือ https:
+              const port = window.location.port ? `:${window.location.port}` : '';
               
-              toast.success('กำลังเข้าสู่ระบบร้านค้า...');
+              let targetUrl = '';
+
+              // กรณี Localhost (ต้อง Setup hosts file ก่อนถึงจะ work 100% แต่ถ้าไม่ setup ก็ใช้วิธีเดิมแก้ขัด)
+              if (currentHost.includes('localhost') || currentHost.includes('127.0.0.1')) {
+                  // ถ้า Localhost ปกติ Subdomain จะยากหน่อย อาจจะใช้ท่า Token Swap เดิมไปก่อน
+                  // หรือถ้าคุณ set /etc/hosts ไว้แล้ว เช่น shop1.localhost ก็ใช้แบบนี้:
+                  // targetUrl = `${protocol}//${shop_subdomain}.localhost${port}/login?token=${access_token}`;
+                  
+                  // 🔥 แบบง่ายสำหรับ Localhost: Login เลยไม่ต้องเปลี่ยน Domain (แต่ Logo อาจจะไม่ตรงเป๊ะตาม ShopContext)
+                  localStorage.setItem('token', access_token);
+                  window.location.href = '/admin/dashboard'; // บังคับ Refresh เพื่อโหลด Context ใหม่
+                  return; 
+
+              } else {
+                  // กรณี Production (เช่น admin.mysite.com -> shop1.mysite.com)
+                  // สมมติ domain หลักคือ mysite.com
+                  const domainParts = currentHost.split('.');
+                  const rootDomain = domainParts.slice(-2).join('.'); // mysite.com
+                  
+                  targetUrl = `${protocol}//${shop_subdomain}.${rootDomain}${port}/login?token=${access_token}`;
+              }
+
+              // 3. Redirect ไปร้านนั้น
+              toast.success(`กำลังสลับไปร้านค้า: ${shop_subdomain}...`);
               setTimeout(() => {
-                  window.location.href = '/dashboard'; 
-              }, 500);
+                  window.location.href = targetUrl;
+              }, 1000);
+
           } catch(err: any) {
-              toast.error(err.response?.data?.detail || 'เข้าระบบไม่ได้ (ร้านอาจยังไม่มี Admin)');
+              toast.error(err.response?.data?.detail || 'เข้าระบบไม่ได้');
           }
       }, 'เข้าสู่ระบบ');
   };

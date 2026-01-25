@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Store, Users, Settings, FileSpreadsheet, ShieldAlert, Wallet, Building2, ClipboardList, Palette } from 'lucide-react';
+import { Store, Users, Settings, FileSpreadsheet, ShieldAlert, Palette } from 'lucide-react';
 
 // Import Components ย่อย
 import ManageMembers from './ManageMembers';
@@ -7,9 +7,6 @@ import ManageLottos from './ManageLottos';
 import ManageRates from './ManageRates'; 
 import ManageRisks from './ManageRisks';
 import DailyReport from './DailyReport';
-import ManageBanks from './ManageBanks';
-import ManageTransactions from './ManageTransactions';
-import AuditLogs from './AuditLogs';
 import ManageShopSettings from './ManageShopSettings'; 
 
 export default function ShopManagement() {
@@ -17,13 +14,10 @@ export default function ShopManagement() {
 
   const tabs = [
     { id: 'members', label: 'สมาชิก', icon: Users },
-    { id: 'transactions', label: 'รายการเงิน', icon: Wallet }, 
-    { id: 'banks', label: 'บัญชีร้าน', icon: Building2 },
     { id: 'settings', label: 'ตั้งค่าร้าน', icon: Palette },
     { id: 'rates', label: 'เรทจ่าย', icon: FileSpreadsheet },
     { id: 'lottos', label: 'ตั้งค่าหวย', icon: Settings },
     { id: 'risks', label: 'เลขอั้น', icon: ShieldAlert },
-    { id: 'logs', label: 'ประวัติ', icon: ClipboardList },
     { id: 'report', label: 'รายงาน', icon: Store }, 
   ];
 
@@ -79,54 +73,36 @@ export default function ShopManagement() {
                     <ManageMembers />
                 </div>
             )}
-            {/* Tab 2: รายการเงิน */}
-            {activeTab === 'transactions' && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <ManageTransactions />
-                </div>
-            )}
-            {/* Tab 3: บัญชีร้าน */}
-            {activeTab === 'banks' && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <ManageBanks />
-                </div>
-            )}
 
-            {/* Tab 4: การส่งแจ้งเตือน */}
+            {/* Tab 2: การส่งแจ้งเตือน */}
             {activeTab === 'settings' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageShopSettings />
                 </div>
             )}
 
-            {/* Tab 5: เรทจ่าย */}
+            {/* Tab 3: เรทจ่าย */}
             {activeTab === 'rates' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageRates />
                 </div>
             )}
             
-            {/* Tab 6: หวย */}
+            {/* Tab 4: หวย */}
             {activeTab === 'lottos' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageLottos />
                 </div>
             )}
 
-            {/* Tab 7: เลขอั้น */}
+            {/* Tab 5: เลขอั้น */}
             {activeTab === 'risks' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <ManageRisks />
                 </div>
             )}
-            {/* Tab 8: รายงาน */}
-            {activeTab === 'logs' && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <AuditLogs />
-                </div>
-            )}
             
-            {/* Tab 9: รายงานใน 1 วัน */}
+            {/* Tab 6: รายงานใน 1 วัน */}
             {activeTab === 'report' && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <DailyReport />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useShop } from '../../hooks/useShop'; // ✅ [1] เรียกใช้ useShop
+import { useShop } from '../../contexts/ShopContext';
 import client from '../../api/client';
 import { 
   User, Lock, Save, Shield, Wallet, Store, 

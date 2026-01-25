@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'; // ✅ มี useRef อยู่แล้ว
+import { useState, useEffect, useRef, memo } from 'react';
 import client from '../../api/client';
 import { 
   X, Trophy, Calendar, 
@@ -7,80 +7,181 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+// --- Helper Functions ---
+const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const getYesterdayStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const formatDateDisplay = (dateStr: string) => {
+    if (!dateStr) return '-';
+    const [y, m, d] = dateStr.split('-');
+    const dateObj = new Date(+y, +m - 1, +d);
+    return dateObj.toLocaleDateString('th-TH', { 
+        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' 
+    });
+};
+
+// --- ✅ แยก Component Modal ออกมา (แก้ปัญหาพิมพ์แล้วหน่วง) ---
+const ResultModal = memo(({ lotto, existingResult, onClose, onSuccess, dateStr }: any) => {
+    const [top3, setTop3] = useState(existingResult?.top_3 || '');
+    const [bottom2, setBottom2] = useState(existingResult?.bottom_2 || '');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    const topInputRef = useRef<HTMLInputElement>(null);
+    const bottomInputRef = useRef<HTMLInputElement>(null);
+
+    // Auto focus ช่องแรก
+    useEffect(() => {
+        setTimeout(() => topInputRef.current?.focus(), 100);
+    }, []);
+
+    const handleTopChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 3);
+        setTop3(val);
+        if (val.length === 3) bottomInputRef.current?.focus();
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        
+        if (top3.length !== 3 || bottom2.length !== 2) {
+            toast.error("กรุณากรอกเลขให้ครบ (3 ตัวบน และ 2 ตัวล่าง)");
+            return;
+        }
+
+        if (!confirm(existingResult ? `⚠️ ยืนยันแก้ไขผลรางวัล?` : `ยืนยันบันทึกผลรางวัล?`)) return;
+
+        setIsSubmitting(true);
+        try {
+            await client.post('/reward/issue', {
+                lotto_type_id: lotto.id,
+                top_3: top3,
+                bottom_2: bottom2,
+                round_date: dateStr // ส่งวันที่ string ไปตรงๆ ไม่เพี้ยนแน่นอน
+            });
+            
+            toast.success(existingResult ? 'แก้ไขเรียบร้อย' : 'บันทึกเรียบร้อย');
+            onSuccess(); // แจ้ง Parent ให้โหลดข้อมูลใหม่
+            onClose();
+        } catch (err: any) {
+            toast.error(err.response?.data?.detail || 'เกิดข้อผิดพลาด');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-4xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 relative ring-1 ring-white/20">
+                {/* Header */}
+                <div className={`p-8 pb-6 text-white text-center relative overflow-hidden ${existingResult ? 'bg-slate-800' : 'bg-linear-to-br from-amber-400 to-orange-600'}`}>
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full blur-2xl -ml-10 -mb-10"></div>
+                    
+                    <h3 className="text-2xl font-black tracking-tight relative z-10">{lotto.name}</h3>
+                    <p className="text-white/80 text-xs mt-1 font-medium relative z-10 uppercase tracking-wider">
+                        {existingResult ? 'แก้ไขผลรางวัล' : `งวดวันที่ ${dateStr}`}
+                    </p>
+                    <button onClick={onClose} className="absolute top-4 right-4 text-white/60 hover:text-white bg-black/10 hover:bg-black/20 rounded-full p-1.5 transition-colors z-20">
+                        <X size={20} />
+                    </button>
+                </div>
+                
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="p-6 pt-8 space-y-8 bg-white">
+                    <div className="space-y-6">
+                        {/* 3 ตัวบน */}
+                        <div className="relative group">
+                            <label className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider group-focus-within:text-amber-500 transition-colors">
+                                เลข 3 ตัวบน
+                            </label>
+                            <input 
+                                ref={topInputRef}
+                                type="tel" 
+                                value={top3}
+                                onChange={handleTopChange}
+                                maxLength={3}
+                                className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 text-5xl text-center font-black tracking-[0.3em] text-slate-800 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 outline-none transition-all placeholder-slate-200"
+                                placeholder="---"
+                            />
+                        </div>
+
+                        <div className="flex justify-center -my-2 text-slate-300"><ArrowRight className="rotate-90" size={20}/></div>
+
+                        {/* 2 ตัวล่าง */}
+                        <div className="relative group">
+                            <label className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider group-focus-within:text-amber-500 transition-colors">
+                                เลข 2 ตัวล่าง
+                            </label>
+                            <input 
+                                ref={bottomInputRef}
+                                type="tel" 
+                                value={bottom2}
+                                onChange={e => setBottom2(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+                                maxLength={2}
+                                className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 text-5xl text-center font-black tracking-[0.3em] text-slate-800 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 outline-none transition-all placeholder-slate-200"
+                                placeholder="--"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="pt-2 grid grid-cols-2 gap-3">
+                        <button type="button" onClick={onClose} className="py-4 rounded-xl font-bold text-sm text-slate-500 bg-slate-100 hover:bg-slate-200 hover:text-slate-700 transition-colors">
+                            ยกเลิก
+                        </button>
+                        <button 
+                            type="submit" 
+                            disabled={isSubmitting}
+                            className={`py-4 text-white rounded-xl font-bold text-sm shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed ${
+                                existingResult ? 'bg-slate-800 hover:bg-black' : 'bg-linear-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
+                            }`}
+                        >
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle size={18} />} 
+                            {existingResult ? 'บันทึกแก้ไข' : 'ยืนยันผล'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+});
+
+// --- Main Component ---
 export default function ManageResults() {
-  // ... (State เดิมทั้งหมด) ...
   const [lottos, setLottos] = useState<any[]>([]);
   const [resultsMap, setResultsMap] = useState<any>({}); 
   const [selectedLotto, setSelectedLotto] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  const [top3, setTop3] = useState('');
-  const [bottom2, setBottom2] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // ✅ ใช้ String เป็น State แทน Date Object (แก้ปัญหาเวลาเพี้ยน)
+  const [selectedDate, setSelectedDate] = useState(getTodayStr());
   
-  const [currentDate, setCurrentDate] = useState(new Date());
-
-  // Refs
-  const topInputRef = useRef<HTMLInputElement>(null);
-  const bottomInputRef = useRef<HTMLInputElement>(null);
-  
-  // ✅ [เพิ่ม] Ref สำหรับ date input เพื่อสั่งเปิดปฏิทิน
   const datePickerRef = useRef<HTMLInputElement>(null);
-
-  // ... (Helper Functions เดิม: getTodayDate, getYesterdayDate, isSameDay, getDateParams, getTodayStr) ...
-  const getTodayDate = () => new Date();
-  
-  const getYesterdayDate = () => {
-      const d = new Date();
-      d.setDate(d.getDate() - 1);
-      return d;
-  };
-
-  const isSameDay = (d1: Date, d2: Date) => {
-      return d1.getFullYear() === d2.getFullYear() &&
-             d1.getMonth() === d2.getMonth() &&
-             d1.getDate() === d2.getDate();
-  };
-
-  const getDateParams = () => {
-      const d = currentDate;
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      const apiDate = `${year}-${month}-${day}`;
-
-      return {
-          display: d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' }),
-          full_display: d.toLocaleDateString('th-TH', { weekday:'long', day: '2-digit', month: 'long', year: 'numeric' }),
-          api: apiDate
-      };
-  };
-
-  const getTodayStr = () => {
-      const d = new Date();
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-  };
 
   useEffect(() => {
     fetchData();
-  }, [currentDate]);
-
-  useEffect(() => {
-      if (selectedLotto) {
-          setTimeout(() => topInputRef.current?.focus(), 100);
-      }
-  }, [selectedLotto]);
+  }, [selectedDate]);
 
   const fetchData = async () => {
       setIsLoading(true);
       try {
-        const dateStr = getDateParams().api;
+        // ใช้ selectedDate (string) ส่งไปตรงๆ
         const [resLottos, resResults] = await Promise.all([
             client.get('/play/lottos'),
-            client.get(`/reward/daily?date=${dateStr}`)
+            client.get(`/reward/daily?date=${selectedDate}`)
         ]);
         
         const sortedLottos = resLottos.data.sort((a: any, b: any) => {
@@ -91,7 +192,6 @@ export default function ManageResults() {
 
         setLottos(sortedLottos);
         setResultsMap(resResults.data || {}); 
-        
       } catch (err) {
           console.error(err);
       } finally {
@@ -99,65 +199,13 @@ export default function ManageResults() {
       }
   };
 
-  const handleOpenModal = (lotto: any) => {
-    const existingResult = resultsMap[lotto.id];
-    setSelectedLotto(lotto);
-    if (existingResult) {
-        setTop3(existingResult.top_3);
-        setBottom2(existingResult.bottom_2);
-    } else {
-        setTop3('');
-        setBottom2('');
-    }
-  };
-
-  const handleTopChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 3);
-      setTop3(val);
-      if (val.length === 3) {
-          bottomInputRef.current?.focus();
-      }
-  };
-
-  const handleSubmitReward = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedLotto) return;
-    
-    if (top3.length !== 3 || bottom2.length !== 2) {
-        toast.error("กรุณากรอกเลขให้ครบ (3 ตัวบน และ 2 ตัวล่าง)");
-        return;
-    }
-
-    const isEdit = !!resultsMap[selectedLotto.id];
-    
-    if (!confirm(isEdit ? `⚠️ ยืนยันแก้ไขผลรางวัล?` : `ยืนยันบันทึกผลรางวัล?`)) return;
-
-    setIsSubmitting(true);
-    try {
-      await client.post('/reward/issue', {
-        lotto_type_id: selectedLotto.id,
-        top_3: top3,
-        bottom_2: bottom2,
-        date: getDateParams().api 
-      });
-      
-      toast.success(isEdit ? 'แก้ไขเรียบร้อย' : 'บันทึกเรียบร้อย');
-      setSelectedLotto(null);
-      fetchData(); 
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'เกิดข้อผิดพลาด');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const isToday = isSameDay(currentDate, getTodayDate());
-  const isYesterday = isSameDay(currentDate, getYesterdayDate());
+  const isToday = selectedDate === getTodayStr();
+  const isYesterday = selectedDate === getYesterdayStr();
 
   return (
     <div className="animate-fade-in p-4 md:p-8 max-w-7xl mx-auto pb-24">
       
-      {/* --- Header Section --- */}
+      {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6">
         <div>
            <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
@@ -167,39 +215,32 @@ export default function ManageResults() {
               ออกผลรางวัล
            </h2>
            <p className="text-slate-500 mt-2 font-medium flex items-center gap-2">
-              <Calendar size={14}/> ประจำงวดวันที่ <span className="text-slate-800 font-bold border-b-2 border-amber-200">{getDateParams().full_display}</span>
+              <Calendar size={14}/> ประจำงวดวันที่ <span className="text-slate-800 font-bold border-b-2 border-amber-200">{formatDateDisplay(selectedDate)}</span>
            </p>
         </div>
 
-        {/* ✅ Date Filter Toggle + Calendar */}
         <div className="flex items-center gap-2 w-full lg:w-auto">
             <div className="bg-slate-100 p-1 rounded-xl flex items-center flex-1 lg:flex-none shadow-inner">
                 <button 
-                    onClick={() => setCurrentDate(getTodayDate())}
+                    onClick={() => setSelectedDate(getTodayStr())}
                     className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                        isToday
-                        ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' 
-                        : 'text-slate-400 hover:text-slate-600'
+                        isToday ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' : 'text-slate-400 hover:text-slate-600'
                     }`}
                 >
                     วันนี้
                 </button>
                 <button 
-                    onClick={() => setCurrentDate(getYesterdayDate())}
+                    onClick={() => setSelectedDate(getYesterdayStr())}
                     className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                        isYesterday
-                        ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' 
-                        : 'text-slate-400 hover:text-slate-600'
+                        isYesterday ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' : 'text-slate-400 hover:text-slate-600'
                     }`}
                 >
                     เมื่อวาน
                 </button>
             </div>
 
-            {/* ✅ แก้ไขปุ่มปฏิทิน: กดตรงไหนก็ติดแน่นอน */}
             <div className="relative group">
                 <div 
-                    // 1. เพิ่ม onClick ให้เรียก showPicker()
                     onClick={() => datePickerRef.current?.showPicker()} 
                     className={`p-3 rounded-xl transition-all cursor-pointer shadow-sm border flex items-center justify-center ${
                         !isToday && !isYesterday 
@@ -209,26 +250,19 @@ export default function ManageResults() {
                 >
                     <Calendar size={20} />
                 </div>
-                
                 <input
-                    ref={datePickerRef} // 2. ผูก Ref
+                    ref={datePickerRef}
                     type="date"
-                    // 3. ซ่อน Input ไว้ข้างหลัง (z-index ติดลบ) เพื่อไม่ให้ขวางการกด แต่ยังทำงานได้
                     className="absolute inset-0 w-full h-full opacity-0 z-[-1]" 
-                    value={getDateParams().api} 
+                    value={selectedDate} 
                     max={getTodayStr()}   
-                    onChange={(e) => {
-                        if(e.target.value) {
-                             const [y, m, d] = e.target.value.split('-');
-                             setCurrentDate(new Date(+y, +m - 1, +d));
-                        }
-                    }}
+                    onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
                 />
             </div>
         </div>
       </div>
 
-      {/* ... (ส่วนแสดงผลตาราง/Modal เหมือนเดิมทุกอย่าง) ... */}
+      {/* Table & Content */}
       {isLoading ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-3">
               <Loader2 className="animate-spin text-amber-500" size={40} />
@@ -236,6 +270,7 @@ export default function ManageResults() {
           </div>
       ) : (
         <>
+            {/* Desktop Table */}
             <div className="hidden lg:block bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
                 <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-xs tracking-wider">
@@ -302,7 +337,7 @@ export default function ManageResults() {
                         </td>
                         <td className="p-5 text-center pr-8">
                             <button 
-                            onClick={() => handleOpenModal(lotto)}
+                            onClick={() => setSelectedLotto(lotto)}
                             className={`px-5 py-2.5 rounded-xl font-bold text-xs shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2 mx-auto w-32 ${
                                 result 
                                 ? 'bg-white border border-slate-200 text-slate-500 hover:text-amber-600 hover:border-amber-200' 
@@ -325,6 +360,7 @@ export default function ManageResults() {
                 )}
             </div>
 
+            {/* Mobile Cards */}
             <div className="lg:hidden grid grid-cols-1 gap-4">
                 {lottos.map((lotto) => {
                     const result = resultsMap[lotto.id];
@@ -367,7 +403,7 @@ export default function ManageResults() {
                             )}
 
                             <button 
-                                onClick={() => handleOpenModal(lotto)}
+                                onClick={() => setSelectedLotto(lotto)}
                                 className={`w-full py-3.5 rounded-2xl font-bold text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 ${
                                     result 
                                     ? 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50' 
@@ -386,84 +422,15 @@ export default function ManageResults() {
         </>
       )}
 
+      {/* Render Modal */}
       {selectedLotto && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-4xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 relative ring-1 ring-white/20">
-            <div className={`p-8 pb-6 text-white text-center relative overflow-hidden ${resultsMap[selectedLotto.id] ? 'bg-slate-800' : 'bg-linear-to-br from-amber-400 to-orange-600'}`}>
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full blur-2xl -ml-10 -mb-10"></div>
-                
-                <h3 className="text-2xl font-black tracking-tight relative z-10">{selectedLotto.name}</h3>
-                <p className="text-white/80 text-xs mt-1 font-medium relative z-10 uppercase tracking-wider">
-                    {resultsMap[selectedLotto.id] ? 'แก้ไขผลรางวัล' : `งวดวันที่ ${getDateParams().display}`}
-                </p>
-                <button 
-                    onClick={() => setSelectedLotto(null)} 
-                    className="absolute top-4 right-4 text-white/60 hover:text-white bg-black/10 hover:bg-black/20 rounded-full p-1.5 transition-colors z-20"
-                >
-                    <X size={20} />
-                </button>
-            </div>
-            
-            <form onSubmit={handleSubmitReward} className="p-6 pt-8 space-y-8 bg-white">
-              <div className="space-y-6">
-                  <div className="relative group">
-                      <label className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider group-focus-within:text-amber-500 transition-colors">
-                          เลข 3 ตัวบน
-                      </label>
-                      <input 
-                        ref={topInputRef}
-                        type="tel" 
-                        value={top3}
-                        onChange={handleTopChange}
-                        maxLength={3}
-                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 text-5xl text-center font-black tracking-[0.3em] text-slate-800 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 outline-none transition-all placeholder-slate-200"
-                        placeholder="---"
-                      />
-                  </div>
-
-                  <div className="flex justify-center -my-2 text-slate-300">
-                      <ArrowRight className="rotate-90" size={20}/>
-                  </div>
-
-                  <div className="relative group">
-                      <label className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider group-focus-within:text-amber-500 transition-colors">
-                          เลข 2 ตัวล่าง
-                      </label>
-                      <input 
-                        ref={bottomInputRef}
-                        type="tel" 
-                        value={bottom2}
-                        onChange={e => setBottom2(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
-                        maxLength={2}
-                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 text-5xl text-center font-black tracking-[0.3em] text-slate-800 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 outline-none transition-all placeholder-slate-200"
-                        placeholder="--"
-                      />
-                  </div>
-              </div>
-
-              <div className="pt-2 grid grid-cols-2 gap-3">
-                  <button 
-                    type="button"
-                    onClick={() => setSelectedLotto(null)}
-                    className="py-4 rounded-xl font-bold text-sm text-slate-500 bg-slate-100 hover:bg-slate-200 hover:text-slate-700 transition-colors"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button 
-                    type="submit" 
-                    disabled={isSubmitting}
-                    className={`py-4 text-white rounded-xl font-bold text-sm shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed ${
-                        resultsMap[selectedLotto.id] ? 'bg-slate-800 hover:bg-black' : 'bg-linear-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
-                    }`}
-                  >
-                    {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle size={18} />} 
-                    {resultsMap[selectedLotto.id] ? 'บันทึกแก้ไข' : 'ยืนยันผล'}
-                  </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          <ResultModal 
+            lotto={selectedLotto}
+            existingResult={resultsMap[selectedLotto.id]}
+            dateStr={selectedDate}
+            onClose={() => setSelectedLotto(null)}
+            onSuccess={fetchData}
+          />
       )}
     </div>
   );

@@ -18,7 +18,13 @@ export default function ShopHistory() {
   const [initialLoad, setInitialLoad] = useState(true);
   
   // --- Filter States ---
-  const getToday = () => new Date().toISOString().split('T')[0];
+  const getToday = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
   const [startDate, setStartDate] = useState(getToday());
   const [endDate, setEndDate] = useState(getToday());
   

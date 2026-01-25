@@ -2,34 +2,38 @@ import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-  Store, List, FileText, LogOut, Wallet, Menu, X, User, Bell, ChevronRight
-} from 'lucide-react';
-import { useShop } from '../hooks/useShop';
+  Store, List, FileText, LogOut, Wallet, Menu, X, User, Bell, ChevronRight, Crown 
+} from 'lucide-react'; // ✅ เพิ่ม Crown เข้ามา
+
+import { useShop } from '../contexts/ShopContext';
 import client from '../api/client'; 
 
 export default function MemberLayout() {
   const { logout, user } = useAuth();
-  const { shop } = useShop();
+  const { shop, isLoading } = useShop(); 
+  
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  if (isLoading) return <div className="h-screen flex items-center justify-center bg-[#F0F4F8]">Loading...</div>;
+    
   const menuItems = [
     { path: '/play', label: 'ตลาดหวย', icon: Store },
     { path: '/history', label: 'โพยของฉัน', icon: List },
     { path: '/results', label: 'ผลรางวัล', icon: FileText },
-    { path: '/topup', label: 'เติมเครดิต', icon: Wallet },
+
   ];
 
-  const sidebarColor = shop?.theme_color || '#4338ca';
+  const displayLogo = shop?.logo_url || user?.shop_logo;
+  const displayShopName = shop?.name || user?.shop_name || 'SYSTEM';
+  const themeColor = shop?.theme_color || '#4338ca';
 
   // ✅ 1. เพิ่ม State เก็บเรทของหวยปัจจุบัน
   const [currentLottoRates, setCurrentLottoRates] = useState<any>(null);
 
-  // ✅ 2. ตรวจสอบ URL เพื่อดึงข้อมูลเรท (ทำงานเมื่อ location เปลี่ยน)
+  // ✅ 2. ตรวจสอบ URL เพื่อดึงข้อมูลเรท
   useEffect(() => {
-      // เช็คว่าอยู่ในหน้า /play/xxx หรือไม่ (โดยที่ xxx ไม่ใช่ตัวเลขเปล่าๆ หรือ root)
-      // Pattern: /play/UUID
       const match = location.pathname.match(/\/play\/([a-zA-Z0-9-]+)$/);
       
       const fetchRates = async (lottoId: string) => {
@@ -44,11 +48,10 @@ export default function MemberLayout() {
       if (match && match[1]) {
           fetchRates(match[1]);
       } else {
-          setCurrentLottoRates(null); // ถ้าไม่อยู่หน้าแทง ให้ซ่อน
+          setCurrentLottoRates(null); 
       }
   }, [location.pathname]);
 
-  // ✅ 3. ฟังก์ชัน Helper สำหรับดึงค่าเรท (Copy มาจาก BettingRoom หรือเขียนใหม่ให้สั้นๆ)
   const getRateDisplay = (rateObj: any) => {
       if (!rateObj) return '-';
       if (typeof rateObj === 'object') return Number(rateObj.pay || 0).toLocaleString();
@@ -58,7 +61,7 @@ export default function MemberLayout() {
   return (
     <div className="flex h-screen bg-[#F0F4F8] font-sans overflow-hidden text-slate-800 relative">
       
-      {/* Background Decor (เพิ่มสีสันพื้นหลังจางๆ) */}
+      {/* Background Decor */}
       <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
           <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] rounded-full bg-blue-400/10 blur-[100px]"></div>
           <div className="absolute top-[20%] -right-[10%] w-[30%] h-[30%] rounded-full bg-purple-400/10 blur-[100px]"></div>
@@ -72,73 +75,97 @@ export default function MemberLayout() {
       {/* --- Sidebar (Vibrant Style) --- */}
       <aside className={`
         fixed inset-y-0 left-0 z-40 w-72 
-        bg-linear-to-b from-[#1e1b4b] via-[#312e81] to-[#4338ca] /* พื้นหลัง Gradient ม่วง-น้ำเงินเข้ม */
+        bg-[#1e1b4b] /* Fallback color */
         text-white border-r border-white/10 flex flex-col shadow-2xl md:shadow-none transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
         md:relative md:translate-x-0
       `}
         style={{ 
-              background: `linear-gradient(to bottom, ${sidebarColor}, #1e1b4b)` 
+              background: `linear-gradient(to bottom, ${themeColor}, #0f172a)` 
           }}
       >
-        {/* Logo Area */}
-        <div className="p-6 border-b border-gray-700 flex items-center justify-between">
-            <div className="flex items-center gap-3 font-black text-xl tracking-tighter truncate">
-                
-                {/* ✅ [ปรับปรุงใหม่] แสดง Logo ถ้ามี */}
-                <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center text-white shrink-0 overflow-hidden border border-white/20">
-                    {user?.shop_logo ? (
-                        <img 
-                            src={user.shop_logo} 
-                            className="w-full h-full object-cover" 
-                            alt="Shop Logo"
-                            onError={(e) => e.currentTarget.style.display = 'none'} // ถ้าโหลดรูปไม่ติด ให้ซ่อนไป
-                        />
-                    ) : (
-                        // ถ้าไม่มีรูป ให้โชว์ตัวอักษรย่อเหมือนเดิม
-                        <span>{user?.shop_name ? user.shop_name.charAt(0).toUpperCase() : 'S'}</span>
-                    )}
-                </div>
+        {/* ========================================================= */}
+        {/* ✅ LOGO AREA: สไตล์ Luxury Login (Black & Gold Concept) */}
+        {/* ========================================================= */}
+        <div className="relative pt-8 pb-6 px-4 text-center border-b border-white/10 bg-black/20">
+            
+            {/* แสงฟุ้งๆ สีทองด้านหลังโลโก้ */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-[#d4af37]/10 rounded-full blur-2xl pointer-events-none"></div>
 
-                <span className="text-white truncate text-base">
-                    {user?.shop_name || 'SYSTEM'}
-                </span>
+            <div className="relative z-10 flex flex-col items-center justify-center">
+                {displayLogo ? (
+                    /* กรณีมี Logo ร้าน: ใส่กรอบทองหรูๆ */
+                    <div className="group mb-3 relative">
+                        <div className="w-20 h-20 rounded-full p-[2px] bg-gradient-to-b from-[#d4af37] via-[#fcd34d] to-[#8a6e28] shadow-[0_0_20px_rgba(212,175,55,0.3)]">
+                            <div className="w-full h-full rounded-full bg-black/80 flex items-center justify-center overflow-hidden backdrop-blur-sm">
+                                <img 
+                                    src={displayLogo} 
+                                    className="w-16 h-16 object-contain drop-shadow-md" 
+                                    alt="Shop Logo"
+                                    onError={(e) => e.currentTarget.style.display = 'none'} 
+                                />
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    /* กรณีไม่มี Logo: ใช้ NTLOT Text Art */
+                    <div className="flex flex-col items-center mb-1">
+                        <Crown className="w-8 h-8 text-[#d4af37] mb-1 drop-shadow-[0_0_8px_rgba(212,175,55,0.6)]" strokeWidth={1.5} />
+                        <h1 className="text-3xl font-black tracking-[0.2em] bg-gradient-to-b from-[#FFF] via-[#d4af37] to-[#8a6e28] bg-clip-text text-transparent drop-shadow-sm select-none"
+                            style={{ fontFamily: "serif" }} 
+                        >
+                            NTLOT
+                        </h1>
+                    </div>
+                )}
+
+                {/* ชื่อร้าน / ชื่อระบบ */}
+                <h2 className="text-sm font-bold text-white tracking-widest uppercase mt-1 text-shadow-sm opacity-90 truncate max-w-[200px]">
+                    {displayShopName}
+                </h2>
+                {displayLogo && <p className="text-[10px] text-[#d4af37] mt-0.5 tracking-wider font-medium">PREMIUM MEMBER</p>}
             </div>
-            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-2 bg-white/10 rounded-full text-white/70 hover:bg-white/20">
-                <X size={20} />
+
+            {/* ปุ่มปิด Sidebar (Mobile Only) */}
+            <button 
+                onClick={() => setIsSidebarOpen(false)} 
+                className="md:hidden absolute top-3 right-3 p-1.5 bg-white/10 rounded-full text-white/60 hover:text-white hover:bg-red-500/20 transition-colors"
+            >
+                <X size={16} />
             </button>
         </div>
+        {/* ========================================================= */}
+
 
         {/* Credit Card (Colorful Glass) */}
-        <div className="px-6 mb-2">
+        <div className="px-5 mt-6 mb-2">
           <Link to="/profile">
-            <div className="bg-linear-to-r from-yellow-500 to-yellow-900 rounded-2xl p-5 text-white shadow-lg shadow-yellow-500/30 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-white/20 rounded-full blur-2xl -mr-10 -mt-10"></div>
-                <div className="absolute bottom-0 left-0 w-16 h-16 bg-yellow-400/20 rounded-full blur-xl -ml-5 -mb-5"></div>
+            <div className="bg-gradient-to-r from-yellow-600/90 to-yellow-900/90 border border-yellow-500/30 rounded-2xl p-4 text-white shadow-lg shadow-yellow-900/20 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-white/20 rounded-full blur-2xl -mr-10 -mt-10 group-hover:bg-white/30 transition-colors"></div>
                 
-                <div className="flex justify-between items-start mb-4 relative z-10">
+                <div className="flex justify-between items-start mb-3 relative z-10">
                     <div>
-                        <p className="text-pink-100 text-[10px] font-bold uppercase tracking-wider mb-1">ยอดเครดิตคงเหลือ</p>
-                        <h2 className="text-3xl font-black tracking-tight flex items-baseline gap-1">
-                           {user?.credit_balance?.toLocaleString()} <span className="text-sm font-medium opacity-80">฿</span>
+                        <p className="text-yellow-100 text-[10px] font-bold uppercase tracking-wider mb-0.5">เครดิตคงเหลือ</p>
+                        <h2 className="text-2xl font-black tracking-tight flex items-baseline gap-1 text-white text-shadow">
+                           {user?.credit_balance?.toLocaleString()} <span className="text-xs font-medium opacity-80">฿</span>
                         </h2>
                     </div>
-                    <div className="bg-white/20 p-2 rounded-lg backdrop-blur-md">
-                        <Wallet size={18} className="text-white" />
+                    <div className="bg-black/20 p-2 rounded-lg backdrop-blur-md">
+                        <Wallet size={18} className="text-yellow-200" />
                     </div>
                 </div>
                 
-                <div className="flex items-center justify-between text-xs text-pink-100 font-medium relative z-10">
-                    <span className="flex items-center gap-1"><User size={12}/> {user?.username}</span>
-                    <span className="bg-black/20 px-2 py-0.5 rounded-full text-[10px]">Member</span>
+                <div className="flex items-center justify-between text-xs text-yellow-100/80 font-medium relative z-10 border-t border-white/10 pt-2 mt-1">
+                    <span className="flex items-center gap-1 truncate max-w-[100px]"><User size={12}/> {user?.username}</span>
+                    <span className="bg-black/20 px-2 py-0.5 rounded-full text-[10px] uppercase">Member</span>
                 </div>
             </div>
           </Link>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
-          <div className="text-[10px] font-bold text-indigo-200 uppercase px-4 mb-2 tracking-wider">Main Menu</div>
+        <nav className="flex-1 px-4 py-4 space-y-1.5 overflow-y-auto custom-scrollbar">
+          <div className="text-[10px] font-bold text-white/40 uppercase px-4 mb-2 tracking-wider">Main Menu</div>
           {menuItems.map((item) => {
             const isActive = location.pathname.startsWith(item.path);
             return (
@@ -146,50 +173,42 @@ export default function MemberLayout() {
                 key={item.path}
                 to={item.path}
                 onClick={() => setIsSidebarOpen(false)}
-                className={`group flex items-center justify-between px-4 py-3.5 rounded-xl transition-all duration-200 ${
+                className={`group flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
                   isActive 
-                    ? 'bg-white text-indigo-900 shadow-lg shadow-black/10 font-bold' /* ปุ่ม Active สีขาว ตัวหนังสือเข้ม */
-                    : 'text-indigo-200 hover:bg-white/10 hover:text-white'
+                    ? 'bg-white/10 border border-white/10 text-white shadow-lg shadow-black/5 font-bold' 
+                    : 'text-indigo-100/70 hover:bg-white/5 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                    <item.icon size={20} className={isActive ? 'text-indigo-600' : 'opacity-70 group-hover:opacity-100'} />
+                    <item.icon size={18} className={isActive ? 'text-[#d4af37]' : 'opacity-70 group-hover:opacity-100 group-hover:text-[#d4af37] transition-colors'} />
                     <span>{item.label}</span>
                 </div>
-                {isActive && <ChevronRight size={16} className="text-indigo-400" />}
+                {isActive && <ChevronRight size={14} className="text-[#d4af37]" />}
               </Link>
             );
           })}
 
           {currentLottoRates && (
-               <div className="mt-6 animate-fade-in">
-                   <div className="text-[10px] font-bold text-yellow-200 uppercase px-4 mb-2 tracking-wider border-b border-white/10 pb-1">
-                       อัตราจ่าย (บาทละ)
+               <div className="mt-6 animate-fade-in mx-1">
+                   <div className="text-[10px] font-bold text-[#d4af37] uppercase px-3 mb-2 tracking-wider border-b border-white/10 pb-1 flex items-center gap-2">
+                       <Crown size={12} /> อัตราจ่าย (บาทละ)
                    </div>
-                   <div className="bg-black/20 mx-2 rounded-xl p-3 text-xs space-y-2">
-                       <div className="flex justify-between text-indigo-100">
+                   <div className="bg-black/30 border border-white/5 rounded-xl p-3 text-xs space-y-2 backdrop-blur-sm">
+                       <div className="flex justify-between text-gray-300">
                            <span>3 ตัวบน</span>
-                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['3top'])}</span>
+                           <span className="font-bold text-[#d4af37]">{getRateDisplay(currentLottoRates['3top'])}</span>
                        </div>
-                       <div className="flex justify-between text-indigo-100">
+                       <div className="flex justify-between text-gray-300">
                            <span>3 ตัวโต๊ด</span>
-                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['3tod'])}</span>
+                           <span className="font-bold text-[#d4af37]">{getRateDisplay(currentLottoRates['3tod'])}</span>
                        </div>
-                       <div className="flex justify-between text-indigo-100">
+                       <div className="flex justify-between text-gray-300">
                            <span>2 ตัวบน</span>
-                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['2up'])}</span>
+                           <span className="font-bold text-[#d4af37]">{getRateDisplay(currentLottoRates['2up'])}</span>
                        </div>
-                       <div className="flex justify-between text-indigo-100">
+                       <div className="flex justify-between text-gray-300">
                            <span>2 ตัวล่าง</span>
-                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['2down'])}</span>
-                       </div>
-                       <div className="flex justify-between text-indigo-100">
-                           <span>วิ่งบน</span>
-                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['run_up'])}</span>
-                       </div>
-                       <div className="flex justify-between text-indigo-100">
-                           <span>วิ่งล่าง</span>
-                           <span className="font-bold text-green-300">{getRateDisplay(currentLottoRates['run_down'])}</span>
+                           <span className="font-bold text-[#d4af37]">{getRateDisplay(currentLottoRates['2down'])}</span>
                        </div>
                    </div>
                </div>
@@ -197,10 +216,10 @@ export default function MemberLayout() {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 mx-4 mb-4 bg-black/20 rounded-2xl">
+        <div className="p-4 mx-4 mb-4">
           <button 
             onClick={() => { logout(); navigate('/login'); }}
-            className="flex items-center justify-center gap-2 text-red-200 hover:text-white w-full py-2 transition-all font-bold text-sm"
+            className="flex items-center justify-center gap-2 text-red-300/80 hover:text-red-200 hover:bg-red-500/10 rounded-xl w-full py-2.5 transition-all font-bold text-sm"
           >
             <LogOut size={16} /> ออกจากระบบ
           </button>
@@ -211,37 +230,30 @@ export default function MemberLayout() {
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
         
         {/* Topbar (Clean Glass) */}
-        <header className="h-20 flex items-center justify-between px-4 md:px-8 bg-white/70 backdrop-blur-xl border-b border-white/50 sticky top-0 z-20">
+        <header className="h-16 flex items-center justify-between px-4 md:px-8 bg-white/80 backdrop-blur-xl border-b border-white/60 sticky top-0 z-20">
            <div className="flex items-center gap-3">
                <button 
                  onClick={() => setIsSidebarOpen(true)}
-                 className="md:hidden p-2.5 -ml-2 bg-white rounded-xl shadow-sm ..."
-                 style={{ color: sidebarColor }} // ✅ เปลี่ยนสีไอคอน Menu
+                 className="md:hidden p-2 rounded-lg active:scale-95 transition-transform"
+                 style={{ color: themeColor }}
                >
-                 <Menu size={20} />
+                 <Menu size={24} />
                </button>
                <div>
-                  <h2 className="font-bold text-slate-800 text-lg">
-                   คุณ <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-600 to-purple-600">{user?.full_name?.split(' ')[0] || user?.username}</span> 👋
+                  <h2 className="font-bold text-slate-800 text-base md:text-lg flex items-center gap-2">
+                   ยินดีต้อนรับ, <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-600">{user?.full_name?.split(' ')[0] || user?.username}</span> 👋
                   </h2>
-                  <p className="text-[10px] text-slate-500 font-medium hidden sm:block">ยินดีต้อนรับสู่ SHOP LOTTO</p>
                </div>
            </div>
 
            <div className="flex items-center gap-3">
-              <div className="hidden md:flex flex-col items-end mr-2">
-                  <span className="text-xs font-bold text-slate-700">{user?.username}</span>
-                  <div className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                      <span className="text-[10px] text-green-600 font-bold">Online</span>
-                  </div>
-              </div>
-              <button className="w-10 h-10 rounded-full bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors">
-                  <Bell size={20} />
+              <button className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 hover:text-[#d4af37] hover:border-[#d4af37] transition-all relative">
+                  <Bell size={18} />
+                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
               </button>
-              <div className="w-10 h-10 rounded-full bg-linear-to-tr from-blue-500 to-purple-500 p-0.5">
-                  <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
-                      <User size={20} className="text-slate-700" />
+              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#d4af37] to-[#8a6e28] p-0.5">
+                  <div className="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden">
+                      <User size={18} className="text-slate-700" />
                   </div>
               </div>
            </div>
@@ -252,8 +264,8 @@ export default function MemberLayout() {
            <Outlet />
         </div>
 
-        {/* [Colorful] Mobile Bottom Navigation */}
-        <div className="md:hidden fixed bottom-4 left-4 right-4 bg-white/90 backdrop-blur-lg border border-white/50 rounded-2xl p-2 flex justify-around items-center z-30 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
+        {/* Mobile Bottom Navigation */}
+        <div className="md:hidden fixed bottom-4 left-4 right-4 bg-white/90 backdrop-blur-lg border border-white/50 rounded-2xl p-2 flex justify-around items-center z-30 shadow-[0_8px_30px_rgba(0,0,0,0.1)]">
             {menuItems.map((item) => {
                 const isActive = location.pathname.startsWith(item.path);
                 return (
@@ -261,23 +273,23 @@ export default function MemberLayout() {
                         key={item.path} 
                         to={item.path}
                         className={`flex flex-col items-center justify-center w-full h-full py-2 rounded-xl transition-all ${
-                            isActive ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'
+                            isActive ? 'text-[#d4af37]' : 'text-slate-400 hover:text-slate-600'
                         }`}
                     >
-                        <div className={`p-2 rounded-xl mb-1 transition-all ${
-                            isActive ? 'bg-indigo-50 shadow-sm translate-y-0.5' : 'bg-transparent'
+                        <div className={`p-1.5 rounded-lg mb-0.5 transition-all ${
+                            isActive ? 'bg-[#d4af37]/10 translate-y-0.5' : 'bg-transparent'
                         }`}>
-                            <item.icon size={22} strokeWidth={isActive ? 2.5 : 2} />
+                            <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
                         </div>
                         <span className={`text-[10px] ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
                     </Link>
                 );
             })}
              <Link to="/profile" className="flex flex-col items-center justify-center w-full h-full py-2 text-slate-400 hover:text-slate-600">
-                <div className={`p-2 mb-1 ${location.pathname === '/profile' ? 'bg-indigo-50 rounded-xl text-indigo-600' : ''}`}>
-                    <User size={22} />
+                <div className={`p-1.5 mb-0.5 ${location.pathname === '/profile' ? 'bg-[#d4af37]/10 rounded-lg text-[#d4af37]' : ''}`}>
+                    <User size={20} />
                 </div>
-                <span className={`text-[10px] ${location.pathname === '/profile' ? 'font-bold text-indigo-600' : 'font-medium'}`}>โปรไฟล์</span>
+                <span className={`text-[10px] ${location.pathname === '/profile' ? 'font-bold text-[#d4af37]' : 'font-medium'}`}>โปรไฟล์</span>
             </Link>
         </div>
       </main>

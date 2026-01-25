@@ -3,7 +3,7 @@ import client from '../../api/client';
 import { 
   Plus, X, ListFilter, Pencil, UploadCloud, Loader2,
   Clock, CheckCircle, AlertCircle, ChevronDown, Database,
-  Trash2, Coins, FolderCog, Palette, Save, Lock
+  Trash2, Coins, FolderCog, Palette, Save
 } from 'lucide-react';
 import type { LottoType, RateProfile } from '../../types/lotto';
 import toast from 'react-hot-toast';
@@ -40,23 +40,36 @@ const getContrastTextColor = (hexColor: string) => {
     return brightness > 145 ? '#1e293b' : '#ffffff';
 };
 
-// Component Dropdown เปลี่ยนหมวดหมู่ด่วน
-const CategoryBadgeSelect = ({ currentId, categories, onChange, isLoading }: any) => {
-    const activeCat = categories.find((c: any) => c.id === currentId) || { label: 'ไม่ระบุ', color: '#94a3b8' };
+// ✅ [OPTIMIZED] ใส่ memo เพื่อป้องกันการ render ซ้ำซ้อนในแต่ละแถว
+const CategoryBadgeSelect = memo(({ currentId, categories, onChange, lottoId }: any) => {
+    // ใช้ useMemo หา activeCat เพื่อลดการ loop หาใหม่ทุกครั้ง
+    const activeCat = useMemo(() => 
+        categories.find((c: any) => c.id === currentId) || { label: 'ไม่ระบุ', color: '#94a3b8' },
+    [categories, currentId]);
     
-    // Style
-    const isHex = activeCat.color?.startsWith('#');
-    const style = isHex ? { backgroundColor: activeCat.color, color: getContrastTextColor(activeCat.color) } : {};
-    const className = isHex 
+    // Style Calculation
+    const style = useMemo(() => {
+        const isHex = activeCat.color?.startsWith('#');
+        return isHex ? { backgroundColor: activeCat.color, color: getContrastTextColor(activeCat.color) } : {};
+    }, [activeCat.color]);
+
+    const className = useMemo(() => {
+        const isHex = activeCat.color?.startsWith('#');
+        return isHex 
         ? 'appearance-none pl-3 pr-8 py-1 rounded-full font-bold text-[10px] cursor-pointer transition-all hover:opacity-90 shadow-sm border border-black/10 focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 outline-none w-full text-center' 
         : `appearance-none pl-3 pr-8 py-1 rounded-full font-bold text-[10px] cursor-pointer ${activeCat.color} w-full text-center`;
+    }, [activeCat.color]);
+
+    // Handler wrapper
+    const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        onChange(lottoId, e.target.value);
+    };
 
     return (
         <div className="relative inline-block min-w-30">
             <select
                 value={currentId}
-                onChange={(e) => onChange(e.target.value)}
-                disabled={isLoading}
+                onChange={handleChange}
                 className={className}
                 style={style}
             >
@@ -66,13 +79,12 @@ const CategoryBadgeSelect = ({ currentId, categories, onChange, isLoading }: any
                     </option>
                 ))}
             </select>
-            {/* Arrow Icon */}
             <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-60">
-                {isLoading ? <Loader2 size={10} className="animate-spin"/> : <ChevronDown size={12} />}
+                <ChevronDown size={12} />
             </div>
         </div>
     );
-};
+});
 
 // --- Sub-Components (Memoized) ---
 const LottoRow = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
@@ -95,11 +107,12 @@ const LottoRow = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCatego
                 <div className="flex items-center gap-2 mt-1.5">
                     <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 rounded border border-slate-200">{lotto.code}</span>
                     
-                    {/* Quick Select */}
+                    {/* ✅ [OPTIMIZED] ส่ง lotto.id และ function หลักไปเลย (ไม่ต้องสร้าง anonymous function ใหม่) */}
                     <CategoryBadgeSelect 
                         currentId={lotto.category} 
-                        categories={categories} 
-                        onChange={(newId: string) => onCategoryChange(lotto, newId)}
+                        categories={categories}
+                        lottoId={lotto.id} 
+                        onChange={onCategoryChange}
                     />
                 </div>
             </td>
@@ -150,13 +163,14 @@ const LottoCard = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCateg
                             <CategoryBadgeSelect 
                                 currentId={lotto.category} 
                                 categories={categories} 
-                                onChange={(newId: string) => onCategoryChange(lotto, newId)}
+                                lottoId={lotto.id}
+                                onChange={onCategoryChange}
                             />
                         </div>
                     </div>
                 </div>
             </div>
-            {/* ... Rest of card content ... */}
+            
             <div className="grid grid-cols-2 gap-2 mb-3">
                 <div className="bg-red-50 p-2 rounded-lg text-center border border-red-100">
                     <span className="text-[10px] text-red-400 font-bold uppercase block">ปิดรับ</span>
@@ -199,7 +213,7 @@ const LottoTableContainer = memo(({ lottos, categories, onToggle, onEdit, onDele
                             <LottoRow 
                                 key={lotto.id} 
                                 lotto={lotto}
-                                categories={categories} // ส่ง categories ไปให้ Dropdown ใช้
+                                categories={categories} 
                                 onToggle={onToggle}
                                 onEdit={onEdit}
                                 onDelete={onDelete}
@@ -239,6 +253,7 @@ const LottoListContainer = memo(({ lottos, categories, isLoading, onToggle, onEd
     );
 });
 
+// ... CustomNumberSelect & TimeSelector (เหมือนเดิม เพราะอยู่ใน Modal ไม่ส่งผลต่อตาราง) ...
 const CustomNumberSelect = memo(({ value, options, onChange }: any) => {
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -320,8 +335,10 @@ export default function ManageLottos() {
   const [catForm, setCatForm] = useState({ label: '', color: '#2563EB', order_index: 999 });
   
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
-  
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [scheduleType, setScheduleType] = useState<'weekly' | 'monthly'>('weekly');
+  const [monthlyDates, setMonthlyDates] = useState<number[]>([1, 16]);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
@@ -346,17 +363,11 @@ export default function ManageLottos() {
         const getTimeScore = (timeStr: string | null) => {
             if (!timeStr) return 9999; // ไม่มีเวลา เอาไว้ท้ายสุด
             const [h, m] = timeStr.split(':').map(Number);
-            
-            // 🔥 Logic สำคัญ: ถ้าเวลาน้อยกว่า 05:00 (ตี 5) ให้ถือว่าเป็นของวันถัดไป (บวก 24 ชม.)
-            // ทำให้ 01:00 มีค่ามากกว่า 23:00 และไปอยู่ท้ายตาราง
             if (h < 5) return (h + 24) * 60 + m; 
-            
             return h * 60 + m;
         };
-
         const scoreA = getTimeScore(a.close_time);
         const scoreB = getTimeScore(b.close_time);
-
         return scoreA - scoreB;
     });
 
@@ -404,8 +415,18 @@ export default function ManageLottos() {
       result_time: formatTimeForInput(lotto.result_time || '16:00:00'),
       api_link: lotto.api_link || ''
     });
+
+    const rules = lotto.rules || {};
+    if (rules.schedule_type === 'monthly') {
+        setScheduleType('monthly');
+        setMonthlyDates(rules.close_dates || [1, 16]);
+    } else {
+        setScheduleType('weekly');
+    }
+
     setShowModal(true);
   }, [categories]);
+
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -430,15 +451,35 @@ export default function ManageLottos() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      if (editingId) await client.put(`/play/lottos/${editingId}`, formData);
-      else await client.post('/play/lottos', formData);
+      // ✅ [แก้ไข] สร้าง payload
+      const payload = { 
+          ...formData,
+          
+          rate_profile_id: formData.rate_profile_id || null,
+
+          rules: {
+            schedule_type: scheduleType,
+            close_dates: scheduleType === 'monthly' ? monthlyDates : undefined
+          },
+          open_days: scheduleType === 'monthly' ? [] : formData.open_days
+      };
+
+      if (editingId) {
+        await client.put(`/play/lottos/${editingId}`, payload); // ใช้ route ของ shop (เช็ค path ให้ตรงกับ backend)
+        toast.success('แก้ไขหวยสำเร็จ!');
+      } else {
+        await client.post('/play/lottos', payload);
+        toast.success('เพิ่มหวยใหม่สำเร็จ!');
+      }
       setShowModal(false);
       fetchData();
-    } catch (err: any) { alert(`Error: ${err.response?.data?.detail}`); } 
-    finally { setIsSubmitting(false); }
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'เกิดข้อผิดพลาด');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  // ✅ ฟังก์ชันจัดการหมวดหมู่ (ใช้ Hex Color)
   const handleSaveCategory = async () => {
       if (!catForm.label) return alert("กรุณากรอกชื่อหมวดหมู่");
       setIsCatSubmitting(true);
@@ -461,7 +502,6 @@ export default function ManageLottos() {
 
   const startEditCategory = (cat: any) => {
       setEditingCatId(cat.id);
-      // เช็คว่าเป็น Hex หรือ Class ถ้าเป็น Class ให้ใช้ Default Hex แทน เพื่อไม่ให้ Input Color พัง
       const colorValue = cat.color?.startsWith('#') ? cat.color : '#2563EB';
       setCatForm({ label: cat.label, color: colorValue, order_index: cat.order_index || 999 });
   };
@@ -521,35 +561,57 @@ export default function ManageLottos() {
     }
   };
 
-  // ✅ ฟังก์ชันเปลี่ยนหมวดหมู่แบบด่วน (Quick Change)
-  const handleQuickCategoryChange = async (lotto: LottoType, newCategoryId: string) => {
-      // 1. เตรียมข้อมูล Payload (ต้องส่งข้อมูลเดิมไปด้วย ไม่งั้นค่าอื่นจะหาย)
-      const payload = {
-          name: lotto.name,
-          code: lotto.code,
-          category: newCategoryId, // <-- เปลี่ยนแค่ตรงนี้
-          rate_profile_id: lotto.rate_profile_id,
-          img_url: lotto.img_url,
-          api_link: lotto.api_link,
-          open_days: lotto.open_days,
-          open_time: formatTimeForInput(lotto.open_time),
-          close_time: formatTimeForInput(lotto.close_time),
-          result_time: formatTimeForInput(lotto.result_time),
-      };
+  // ✅ [OPTIMIZED] 
+  const handleQuickCategoryChange = useCallback(async (lottoId: string, newCategoryId: string) => {
+      // 1. หาข้อมูลหวยจาก State ที่มีอยู่แล้ว (ข้อมูลครบกว่าเรียก API get_detail)
+      const currentLotto = lottos.find(l => l.id === lottoId);
+      if (!currentLotto) return;
 
+      // 2. Optimistic Update: อัปเดตหน้าจอทันที
+      setLottos(prev => prev.map(l => 
+          l.id === lottoId ? { ...l, category: newCategoryId } : l
+      ));
+      
       try {
-          await client.put(`/play/lottos/${lotto.id}`, payload);
-          toast.success("เปลี่ยนหมวดหมู่สำเร็จ");
-          
-          // อัปเดต State หน้าจอทันทีโดยไม่ต้องโหลดใหม่ทั้งหมด
-          setLottos(prev => prev.map(l => 
-              l.id === lotto.id ? { ...l, category: newCategoryId } : l
-          ));
+        // 3. เตรียมข้อมูลสำหรับส่ง Update (Construct Payload)
+        // ต้องระบุฟิลด์ให้ชัดเจน เพื่อไม่ให้ส่งขยะ หรือส่งค่า null ที่ไม่ควรส่งไป
+        const payload = {
+            name: currentLotto.name,
+            code: currentLotto.code,
+            category: newCategoryId, // <-- เปลี่ยนแค่ตรงนี้
+            img_url: currentLotto.img_url,
+            rate_profile_id: currentLotto.rate_profile_id,
+            api_link: currentLotto.api_link,
+            is_active: currentLotto.is_active,
+            
+            // จัดการเรื่องเวลา
+            open_time: formatTimeForInput(currentLotto.open_time),
+            close_time: formatTimeForInput(currentLotto.close_time),
+            result_time: formatTimeForInput(currentLotto.result_time),
+            
+            // จัดการเรื่อง Rules และ Days
+            open_days: currentLotto.open_days,
+            rules: currentLotto.rules
+        };
+
+        // 4. ส่งข้อมูลไปบันทึก
+        await client.put(`/play/lottos/${lottoId}`, payload);
+        toast.success("เปลี่ยนหมวดหมู่สำเร็จ");
+
       } catch (err: any) {
           console.error(err);
-          toast.error("เปลี่ยนหมวดหมู่ไม่สำเร็จ");
+          // ดึง Error จาก Backend มาแสดง (ถ้ามี)
+          const msg = err.response?.data?.detail || "เปลี่ยนหมวดหมู่ไม่สำเร็จ";
+          
+          // ถ้าเป็น Error Validation (422) จะได้รู้ว่าขาดอะไร
+          if (err.response?.status === 422) {
+             console.log("Validation Error:", err.response.data);
+          }
+
+          toast.error(msg);
+          fetchData(); // โหลดข้อมูลเดิมกลับมาถ้าพัง
       }
-  };
+  }, [lottos]);
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-8 animate-fade-in">
@@ -596,11 +658,11 @@ export default function ManageLottos() {
       {!isMobile && (
         <LottoTableContainer 
             lottos={lottos}
-            categories={categories} // ส่ง categories ไปให้ Dropdown ใช้
+            categories={categories} 
             onToggle={toggleStatus}
             onEdit={openEditModal}
             onDelete={handleDelete}
-            onCategoryChange={handleQuickCategoryChange} // ✅ ส่งฟังก์ชันเปลี่ยนด่วน
+            onCategoryChange={handleQuickCategoryChange} 
         />
       )}
 
@@ -700,21 +762,93 @@ export default function ManageLottos() {
                 <div className="space-y-3">
                     <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Clock size={16} /> ตั้งค่าเวลา</h4>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+                        
+                        {/* ✅ 1. [เพิ่มใหม่] ส่วนเลือกรูปแบบ รายวัน vs รายเดือน */}
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">วันเปิดรับ</label>
-                            <div className="flex gap-2 flex-wrap">
-                                {DAYS.map(d => (
-                                    <button type="button" key={d.id} onClick={() => toggleDay(d.id)} className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${formData.open_days.includes(d.id) ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-400 border-slate-200'}`}>
-                                        {d.short}
-                                    </button>
-                                ))}
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">รูปแบบการออกผล</label>
+                            <div className="flex gap-2 p-1 bg-white border border-slate-200 rounded-lg w-fit">
+                                <button
+                                    type="button"
+                                    onClick={() => setScheduleType('weekly')}
+                                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${
+                                        scheduleType === 'weekly' ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                                    }`}
+                                >
+                                    รายสัปดาห์
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setScheduleType('monthly')}
+                                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${
+                                        scheduleType === 'monthly' ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                                    }`}
+                                >
+                                    รายเดือน (หวยไทย)
+                                </button>
                             </div>
                         </div>
+
+                        {/* ✅ 2. ส่วนเลือกวัน (ใช้ Logic สลับการแสดงผล) */}
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">
+                                {scheduleType === 'weekly' ? 'วันเปิดรับ' : 'เลือกวันที่หวยออก'}
+                            </label>
+                            
+                            {/* กรณี 2.1: รายสัปดาห์ (โค้ดเดิมของคุณ 100%) */}
+                            {scheduleType === 'weekly' && (
+                                <div className="flex gap-2 flex-wrap">
+                                    {DAYS.map(d => (
+                                        <button 
+                                            type="button" 
+                                            key={d.id} 
+                                            onClick={() => toggleDay(d.id)} 
+                                            className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
+                                                formData.open_days.includes(d.id) 
+                                                ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
+                                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                            }`}
+                                        >
+                                            {d.short}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* กรณี 2.2: รายเดือน (เพิ่มใหม่ - สไตล์ปุ่มเหมือนเดิมแต่เป็นเลข 1-31) */}
+                            {scheduleType === 'monthly' && (
+                                <div className="flex gap-2 flex-wrap max-h-30 overflow-y-auto custom-scrollbar p-1">
+                                    {[...Array(31)].map((_, i) => {
+                                        const date = i + 1;
+                                        const isSelected = monthlyDates.includes(date);
+                                        return (
+                                            <button
+                                                type="button"
+                                                key={date}
+                                                onClick={() => {
+                                                    if (isSelected) setMonthlyDates(monthlyDates.filter(d => d !== date));
+                                                    else setMonthlyDates([...monthlyDates, date].sort((a,b)=>a-b));
+                                                }}
+                                                className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
+                                                    isSelected
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                                                    : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'
+                                                }`}
+                                            >
+                                                {date}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ✅ 3. TimeSelectors (โค้ดเดิมของคุณ 100%) */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <TimeSelector label="เปิดรับ" value={formData.open_time} onChange={(v:string)=>setFormData({...formData, open_time: v})} colorClass="border-green-200" iconColorClass="text-green-600" />
                             <TimeSelector label="ปิดรับ" value={formData.close_time} onChange={(v:string)=>setFormData({...formData, close_time: v})} colorClass="border-red-200" iconColorClass="text-red-600" />
                             <TimeSelector label="ผลออก" value={formData.result_time} onChange={(v:string)=>setFormData({...formData, result_time: v})} colorClass="border-blue-200" iconColorClass="text-blue-600" />
                         </div>
+
                     </div>
                 </div>
 
@@ -731,8 +865,8 @@ export default function ManageLottos() {
         </div>
       )}
 
-      {/* --- Modal Manage Categories (Hex Color Update) --- */}
-      {showCatModal && (
+      {/* ... (Categories and Bulk Modal remain unchanged) ... */}
+       {showCatModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95">
                 {/* Header */}
@@ -775,7 +909,6 @@ export default function ManageLottos() {
                                 </div>
                             </div>
                             
-                            {/* ✅ แก้ไข: ใช้ Input Color Picker (Hex) */}
                             <div>
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Palette size={10}/> สีหมวดหมู่</label>
                                 <div className="flex items-center gap-3">
@@ -834,7 +967,6 @@ export default function ManageLottos() {
                             ) : (
                                 categories.map((cat: any) => {
                                     const isSystem = !cat.shop_id; 
-                                    // ตรวจสอบประเภทสี (Hex หรือ Class) เพื่อแสดงผลให้ถูกต้อง
                                     const isHex = cat.color?.startsWith('#');
                                     const badgeStyle = isHex ? { backgroundColor: cat.color, color: getContrastTextColor(cat.color) } : {};
                                     const badgeClass = isHex ? 'px-2 py-1 rounded text-[10px] font-bold' : `px-2 py-1 rounded text-[10px] font-bold ${cat.color}`;
@@ -856,7 +988,6 @@ export default function ManageLottos() {
                                             </div>
                                             
                                             <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                {/* ✅ 1. ปุ่มแก้ไข: แสดงตลอดเวลา (เอาเงื่อนไข isSystem ออก) */}
                                                 <button 
                                                     onClick={() => startEditCategory(cat)}
                                                     className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
@@ -865,21 +996,13 @@ export default function ManageLottos() {
                                                     <Pencil size={14} />
                                                 </button>
 
-                                                {/* ✅ 2. ปุ่มลบ: แสดงเฉพาะที่ไม่ใช่ของระบบ (ป้องกันการลบหมวดมาตรฐานทิ้ง) */}
-                                                {!isSystem ? (
-                                                    <button 
-                                                        onClick={() => handleDeleteCategory(cat.id)}
-                                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                                        title="ลบ"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                ) : (
-                                                    /* ถ้าเป็นของระบบ ให้แสดงแม่กุญแจเฉพาะตรงส่วนลบ (เพื่อให้รู้ว่าลบไม่ได้) */
-                                                    <div title="หมวดหมู่มาตรฐาน (ลบไม่ได้)" className="p-1.5 text-gray-200 cursor-not-allowed">
-                                                        <Lock size={14} />
-                                                    </div>
-                                                )}
+                                                <button 
+                                                    onClick={() => handleDeleteCategory(cat.id)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                    title="ลบหมวดหมู่"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
                                             </div>
                                         </div>
                                     );
@@ -893,7 +1016,6 @@ export default function ManageLottos() {
         </div>
       )}
 
-      {/* --- Modal Bulk Update --- */}
       {showBulkModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">

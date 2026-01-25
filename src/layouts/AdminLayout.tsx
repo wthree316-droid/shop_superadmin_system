@@ -40,7 +40,7 @@ export default function AdminLayout() {
 
 
   const menuItems = [
-    { path: '/admin/dashboard', label: 'ภาพรวม', fullLabel: 'ภาพรวม (Dashboard)', icon: PieChart },
+    { path: '/admin/dashboard', label: 'ภาพรวม', fullLabel: 'Dashboard', icon: PieChart },
     { path: '/admin/shop', label: 'ตั้งค่าร้าน', fullLabel: 'จัดการร้าน & หวย', icon: Settings }, 
     { path: '/admin/history', label: 'โพย', fullLabel: 'โพยทั้งหมด', icon: Ticket },
     { path: '/admin/results', label: 'ผลรางวัล', fullLabel: 'ออกผลรางวัล', icon: Trophy },

@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-  LayoutDashboard, 
-  ShieldAlert, 
+  LayoutDashboard,  
   Store, 
   LogOut, 
   Menu, 
@@ -29,7 +28,6 @@ export default function SuperAdminLayout() {
     { path: '/super/shops', label: 'ร้านค้า', icon: Store },
     { path: '/super/lottos', label: 'แม่แบบหวย', icon: Database },
     { path: '/super/rates', label: 'เรทกลาง', icon: BadgePercent },
-    { path: '/super/audit', label: 'Audit', icon: ShieldAlert },
   ];
 
   return (

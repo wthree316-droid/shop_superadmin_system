@@ -104,32 +104,3 @@ export interface Ticket {
   };
 }
 
-// --- Topup & Bank ---
-export interface BankAccount {
-  id: string;
-  bank_name: string;
-  account_name: string;
-  account_number: string;
-  is_active: boolean;
-}
-
-export interface TopupRequest {
-  id: string;
-  amount: number;
-  proof_image?: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  created_at: string;
-  user_id: string;
-  username?: string; // ที่เรา map เพิ่มใน topup.py
-}
-
-// --- Audit Log ---
-export interface AuditLog {
-  id: number;
-  action: string;
-  target_table?: string;
-  details?: any;
-  created_at: string;
-  user_id: string;
-  ip_address?: string;
-}

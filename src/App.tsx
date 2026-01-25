@@ -3,8 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import { Loader2, AlertTriangle, Store } from 'lucide-react';
 
-// Import Hook ที่เราสร้าง
-import { useShop } from './hooks/useShop';
+import { useShop } from './contexts/ShopContext';
 
 // Components & Pages
 import Login from './pages/Login';
@@ -17,7 +16,6 @@ import ShopHistory from './pages/dashboard/ShopHistory';
 import SuperAdminLayout from './layouts/SuperAdminLayout';
 import SuperShopManagement from './pages/superadmin/SuperShopManagement';
 import SuperDashboard from './pages/superadmin/SuperDashboard';
-import SuperAuditLogs from './pages/superadmin/SuperAuditLogs';
 import ManageLottoTemplates from './pages/superadmin/ManageLottoTemplates';
 import ManageRates from './pages/admin/ManageRates'; // ใช้ร่วมกัน
 
@@ -33,7 +31,6 @@ import HistoryMain from './pages/member/HistoryMain';
 import LottoMarket from './pages/member/LottoMarket';
 import BettingRoom from './pages/member/BettingRoom';
 import MemberResults from './pages/member/MemberResults';
-import Topup from './pages/member/Topup';
 import Profile from './pages/member/Profile';
 
 // --- Logic การ Redirect ตาม Role ---
@@ -53,10 +50,10 @@ const RedirectBasedOnRole = () => {
 // --- Main App Component ---
 function App() {
   // 1. เรียกใช้ Hook ตรวจสอบร้านค้า (Subdomain)
-  const { shop, loading, error } = useShop();
+  const { shop, isLoading, error } = useShop();
 
   // 2. แสดงหน้า Loading ระหว่างเช็ค Subdomain
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="relative">
@@ -126,7 +123,6 @@ function App() {
             <Route path="/super" element={<SuperAdminLayout />}>
               <Route path="dashboard" element={<SuperDashboard />} /> 
               <Route path="shops" element={<SuperShopManagement />} />
-              <Route path="audit" element={<SuperAuditLogs />} />
               <Route path="lottos" element={<ManageLottoTemplates />} /> 
               <Route path="rates" element={<ManageRates />} />
             </Route>
@@ -149,7 +145,6 @@ function App() {
               <Route path="play/:id" element={<BettingRoom />} />
               <Route path="history" element={<HistoryMain />} />
               <Route path="results" element={<MemberResults />} />
-              <Route path="topup" element={<Topup />} />
               <Route path="profile" element={<Profile />} />
             </Route>
           </Route>

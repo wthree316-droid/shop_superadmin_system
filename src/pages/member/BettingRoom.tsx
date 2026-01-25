@@ -19,25 +19,21 @@ import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '
 import toast from 'react-hot-toast';
 
 // --- Sub-Component: ตัวนับถอยหลัง ---
-const CountDownTimer = ({ closeTime, onTimeout }: { closeTime: string; onTimeout: () => void }) => {
+// เปลี่ยน Props จาก closeTime string เป็น targetDate Date
+const CountDownTimer = ({ targetDate, onTimeout }: { targetDate: Date | null; onTimeout: () => void }) => {
     const [timeLeft, setTimeLeft] = useState('00:00:00');
 
     useEffect(() => {
-        if (!closeTime) return;
+        if (!targetDate) return;
 
         const interval = setInterval(() => {
             const now = new Date();
-            const [hours, minutes] = closeTime.split(':').map(Number);
-            
-            const target = new Date();
-            target.setHours(hours, minutes, 0, 0); // ตั้งวินาทีเป็น 0 เพื่อความแม่นยำ
-
-            const diff = target.getTime() - now.getTime();
+            const diff = targetDate.getTime() - now.getTime();
 
             if (diff <= 0) {
                 setTimeLeft("00:00:00");
                 clearInterval(interval);
-                onTimeout(); // เรียกฟังก์ชันเมื่อหมดเวลา
+                onTimeout(); 
                 return;
             }
 
@@ -45,21 +41,61 @@ const CountDownTimer = ({ closeTime, onTimeout }: { closeTime: string; onTimeout
             const m = Math.floor((diff / (1000 * 60)) % 60);
             const s = Math.floor((diff / 1000) % 60);
 
-            const strH = h.toString().padStart(2, '0');
-            const strM = m.toString().padStart(2, '0');
-            const strS = s.toString().padStart(2, '0');
-
-            setTimeLeft(`${strH}:${strM}:${strS}`);
+            setTimeLeft(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [closeTime, onTimeout]);
+    }, [targetDate, onTimeout]);
 
     return (
         <div className="text-red-500 font-bold text-xl animate-pulse">
             เหลือเวลา {timeLeft}
         </div>
     );
+};
+
+const getCloseDate = (lotto: any, now: Date) => {
+  if (!lotto.close_time) return null;
+  
+  const [cH, cM] = lotto.close_time.split(':').map(Number);
+  const rules = lotto.rules || {}; 
+
+  // --- A. หวยรายเดือน ---
+  if (rules.schedule_type === 'monthly') {
+      const targetDates = (rules.close_dates || [1, 16]).map(Number).sort((a: number, b: number) => a - b);
+      const currentDay = now.getDate();
+      let targetDay = -1;
+      let targetMonth = now.getMonth();
+      let targetYear = now.getFullYear();
+
+      for (const d of targetDates) {
+          if (d > currentDay) { targetDay = d; break; }
+          if (d === currentDay) {
+              const closeToday = new Date(now);
+              closeToday.setHours(cH, cM, 0, 0);
+              // ถ้ายังไม่เลยเวลาปิด ก็เอาวันนี้
+              if (now <= closeToday) { targetDay = d; break; }
+          }
+      }
+
+      if (targetDay === -1) {
+          targetDay = targetDates[0]; 
+          targetMonth++; 
+          if (targetMonth > 11) { targetMonth = 0; targetYear++; }
+      }
+      return new Date(targetYear, targetMonth, targetDay, cH, cM, 0, 0);
+  }
+
+  // --- B. หวยรายวัน ---
+  const closeDate = new Date(now);
+  closeDate.setHours(cH, cM, 0, 0);
+
+  // 🔥 จุดที่แก้: ถ้าเลยเวลาปิดแล้ว ให้ปัดไปวันพรุ่งนี้ (หรือรอบถัดไป)
+  // เพื่อให้ระบบรู้ว่า "อ๋อ นี่คือรอบที่กำลังเปิดรับอยู่" ไม่ใช่รอบเก่าที่จบไปแล้ว
+  if (now > closeDate) {
+      closeDate.setDate(closeDate.getDate() + 1);
+  }
+  return closeDate;
 };
 
 const getRateVal = (rateObj: any, field: 'pay' | 'min' | 'max') => {
@@ -241,16 +277,17 @@ export default function BettingRoom() {
 
             if (currentLotto.close_time) {
                 const now = new Date();
-                const [hours, minutes] = currentLotto.close_time.split(':').map(Number);
-                const closeDate = new Date();
-                closeDate.setHours(hours, minutes, 0, 0);
+                const realTargetDate = getCloseDate(currentLotto, now);
                 
-                const diff = closeDate.getTime() - now.getTime();
-                if (diff <= 0) {
+                // ถ้าคำนวณวันปิดได้ และเวลานั้นผ่านไปแล้วจริงๆ (ซึ่งปกติ getCloseDate จะคืนค่าอนาคตเสมอ ถ้าคืนค่าอดีตแปลว่าผิดปกติ)
+                if (realTargetDate && now > realTargetDate) {
                     toast.error("⛔ หวยนี้ปิดรับแล้ว (หมดเวลา)");
                     navigate('/play'); 
                     return;
                 }
+                
+                // (เสริม) ถ้าอยากเช็ค Open Time ด้วย ให้เพิ่ม Logic checkIsOpen แบบ LottoMarket ตรงนี้ก็ได้
+                // แต่เบื้องต้นแค่นี้ก็กันคนเข้าผิดเวลาได้ระดับหนึ่งแล้ว
             }
 
             setLotto(currentLotto);
@@ -753,7 +790,7 @@ export default function BettingRoom() {
         >
             <div className="mt-1 mx-4">
                 <CountDownTimer 
-                closeTime={lotto.close_time || "00:00"} 
+                targetDate={lotto ? getCloseDate(lotto, new Date()) : null}
                 onTimeout={handleTimeUp}
                 />
             </div>
