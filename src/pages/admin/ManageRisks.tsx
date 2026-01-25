@@ -211,7 +211,7 @@ export default function ManageRisks() {
       }
   };
 
-  const handleSaveRisks = async () => {
+const handleSaveRisks = async () => {
     const hasData = Object.values(pending).some(list => list.length > 0);
     if (!hasData) return toast.error("ยังไม่มีรายการเลขที่เลือก");
 
@@ -221,29 +221,44 @@ export default function ManageRisks() {
     }
 
     setIsLoading(true);
-    const promises: Promise<any>[] = [];
-
-    Object.entries(pending).forEach(([typeKey, numbers]) => {
-        numbers.forEach(num => {
-            promises.push(
-                client.post('/play/risks', {
-                    lotto_type_id: selectedLotto.id,
-                    number: num,
-                    risk_type: riskType,
-                    specific_bet_type: typeKey,
-                })
-            );
-        });
-    });
 
     try {
-      await Promise.all(promises);
-      toast.success(`บันทึกสำเร็จ ${promises.length} รายการ`);
-      openRiskModal(selectedLotto);
-      setPending({}); setTyping({}); setGlobalInput('');
-    } catch (err) { toast.error('เกิดข้อผิดพลาดในการบันทึก'); } 
-    finally { setIsLoading(false); }
-  };
+        // 1. แปลงข้อมูลจาก pending (Map) ให้เป็น Array ก้อนเดียว
+        // จากเดิม: { "2up": ["01", "02"], "3top": ["123"] }
+        // เป็น: [ {number: "01", type: "2up"}, {number: "02", type: "2up"}, {number: "123", type: "3top"} ]
+        const riskItems: any[] = [];
+        Object.entries(pending).forEach(([typeKey, numbers]) => {
+            numbers.forEach(num => {
+                riskItems.push({
+                    number: num,
+                    specific_bet_type: typeKey
+                });
+            });
+        });
+
+        // 2. ยิง API ครั้งเดียว (เปลี่ยน Path เป็น /batch)
+        await client.post('/play/risks/batch', {
+            lotto_type_id: selectedLotto.id,
+            risk_type: riskType, // 'CLOSE' หรือ 'HALF'
+            items: riskItems,
+            date: selectedDate // ส่งวันที่ไปด้วยเผื่อ Backend ใช้
+        });
+
+        toast.success(`บันทึกสำเร็จ ${riskItems.length} รายการ`);
+        
+        // Refresh ข้อมูล
+        openRiskModal(selectedLotto);
+        setPending({}); 
+        setTyping({}); 
+        setGlobalInput('');
+
+    } catch (err: any) {
+        console.error(err);
+        toast.error(err.response?.data?.detail || 'เกิดข้อผิดพลาดในการบันทึก');
+    } finally {
+        setIsLoading(false);
+    }
+};
 
   const handleDeleteRisk = async (riskId: string) => {
     if(!confirm('ต้องการปลดล็อคเลขนี้?')) return;
