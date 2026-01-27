@@ -16,10 +16,11 @@ import {
 } from 'lucide-react';
 import { type CartItem } from '../../types/lotto';
 import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '../../types/lottoLogic';
+import { supabase } from '../../utils/supabaseClient.ts';
 import toast from 'react-hot-toast';
 
 // --- Sub-Component: ตัวนับถอยหลัง ---
-// เปลี่ยน Props จาก closeTime string เป็น targetDate Date
+
 const CountDownTimer = ({ targetDate, onTimeout }: { targetDate: Date | null; onTimeout: () => void }) => {
     const [timeLeft, setTimeLeft] = useState('00:00:00');
 
@@ -325,9 +326,50 @@ export default function BettingRoom() {
 
     useEffect(() => {
         fetchData();
-    }, [id]); // ลบ navigate ออกจาก dependency เพื่อลดการ re-run ที่ไม่จำเป็น
+    }, [id]); 
 
-    // ... (ส่วน Logic การจัดการ Tab, Input, Paste, Buffer คงเดิมตามปกติ) ...
+    // --- Realtime: ฟังการเปลี่ยนแปลงเลขอั้น/ปิดรับ ---
+    useEffect(() => {
+        if (!id) return;
+
+        console.log("🔌 Connecting to Realtime Risks for Room:", id);
+
+        const channel = supabase
+            .channel(`realtime-number_risks-${id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*', // ฟังทุกอย่าง (Insert, Update, Delete)
+                    schema: 'public',
+                    table: 'number_risks',
+                    filter: `lotto_type_id=eq.${id}` // ✅ กรองเฉพาะหวยห้องนี้
+                },
+                (payload) => {
+                    console.log('⚡ มีการเปลี่ยนแปลงเลขอั้น:', payload);
+
+                    // 1. แจ้งเตือนลูกค้า
+                    toast('⚠️ มีการอัปเดตเลขอั้น/ปิดรับ กรุณาตรวจสอบ', {
+                        icon: '📢',
+                        style: { border: '1px solid #FFD700', color: '#B45309' },
+                        duration: 4000
+                    });
+
+                    // 2. ดึงข้อมูลเลขอั้นใหม่ทันที! (Fetch ทับ State เดิม)
+                    // การทำแบบนี้จะทำให้ฟังก์ชัน isItemClosed ทำงานใหม่
+                    // และปุ่มตัวเลขบนหน้าจอจะเปลี่ยนสี (แดง/ขีดฆ่า) ทันทีโดยไม่ต้องรีเฟรช
+                    client.get(`/play/risks/${id}`).then(res => {
+                        setRisks(res.data);
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [id]);
+
+    
     const handleTabChange = (newTab: typeof tab) => {
         const hasData = bufferNumbers.length > 0 || currentInput.length > 0;
         if (hasData && newTab !== tab) {

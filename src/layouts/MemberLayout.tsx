@@ -7,6 +7,9 @@ import {
 
 import { useShop } from '../contexts/ShopContext';
 import client from '../api/client'; 
+import { supabase } from '../utils/supabaseClient'; 
+import toast from 'react-hot-toast';
+
 
 export default function MemberLayout() {
   const { logout, user } = useAuth();
@@ -15,6 +18,55 @@ export default function MemberLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [displayCredit, setDisplayCredit] = useState(0);
+
+  useEffect(() => {
+      if (user?.credit_balance) {
+          setDisplayCredit(user.credit_balance);
+      }
+  }, [user]);
+
+  // ✅ 3. ระบบ Realtime: ฟังยอดเงินเปลี่ยน (เติมเงิน/ถูกหวย)
+  useEffect(() => {
+      if (!user?.id) return;
+
+      console.log("🔌 Connecting to User Balance Stream:", user.id);
+
+      const channel = supabase
+          .channel(`user-balance-${user.id}`)
+          .on(
+              'postgres_changes',
+              {
+                  event: 'UPDATE', 
+                  schema: 'public', 
+                  table: 'users',
+                  filter: `id=eq.${user.id}` // ฟังเฉพาะ ID ของเรา
+              },
+              (payload) => {
+                  console.log('💰 เครดิตมีการเปลี่ยนแปลง:', payload);
+                  const newBalance = payload.new.credit_balance;
+                  
+                  // อัปเดตตัวเลขหน้าจอทันที
+                  setDisplayCredit(newBalance);
+
+                  // แจ้งเตือนสวยๆ
+                  toast.success(`ยอดเงินอัปเดต: ${newBalance.toLocaleString()} ฿`, {
+                      id: 'credit-update', // id ซ้ำเพื่อกัน toast เด้งรัวๆ
+                      icon: '💸',
+                      style: {
+                          border: '1px solid #10B981',
+                          padding: '16px',
+                          color: '#065F46',
+                      },
+                  });
+              }
+          )
+          .subscribe();
+
+      return () => {
+          supabase.removeChannel(channel);
+      };
+  }, [user?.id]);
 
   if (isLoading) return <div className="h-screen flex items-center justify-center bg-[#F0F4F8]">Loading...</div>;
     
@@ -147,7 +199,8 @@ export default function MemberLayout() {
                     <div>
                         <p className="text-yellow-100 text-[10px] font-bold uppercase tracking-wider mb-0.5">เครดิตคงเหลือ</p>
                         <h2 className="text-2xl font-black tracking-tight flex items-baseline gap-1 text-white text-shadow">
-                           {user?.credit_balance?.toLocaleString()} <span className="text-xs font-medium opacity-80">฿</span>
+                           {displayCredit.toLocaleString()}
+                           <span className="text-xs font-medium opacity-80">฿</span>
                         </h2>
                     </div>
                     <div className="bg-black/20 p-2 rounded-lg backdrop-blur-md">
