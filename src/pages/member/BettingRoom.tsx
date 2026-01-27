@@ -745,23 +745,30 @@ export default function BettingRoom() {
 
     const submitTicket = async () => {
         if (cart.length === 0) return;
-        const validItems = cart.filter(item => !isItemClosed(item));
-        if (validItems.length === 0) return toast.error("ติดเลขอั้นปิดรับทั้งหมด");
-
+        
         setIsSubmitting(true);
         const toastId = toast.loading('กำลังส่งโพย...');
         try {
             const payload = {
                 lotto_type_id: lotto.id,
                 note: note,
-                items: validItems.map(item => ({ number: item.number, bet_type: item.bet_type, amount: item.amount }))
+                // ✅ ใช้ cart ทั้งก้อนส่งไปเลยครับ
+                items: cart.map(item => ({ 
+                    number: item.number, 
+                    bet_type: item.bet_type, 
+                    amount: item.amount 
+                }))
             };
+
             const res = await client.post('/play/submit_ticket', payload);
+            
             toast.dismiss(toastId);
             toast.success(`ส่งโพยสำเร็จ! รหัส: ${res.data.id.slice(0, 8)}`, { duration: 4000 });
+            
             setCart([]);
             setNote('');
             if(id) fetchHistory(id); 
+
         } catch (err: any) {
             console.error(err);
             toast.dismiss(toastId);
@@ -810,7 +817,8 @@ export default function BettingRoom() {
                                         <img 
                                             src={lotto.img_url} 
                                             alt={lotto.name} 
-                                            className="w-full h-full object-cover" 
+                                            className="w-full h-full object-cover"
+                                             
                                             onError={(e) => {
                                                 (e.target as HTMLImageElement).style.display = 'none';
                                                 (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); 

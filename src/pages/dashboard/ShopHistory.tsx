@@ -454,6 +454,9 @@ export default function ShopHistory() {
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 {selectedTicket.items?.map((item: any, i: number) => {
+                                    // ✅ 1. เช็คว่าเป็นเลขปิดหรือไม่ (เรท 0)
+                                    const isClosed = Number(item.reward_rate) === 0;
+
                                     const potentialReward = Number(item.amount) * Number(item.reward_rate);
                                     const translateType = (type: string) => {
                                         const map: Record<string, string> = {
@@ -465,17 +468,38 @@ export default function ShopHistory() {
                                     };
 
                                     return (
-                                        <tr key={i} className={item.status === 'WIN' ? 'bg-green-50' : ''}>
-                                            <td className="p-3 font-bold text-slate-700">{item.number}</td>
-                                            <td className="p-3 text-xs text-slate-500">{translateType(item.bet_type)}</td>
-                                            <td className="p-3 text-right text-gray-500 text-xs">{Number(item.reward_rate).toLocaleString()}</td>
-                                            <td className="p-3 text-right font-mono">{Number(item.amount).toLocaleString()}</td>
-                                            <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
-                                            <td className="p-3 text-right">
-                                                {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">WIN</span> : 
-                                                 item.status === 'LOSE' ? <span className="text-red-400 text-xs">ไม่ถูก</span> : 
-                                                 <span className="text-orange-400 text-xs font-medium">รอผล</span>}
+                                        // ✅ 2. ถ้าปิด ให้พื้นหลังเป็นสีแดงอ่อนๆ
+                                        <tr key={i} className={isClosed ? 'bg-red-50/50' : (item.status === 'WIN' ? 'bg-green-50' : '')}>
+                                            <td className="p-3 font-bold text-slate-700">
+                                                {/* ✅ 3. ถ้าปิด ให้ขีดฆ่าเลข */}
+                                                <span className={isClosed ? 'line-through text-red-400' : ''}>{item.number}</span>
                                             </td>
+                                            <td className="p-3 text-xs text-slate-500">{translateType(item.bet_type)}</td>
+                                            
+                                            {/* ✅ 4. ถ้าปิด ให้รวมช่อง Rate/Price/Total แล้วแสดงข้อความแจ้งเตือน */}
+                                            {isClosed ? (
+                                                <>
+                                                    <td colSpan={3} className="p-3 text-center">
+                                                        <span className="text-[10px] font-bold text-red-500 border border-red-200 bg-white px-2 py-1 rounded-lg">
+                                                            ปิดรับ (ไม่คิดเงิน)
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3 text-right">
+                                                        <span className="text-slate-400 text-xs">-</span>
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className="p-3 text-right text-gray-500 text-xs">{Number(item.reward_rate).toLocaleString()}</td>
+                                                    <td className="p-3 text-right font-mono">{Number(item.amount).toLocaleString()}</td>
+                                                    <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
+                                                    <td className="p-3 text-right">
+                                                        {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">WIN</span> : 
+                                                         item.status === 'LOSE' ? <span className="text-red-400 text-xs">ไม่ถูก</span> : 
+                                                         <span className="text-orange-400 text-xs font-medium">รอผล</span>}
+                                                    </td>
+                                                </>
+                                            )}
                                         </tr>
                                     );
                                 })}
