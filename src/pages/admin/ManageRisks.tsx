@@ -24,7 +24,14 @@ export default function ManageRisks() {
   const [searchTerm, setSearchTerm] = useState('');
   
   // State วันที่
-  const getToday = () => new Date().toISOString().split('T')[0];
+  const getToday = () => {
+  // ใช้เวลา Local ปัจจุบัน ไม่แปลงเป็น UTC
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+  };
   const [selectedDate, setSelectedDate] = useState(getToday());
 
   const [typing, setTyping] = useState<Record<string, string>>({});
