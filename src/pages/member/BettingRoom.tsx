@@ -818,7 +818,7 @@ export default function BettingRoom() {
                                             src={lotto.img_url} 
                                             alt={lotto.name} 
                                             className="w-full h-full object-cover"
-                                             
+                                            crossOrigin="anonymous" 
                                             onError={(e) => {
                                                 (e.target as HTMLImageElement).style.display = 'none';
                                                 (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); 
@@ -1155,7 +1155,8 @@ export default function BettingRoom() {
                                             <img 
                                                 src={lotto.img_url} 
                                                 alt={lotto.name} 
-                                                className="w-full h-full object-cover" 
+                                                className="w-full h-full object-cover"
+                                                crossOrigin="anonymous" 
                                                 onError={(e) => {
                                                     (e.target as HTMLImageElement).style.display = 'none';
                                                     (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');

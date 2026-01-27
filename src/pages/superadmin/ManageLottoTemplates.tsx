@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import client from '../../api/client';
-import { 
-  Plus, X, Pencil, UploadCloud, Loader2, Clock, 
-  CheckCircle, Trash2, Database, ChevronDown 
-} from 'lucide-react';
+import { Plus, X, Pencil, Loader2, Clock, CheckCircle, Trash2, Database, ChevronDown } from 'lucide-react';
 import type { LottoType, RateProfile } from '../../types/lotto';
+import FlagSelector from '../../components/admin/FlagSelector';
 
 const DAYS = [
   { id: 'SUN', label: 'อาทิตย์' }, { id: 'MON', label: 'จันทร์' }, { id: 'TUE', label: 'อังคาร' },
@@ -128,11 +126,9 @@ export default function ManageLottoTemplates() {
   
   // States
   const [isLoading, setIsLoading] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [scheduleType, setScheduleType] = useState('weekly'); // 'weekly' | 'monthly'
   const [monthlyDates, setMonthlyDates] = useState<number[]>([1, 16]); // Default หวยไทย
@@ -222,24 +218,6 @@ export default function ManageLottoTemplates() {
     }
 
     setShowModal(true);
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsUploading(true);
-    const data = new FormData();
-    data.append('file', file);
-    try {
-      const res = await client.post('/upload/', data, { headers: { 'Content-Type': 'multipart/form-data' } });
-      let fullUrl = res.data.url;
-      if (fullUrl && fullUrl.startsWith('/static')) fullUrl = `http://127.0.0.1:8000${fullUrl}`;
-      setFormData(prev => ({ ...prev, img_url: fullUrl }));
-    } catch (err) { 
-        alert('อัปโหลดรูปไม่สำเร็จ'); 
-    } finally { 
-        setIsUploading(false); 
-    }
   };
 
   const handleSaveLotto = async (e: React.FormEvent) => {
@@ -429,37 +407,26 @@ export default function ManageLottoTemplates() {
                          
                          {/* Top Section: Image & Basic Info */}
                          <div className="flex flex-col md:flex-row gap-6">
-                            {/* Image Upload */}
-                            <div className="w-full md:w-1/3 flex flex-col gap-2">
-                                <label className="text-sm font-bold text-gray-600">รูปภาพปก</label>
-                                <div 
-                                    onClick={() => !isUploading && fileInputRef.current?.click()} 
-                                    className="aspect-square rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-all relative overflow-hidden group"
-                                >
-                                    {isUploading ? (
-                                        <Loader2 className="animate-spin text-amber-500" size={32} />
-                                    ) : formData.img_url ? (
-                                        <>
-                                            <img 
-                                                src={formData.img_url} 
-                                                className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-50"
-                                                onError={(e) => {
-                                                    const target = e.target as HTMLImageElement;
-                                                    target.style.display = 'none'; // ซ่อนรูปที่เสีย เพื่อให้เห็น icon upload
-                                                }}
-                                            />
-                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Pencil className="text-white drop-shadow-md" size={32} />
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="text-center p-4">
-                                            <UploadCloud className="text-gray-400 mx-auto mb-2 group-hover:text-amber-500" size={32} />
-                                            <span className="text-xs text-gray-500 group-hover:text-amber-600">คลิกเพื่ออัปโหลด</span>
-                                        </div>
-                                    )}
+                            <div className="w-full md:w-1/3 flex flex-col gap-3">
+                                <div>
+                                    <label className="text-sm font-bold text-slate-700 uppercase mb-2 block">
+                                        รูปปก / ธงชาติ
+                                    </label>
+                                    
+                                    {/* ใช้ FlagSelector เพียวๆ เลย เพราะมันมี preview ในตัวอยู่แล้ว */}
+                                    <FlagSelector 
+                                        currentUrl={formData.img_url} 
+                                        onSelect={(url) => setFormData({ ...formData, img_url: url })} 
+                                    />
                                 </div>
-                                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+
+                                {/* Helper Text ย้ายมาอยู่ข้างล่างแบบคลีนๆ */}
+                                <div className="bg-blue-50 text-blue-600 text-xs p-3 rounded-lg flex items-start gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-info shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                                    <span>แนะนำให้เลือกรูปจากคลังภาพของระบบ เพื่อความรวดเร็วและถูกต้องของการแสดงผล</span>
+                                </div>
+
+                                <input type="hidden" value={formData.img_url} />
                             </div>
                             
                             {/* Text Inputs */}
