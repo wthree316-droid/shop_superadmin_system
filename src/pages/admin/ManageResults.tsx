@@ -3,9 +3,10 @@ import client from '../../api/client';
 import { 
   X, Trophy, Calendar, 
   CheckCircle, Clock, Loader2, Edit3, 
-  AlertCircle, ArrowRight
+  AlertCircle, Search
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { alertAction, confirmAction } from '../../utils/toastUtils';
 
 // --- Helper Functions ---
 const getTodayStr = () => {
@@ -34,126 +35,162 @@ const formatDateDisplay = (dateStr: string) => {
     });
 };
 
-// --- ✅ แยก Component Modal ออกมา (แก้ปัญหาพิมพ์แล้วหน่วง) ---
-const ResultModal = memo(({ lotto, existingResult, onClose, onSuccess, dateStr }: any) => {
-    const [top3, setTop3] = useState(existingResult?.top_3 || '');
-    const [bottom2, setBottom2] = useState(existingResult?.bottom_2 || '');
+// --- Sub-Component: Modal บันทึกผล ---
+const ResultModal = memo(({ lotto, existingResult, dateStr, onClose, onSuccess }: any) => {
+    const [top3, setTop3] = useState('');
+    const [bottom2, setBottom2] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
-    const topInputRef = useRef<HTMLInputElement>(null);
-    const bottomInputRef = useRef<HTMLInputElement>(null);
 
-    // Auto focus ช่องแรก
     useEffect(() => {
-        setTimeout(() => topInputRef.current?.focus(), 100);
-    }, []);
+        if (existingResult) {
+            setTop3(existingResult.top_3 || '');
+            setBottom2(existingResult.bottom_2 || '');
+        }
+    }, [existingResult]);
 
-    const handleTopChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 3);
-        setTop3(val);
-        if (val.length === 3) bottomInputRef.current?.focus();
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleConfirmSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (top3.length !== 3 || bottom2.length !== 2) {
-            toast.error("กรุณากรอกเลขให้ครบ (3 ตัวบน และ 2 ตัวล่าง)");
-            return;
-        }
+        if (top3.length !== 3) return toast.error('3 ตัวบน ต้องมี 3 หลัก');
+        if (bottom2.length !== 2) return toast.error('2 ตัวล่าง ต้องมี 2 หลัก');
 
-        if (!confirm(existingResult ? `⚠️ ยืนยันแก้ไขผลรางวัล?` : `ยืนยันบันทึกผลรางวัล?`)) return;
+        confirmAction(
+            `ยืนยันผลรางวัล: บน ${top3} | ล่าง ${bottom2} ?\n(ระบบจะคำนวณเงินรางวัลใหม่อัตโนมัติ)`,
+            () => submitData(),
+            'ยืนยันบันทึก',
+            'ยกเลิก'
+        );
+    };
 
+    const submitData = async () => {
         setIsSubmitting(true);
+        const toastId = toast.loading('กำลังประมวลผลรางวัล...');
         try {
-            await client.post('/reward/issue', {
+            const payload = {
                 lotto_type_id: lotto.id,
+                round_date: dateStr,
                 top_3: top3,
-                bottom_2: bottom2,
-                round_date: dateStr // ส่งวันที่ string ไปตรงๆ ไม่เพี้ยนแน่นอน
-            });
-            
-            toast.success(existingResult ? 'แก้ไขเรียบร้อย' : 'บันทึกเรียบร้อย');
-            onSuccess(); // แจ้ง Parent ให้โหลดข้อมูลใหม่
-            onClose();
+                bottom_2: bottom2
+            };
+
+            const res = await client.post('/reward/issue', payload);
+            toast.dismiss(toastId);
+
+            if (res.data.success) {
+                const { total_winners, total_payout, total_tickets_processed } = res.data;
+                
+                alertAction(
+                    `ตรวจโพยเสร็จสิ้น ${total_tickets_processed} ใบ\n\n🎉 ถูกรางวัล: ${total_winners} รายการ\n💰 จ่ายเงินรวม: ${Number(total_payout).toLocaleString()} บาท`,
+                    'บันทึกสำเร็จ!',
+                    'success',
+                    'ตกลง',
+                    () => {
+                        onSuccess();
+                        onClose();
+                    }
+                );
+            } else {
+                toast.success('บันทึกผลเรียบร้อย');
+                onSuccess();
+                onClose();
+            }
+
         } catch (err: any) {
-            toast.error(err.response?.data?.detail || 'เกิดข้อผิดพลาด');
+            console.error(err);
+            toast.dismiss(toastId);
+            toast.error(err.response?.data?.detail || 'บันทึกไม่สำเร็จ');
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-4xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 relative ring-1 ring-white/20">
-                {/* Header */}
-                <div className={`p-8 pb-6 text-white text-center relative overflow-hidden ${existingResult ? 'bg-slate-800' : 'bg-linear-to-br from-amber-400 to-orange-600'}`}>
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full blur-2xl -ml-10 -mb-10"></div>
-                    
-                    <h3 className="text-2xl font-black tracking-tight relative z-10">{lotto.name}</h3>
-                    <p className="text-white/80 text-xs mt-1 font-medium relative z-10 uppercase tracking-wider">
-                        {existingResult ? 'แก้ไขผลรางวัล' : `งวดวันที่ ${dateStr}`}
-                    </p>
-                    <button onClick={onClose} className="absolute top-4 right-4 text-white/60 hover:text-white bg-black/10 hover:bg-black/20 rounded-full p-1.5 transition-colors z-20">
-                        <X size={20} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+                
+                <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
+                    <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                        <Trophy className="text-amber-400" /> 
+                        {existingResult ? 'แก้ไขผลรางวัล' : 'บันทึกผลรางวัล'}
+                    </h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+                        <X size={24} />
                     </button>
                 </div>
-                
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="p-6 pt-8 space-y-8 bg-white">
-                    <div className="space-y-6">
-                        {/* 3 ตัวบน */}
-                        <div className="relative group">
-                            <label className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider group-focus-within:text-amber-500 transition-colors">
-                                เลข 3 ตัวบน
-                            </label>
-                            <input 
-                                ref={topInputRef}
-                                type="tel" 
-                                value={top3}
-                                onChange={handleTopChange}
-                                maxLength={3}
-                                className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 text-5xl text-center font-black tracking-[0.3em] text-slate-800 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 outline-none transition-all placeholder-slate-200"
-                                placeholder="---"
-                            />
+
+                <div className="p-6">
+                    <div className="flex items-center gap-4 mb-6 pb-4 border-b border-slate-100">
+                        <div className="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200 shadow-sm shrink-0">
+                            {lotto.img_url ? (
+                                <img src={lotto.img_url} className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-2xl font-bold text-slate-400">{lotto.name[0]}</span>
+                            )}
                         </div>
-
-                        <div className="flex justify-center -my-2 text-slate-300"><ArrowRight className="rotate-90" size={20}/></div>
-
-                        {/* 2 ตัวล่าง */}
-                        <div className="relative group">
-                            <label className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider group-focus-within:text-amber-500 transition-colors">
-                                เลข 2 ตัวล่าง
-                            </label>
-                            <input 
-                                ref={bottomInputRef}
-                                type="tel" 
-                                value={bottom2}
-                                onChange={e => setBottom2(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
-                                maxLength={2}
-                                className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 text-5xl text-center font-black tracking-[0.3em] text-slate-800 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 outline-none transition-all placeholder-slate-200"
-                                placeholder="--"
-                            />
+                        <div>
+                            <h4 className="font-bold text-xl text-slate-800">{lotto.name}</h4>
+                            <p className="text-slate-500 text-sm flex items-center gap-1 mt-1">
+                                <Calendar size={14} /> งวดวันที่ {formatDateDisplay(dateStr)}
+                            </p>
                         </div>
                     </div>
 
-                    <div className="pt-2 grid grid-cols-2 gap-3">
-                        <button type="button" onClick={onClose} className="py-4 rounded-xl font-bold text-sm text-slate-500 bg-slate-100 hover:bg-slate-200 hover:text-slate-700 transition-colors">
-                            ยกเลิก
-                        </button>
-                        <button 
-                            type="submit" 
-                            disabled={isSubmitting}
-                            className={`py-4 text-white rounded-xl font-bold text-sm shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed ${
-                                existingResult ? 'bg-slate-800 hover:bg-black' : 'bg-linear-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
-                            }`}
-                        >
-                            {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle size={18} />} 
-                            {existingResult ? 'บันทึกแก้ไข' : 'ยืนยันผล'}
-                        </button>
-                    </div>
-                </form>
+                    <form onSubmit={handleConfirmSubmit} className="space-y-5">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 block">
+                                    3 ตัวบน
+                                </label>
+                                <input
+                                    type="tel"
+                                    maxLength={3}
+                                    value={top3}
+                                    onChange={(e) => setTop3(e.target.value.replace(/[^0-9]/g, ''))}
+                                    className="w-full text-center text-3xl font-black tracking-widest py-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all placeholder-slate-200 text-slate-800"
+                                    placeholder="000"
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 block">
+                                    2 ตัวล่าง
+                                </label>
+                                <input
+                                    type="tel"
+                                    maxLength={2}
+                                    value={bottom2}
+                                    onChange={(e) => setBottom2(e.target.value.replace(/[^0-9]/g, ''))}
+                                    className="w-full text-center text-3xl font-black tracking-widest py-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 outline-none transition-all placeholder-slate-200 text-slate-800"
+                                    placeholder="00"
+                                />
+                            </div>
+                        </div>
+
+                        {existingResult && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-3 text-sm text-amber-800">
+                                <AlertCircle className="shrink-0 mt-0.5" size={18} />
+                                <div>
+                                    <span className="font-bold">คำเตือน:</span> การแก้ไขผลรางวัลจะทำให้ระบบ <span className="font-bold underline">คำนวณเงินใหม่ทั้งหมด</span> (Rollback & Re-calculate)
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="pt-2">
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="w-full bg-slate-900 text-white font-bold text-lg py-4 rounded-xl shadow-lg shadow-slate-300 hover:bg-slate-800 active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {isSubmitting ? (
+                                    <><Loader2 className="animate-spin" /> กำลังบันทึก...</>
+                                ) : (
+                                    <><CheckCircle /> ยืนยันผลรางวัล</>
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     );
@@ -161,113 +198,126 @@ const ResultModal = memo(({ lotto, existingResult, onClose, onSuccess, dateStr }
 
 // --- Main Component ---
 export default function ManageResults() {
-  const [lottos, setLottos] = useState<any[]>([]);
-  const [resultsMap, setResultsMap] = useState<any>({}); 
-  const [selectedLotto, setSelectedLotto] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // ✅ ใช้ String เป็น State แทน Date Object (แก้ปัญหาเวลาเพี้ยน)
   const [selectedDate, setSelectedDate] = useState(getTodayStr());
+  const [lottos, setLottos] = useState<any[]>([]);
+  const [resultsMap, setResultsMap] = useState<any>({});
+  const [loading, setLoading] = useState(false);
+  
+  const [selectedLotto, setSelectedLotto] = useState<any>(null);
   
   const datePickerRef = useRef<HTMLInputElement>(null);
+  const isToday = selectedDate === getTodayStr();
+  const isYesterday = selectedDate === getYesterdayStr();
 
   useEffect(() => {
     fetchData();
   }, [selectedDate]);
 
   const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        // ใช้ selectedDate (string) ส่งไปตรงๆ
+    setLoading(true);
+    try {
         const [resLottos, resResults] = await Promise.all([
             client.get('/play/lottos'),
             client.get(`/reward/daily?date=${selectedDate}`)
         ]);
-        
-        const sortedLottos = resLottos.data.sort((a: any, b: any) => {
+
+        let allLottos = resLottos.data;
+        const currentResults = resResults.data || {};
+
+        allLottos.sort((a: any, b: any) => {
+            const hasResA = !!currentResults[a.id];
+            const hasResB = !!currentResults[b.id];
+            
+            if (hasResA && !hasResB) return -1;
+            if (!hasResA && hasResB) return 1;
+
             if (!a.close_time) return 1;
             if (!b.close_time) return -1;
             return a.close_time.localeCompare(b.close_time);
         });
 
-        setLottos(sortedLottos);
-        setResultsMap(resResults.data || {}); 
-      } catch (err) {
-          console.error(err);
-      } finally {
-          setIsLoading(false);
-      }
+        setLottos(allLottos);
+        setResultsMap(currentResults);
+
+    } catch (err) {
+        console.error(err);
+        toast.error('โหลดข้อมูลไม่สำเร็จ');
+    } finally {
+        setLoading(false);
+    }
   };
 
-  const isToday = selectedDate === getTodayStr();
-  const isYesterday = selectedDate === getYesterdayStr();
-
   return (
-    <div className="animate-fade-in p-4 md:p-8 max-w-7xl mx-auto pb-24">
+    <div className="max-w-7xl mx-auto px-4 py-8 font-sans pb-20">
       
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6">
+      {/* Header & Date Picker */}
+      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6 mb-8">
         <div>
-           <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
-              <span className="w-10 h-10 rounded-xl bg-linear-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-200">
-                  <Trophy size={20} className="drop-shadow-sm" />
-              </span>
-              ออกผลรางวัล
-           </h2>
-           <p className="text-slate-500 mt-2 font-medium flex items-center gap-2">
-              <Calendar size={14}/> ประจำงวดวันที่ <span className="text-slate-800 font-bold border-b-2 border-amber-200">{formatDateDisplay(selectedDate)}</span>
-           </p>
+            <h1 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+                <Trophy className="text-amber-500" size={32} /> จัดการผลรางวัล
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">บันทึกผล ตรวจรางวัล และดูยอดจ่ายเงิน</p>
         </div>
 
-        <div className="flex items-center gap-2 w-full lg:w-auto">
-            <div className="bg-slate-100 p-1 rounded-xl flex items-center flex-1 lg:flex-none shadow-inner">
-                <button 
-                    onClick={() => setSelectedDate(getTodayStr())}
-                    className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                        isToday ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                >
-                    วันนี้
-                </button>
-                <button 
-                    onClick={() => setSelectedDate(getYesterdayStr())}
-                    className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                        isYesterday ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                >
-                    เมื่อวาน
-                </button>
+        {/* ✅ Wrapper ด้านขวา จัดเป็น Column เพื่อให้ Date อยู่ข้างล่าง */}
+        <div className="flex flex-col gap-2 items-end w-full lg:w-auto">
+            
+            <div className="flex items-center gap-2 w-full justify-end">
+                <div className="bg-slate-100 p-1 rounded-xl flex items-center flex-1 lg:flex-none shadow-inner">
+                    <button 
+                        onClick={() => setSelectedDate(getTodayStr())}
+                        className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                            isToday ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' : 'text-slate-400 hover:text-slate-600'
+                        }`}
+                    >
+                        วันนี้
+                    </button>
+                    <button 
+                        onClick={() => setSelectedDate(getYesterdayStr())}
+                        className={`flex-1 lg:flex-none px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                            isYesterday ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' : 'text-slate-400 hover:text-slate-600'
+                        }`}
+                    >
+                        เมื่อวาน
+                    </button>
+                </div>
+
+                <div className="relative group">
+                    <div 
+                        onClick={() => datePickerRef.current?.showPicker()} 
+                        className={`p-3 rounded-xl transition-all cursor-pointer shadow-sm border flex items-center justify-center ${
+                            !isToday && !isYesterday 
+                            ? 'bg-amber-100 text-amber-600 border-amber-200 ring-2 ring-amber-100' 
+                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                        }`}
+                    >
+                        <Calendar size={20} />
+                    </div>
+                    <input
+                        ref={datePickerRef}
+                        type="date"
+                        className="absolute inset-0 w-full h-full opacity-0 z-[-1]" 
+                        value={selectedDate} 
+                        max={getTodayStr()}   
+                        onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+                    />
+                </div>
             </div>
 
-            <div className="relative group">
-                <div 
-                    onClick={() => datePickerRef.current?.showPicker()} 
-                    className={`p-3 rounded-xl transition-all cursor-pointer shadow-sm border flex items-center justify-center ${
-                        !isToday && !isYesterday 
-                        ? 'bg-amber-100 text-amber-600 border-amber-200 ring-2 ring-amber-100' 
-                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                    }`}
-                >
-                    <Calendar size={20} />
-                </div>
-                <input
-                    ref={datePickerRef}
-                    type="date"
-                    className="absolute inset-0 w-full h-full opacity-0 z-[-1]" 
-                    value={selectedDate} 
-                    max={getTodayStr()}   
-                    onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
-                />
+            {/* ✅ ส่วนที่เพิ่มเข้ามา: แสดงงวดวันที่ชัดเจน */}
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">งวดประจำวันที่</span>
+                <span className="text-sm font-black text-blue-600">{formatDateDisplay(selectedDate)}</span>
             </div>
+
         </div>
       </div>
 
-      {/* Table & Content */}
-      {isLoading ? (
-          <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-3">
-              <Loader2 className="animate-spin text-amber-500" size={40} />
-              <span className="text-sm font-medium">กำลังโหลดข้อมูล...</span>
-          </div>
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
+            <p className="text-slate-400 font-medium">กำลังโหลดข้อมูล...</p>
+        </div>
       ) : (
         <>
             {/* Desktop Table */}
@@ -284,21 +334,23 @@ export default function ManageResults() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
                     {lottos.map((lotto) => {
-                    const result = resultsMap[lotto.id]; 
+                    const result = resultsMap[lotto.id];
+                    const isInactive = !lotto.is_active;
+                    
                     return (
-                        <tr key={lotto.id} className="hover:bg-slate-50/80 transition-colors group">
+                        <tr key={lotto.id} className={`hover:bg-slate-50/80 transition-colors ${isInactive ? 'bg-slate-50/50 grayscale-[0.8]' : ''}`}>
                         <td className="p-5 pl-8">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shadow-sm">
                                     {lotto.img_url ? (
                                         <img src={lotto.img_url} className="w-full h-full object-cover" />
                                     ) : (
-                                        <span className="text-xs font-bold text-slate-400">{lotto.code.substring(0,2)}</span>
+                                        <span className="font-bold text-slate-400">{lotto.name[0]}</span>
                                     )}
                                 </div>
                                 <div>
                                     <div className="font-bold text-slate-800 text-base">{lotto.name}</div>
-                                    <div className="text-[10px] text-slate-400 font-mono">{lotto.code}</div>
+                                    {isInactive && <span className="text-[10px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded font-bold">ปิดรับชั่วคราว</span>}
                                 </div>
                             </div>
                         </td>
@@ -354,69 +406,9 @@ export default function ManageResults() {
                 </table>
                 {lottos.length === 0 && (
                     <div className="p-12 text-center text-slate-400 flex flex-col items-center">
-                        <AlertCircle size={48} className="mb-4 opacity-20"/>
+                        <Search size={48} className="mb-4 opacity-20"/>
                         <p>ไม่มีรายการหวยสำหรับวันที่เลือก</p>
                     </div>
-                )}
-            </div>
-
-            {/* Mobile Cards */}
-            <div className="lg:hidden grid grid-cols-1 gap-4">
-                {lottos.map((lotto) => {
-                    const result = resultsMap[lotto.id];
-                    return (
-                        <div key={lotto.id} className="bg-white rounded-3xl p-5 shadow-lg shadow-slate-200/50 border border-slate-100 relative overflow-hidden">
-                            <div className="flex justify-between items-start mb-5">
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-bold shadow-inner ${result ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>
-                                        {lotto.img_url ? <img src={lotto.img_url} className="w-full h-full object-cover rounded-2xl"/> : lotto.name.charAt(0)}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-lg text-slate-800 leading-tight">{lotto.name}</h3>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono border border-slate-200">
-                                                {lotto.close_time?.substring(0,5)} น.
-                                            </span>
-                                            {result && <span className="text-[10px] text-green-600 font-bold flex items-center gap-1"><CheckCircle size={10}/> ออกผลแล้ว</span>}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {result ? (
-                                <div className="bg-slate-50 rounded-2xl p-4 mb-5 border border-slate-200 flex justify-around items-center relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
-                                    <div className="text-center z-10">
-                                        <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">3 ตัวบน</div>
-                                        <div className="text-3xl font-black text-slate-800 tracking-widest">{result.top_3}</div>
-                                    </div>
-                                    <div className="w-px h-10 bg-slate-200 z-10"></div>
-                                    <div className="text-center z-10">
-                                        <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">2 ตัวล่าง</div>
-                                        <div className="text-3xl font-black text-slate-800 tracking-widest">{result.bottom_2}</div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="mb-5 p-4 rounded-2xl border-2 border-dashed border-slate-100 text-center">
-                                    <p className="text-xs text-slate-400 font-bold">รอการออกผลรางวัล</p>
-                                </div>
-                            )}
-
-                            <button 
-                                onClick={() => setSelectedLotto(lotto)}
-                                className={`w-full py-3.5 rounded-2xl font-bold text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 ${
-                                    result 
-                                    ? 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50' 
-                                    : 'bg-slate-900 text-white hover:bg-black shadow-slate-300'
-                                }`}
-                            >
-                                {result ? <><Edit3 size={18} /> แก้ไขผลรางวัล</> : <><Trophy size={18} className="text-amber-400" /> บันทึกผลรางวัล</>}
-                            </button>
-                        </div>
-                    );
-                })}
-                {lottos.length === 0 && (
-                    <div className="text-center py-12 text-slate-400">ยังไม่มีรายการหวยสำหรับวันที่เลือก</div>
                 )}
             </div>
         </>
