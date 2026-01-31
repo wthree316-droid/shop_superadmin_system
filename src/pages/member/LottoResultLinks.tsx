@@ -8,7 +8,7 @@ import {
 import client from '../../api/client';
 
 // --------------------------------------------------------
-// 🔗 Config: จับคู่รหัสหวย (Code) กับ ลิงก์ดูผล
+// 🔗 Config: จับคู่รหัสหวย (Code) กับ ลิงก์ดูผล (เหมือนเดิม)
 // --------------------------------------------------------
 const EXTERNAL_LINKS: Record<string, string> = {
     // --- รัฐบาลไทย/ออมสิน/ธกส ---
@@ -145,42 +145,27 @@ export default function LottoResultLinks() {
         return url;
     };
 
-    // --- Logic การกรองแบบใหม่ ---
+    // --- Logic การกรอง (เหมือนเดิม) ---
     const filteredLottos = lottos.filter(item => {
         const code = item.code.toUpperCase();
         
-        // 1. ค้นหาจากชื่อ หรือ รหัส
         const matchSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             code.includes(searchQuery.toUpperCase());
         
-        // 2. กรองหมวดหมู่
         let matchCategory = true;
         if (activeTab !== 'ALL') {
-            if (activeTab === 'THAI') {
-                matchCategory = code.startsWith('THAI') || code.startsWith('GSB') || code.startsWith('BAAC');
-            } 
-            else if (activeTab === 'HANOI') {
-                matchCategory = code.startsWith('HANOI') || code.startsWith('VIET');
-            } 
-            else if (activeTab === 'LAOS') {
-                matchCategory = code.startsWith('LAO');
-            } 
-            else if (activeTab === 'DOW') {
-                matchCategory = code.startsWith('DOW');
-            } 
-            else if (activeTab === 'STOCKSVIP') {
-                matchCategory = code.includes('VIP') && !code.startsWith('DOW') && !code.startsWith('LAO') && !code.startsWith('VIET');
-            } 
+            if (activeTab === 'THAI') matchCategory = code.startsWith('THAI') || code.startsWith('GSB') || code.startsWith('BAAC');
+            else if (activeTab === 'HANOI') matchCategory = code.startsWith('HANOI') || code.startsWith('VIET');
+            else if (activeTab === 'LAOS') matchCategory = code.startsWith('LAO');
+            else if (activeTab === 'DOW') matchCategory = code.startsWith('DOW');
+            else if (activeTab === 'STOCKSVIP') matchCategory = code.includes('VIP') && !code.startsWith('DOW') && !code.startsWith('LAO') && !code.startsWith('VIET');
             else if (activeTab === 'STOCKS') {
                 const isVIP = code.includes('VIP');
                 const isDow = code.startsWith('DOW');
-                
                 const stockPrefixes = ['NIKKEI', 'CHINA', 'HANGSENG', 'TAIWAN', 'KOREA', 'SINGAPORE', 'INDIA', 'EGYPT', 'MALAYSIA', 'ENGLAND', 'GERMANY', 'RUSSIA', 'EURO'];
                 matchCategory = !isVIP && !isDow && stockPrefixes.some(p => code.startsWith(p));
             } 
-            else if (activeTab === 'OTHERS') {
-                matchCategory = code.startsWith('MK_') || code.startsWith('YIKI') || code.startsWith('OTHER');
-            }
+            else if (activeTab === 'OTHERS') matchCategory = code.startsWith('MK_') || code.startsWith('YIKI') || code.startsWith('OTHER');
         }
 
         return matchSearch && matchCategory;
@@ -189,65 +174,75 @@ export default function LottoResultLinks() {
     return (
         <div className="min-h-screen bg-[#0F172A] pb-24 text-white font-sans">
             
-            {/* --- Header Section --- */}
-            <div className="bg-linear-to-b from-[#1E293B] to-[#0F172A] border-b border-white/5 sticky top-0 z-30 pt-4 pb-2 shadow-2xl">
-                <div className="px-4 max-w-lg mx-auto">
-                    <h1 className="text-2xl font-black text-transparent bg-clip-text bg-linear-to-r from-[#FFD700] via-[#FDB931] to-[#FFD700] text-center mb-4 flex items-center justify-center gap-2 drop-shadow-lg">
-                        <Globe className="text-[#FDB931]" strokeWidth={2.5} /> 
+            {/* --- Header Section (Full Width Background) --- */}
+            <div className="bg-linear-to-b from-[#1E293B] to-[#0F172A] border-b border-white/5 sticky top-0 z-30 pt-6 pb-4 shadow-2xl">
+                {/* ✅ จุดแก้ที่ 1: Container ของ Header 
+                   เปลี่ยนจาก max-w-lg เป็น max-w-7xl เพื่อให้กว้างเต็มตาบน PC
+                */}
+                <div className="px-4 max-w-7xl mx-auto flex flex-col items-center">
+                    
+                    <h1 className="text-3xl font-black text-transparent bg-clip-text bg-linear-to-r from-[#FFD700] via-[#FDB931] to-[#FFD700] text-center mb-6 flex items-center justify-center gap-3 drop-shadow-lg">
+                        <Globe className="text-[#FDB931]" size={32} strokeWidth={2.5} /> 
                         ผลรางวัล
                     </h1>
 
-                    {/* Search Bar */}
-                    <div className="relative mb-4">
+                    {/* Search Bar (จำกัดความกว้างไว้ไม่ให้ยาวเกินไปบน PC) */}
+                    <div className="relative mb-6 w-full max-w-lg">
                         <input
                             type="text"
                             placeholder="ค้นหาชื่อหวย... (เช่น ฮานอย, ลาว)"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-slate-800/80 border border-slate-700 rounded-2xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#d4af37] focus:ring-1 focus:ring-[#d4af37] transition-all shadow-inner"
+                            className="w-full bg-slate-800/80 border border-slate-700 rounded-2xl py-3 pl-12 pr-4 text-base text-white placeholder-slate-500 focus:outline-none focus:border-[#d4af37] focus:ring-1 focus:ring-[#d4af37] transition-all shadow-inner"
                         />
-                        <Search className="absolute left-4 top-3 text-slate-500" size={18} />
+                        <Search className="absolute left-4 top-3.5 text-slate-500" size={20} />
                     </div>
 
-                    {/* Category Tabs */}
-                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                        {CATEGORIES.map(cat => {
-                            const isActive = activeTab === cat.id;
-                            return (
-                                <button
-                                    key={cat.id}
-                                    onClick={() => setActiveTab(cat.id)}
-                                    className={`
-                                        flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-300
-                                        ${isActive 
-                                            ? 'bg-linear-to-r from-[#d4af37] to-amber-600 text-white shadow-lg shadow-amber-900/40 scale-105 border border-amber-400/50' 
-                                            : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:bg-slate-700'
-                                        }
-                                    `}
-                                >
-                                    <cat.icon size={14} />
-                                    {cat.label}
-                                </button>
-                            );
-                        })}
+                    {/* Category Tabs (จัดกึ่งกลาง) */}
+                    <div className="w-full max-w-5xl">
+                        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar justify-start md:justify-center">
+                            {CATEGORIES.map(cat => {
+                                const isActive = activeTab === cat.id;
+                                return (
+                                    <button
+                                        key={cat.id}
+                                        onClick={() => setActiveTab(cat.id)}
+                                        className={`
+                                            flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all duration-300
+                                            ${isActive 
+                                                ? 'bg-linear-to-r from-[#d4af37] to-amber-600 text-white shadow-lg shadow-amber-900/40 scale-105 border border-amber-400/50' 
+                                                : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:bg-slate-700 hover:text-slate-200'
+                                            }
+                                        `}
+                                    >
+                                        <cat.icon size={16} />
+                                        {cat.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* --- Content Area --- */}
-            <div className="max-w-lg mx-auto p-4 space-y-3">
+            {/* ✅ จุดแก้ที่ 2: Container ของเนื้อหา 
+               - max-w-7xl: ขยายความกว้างสูงสุด
+               - grid-cols: ปรับให้แสดงหลายคอลัมน์บนจอใหญ่ (1 -> 2 -> 3 -> 4)
+            */}
+            <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
                 
                 {loading ? (
-                    <div className="flex justify-center py-20">
-                        <Loader2 className="animate-spin text-[#d4af37]" size={40} />
+                    <div className="flex justify-center py-32">
+                        <Loader2 className="animate-spin text-[#d4af37]" size={48} />
                     </div>
                 ) : filteredLottos.length === 0 ? (
-                    <div className="text-center py-16 text-slate-500 opacity-60">
-                        <Search size={48} className="mx-auto mb-2 opacity-50" />
-                        <p>ไม่พบรายการที่ค้นหา</p>
+                    <div className="text-center py-20 text-slate-500 opacity-60">
+                        <Search size={64} className="mx-auto mb-4 opacity-50" />
+                        <p className="text-lg">ไม่พบรายการที่ค้นหา</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-6">
                         {filteredLottos.map((item) => {
                             const linkUrl = EXTERNAL_LINKS[item.code];
                             const hasLink = !!linkUrl;
@@ -271,14 +266,15 @@ export default function LottoResultLinks() {
                                         relative overflow-hidden rounded-2xl p-0.5
                                         bg-linear-to-br from-white/10 to-transparent
                                         hover:from-[#d4af37]/50 hover:to-transparent transition-all duration-300 group
+                                        transform hover:-translate-y-1
                                     `}
                                 >
-                                    <div className="bg-[#1e293b] rounded-[14px] p-3 h-full flex flex-col relative z-10">
+                                    <div className="bg-[#1e293b] rounded-[14px] p-4 h-full flex flex-col relative z-10">
                                         
                                         {/* Header: รูป + ชื่อ */}
-                                        <div className="flex justify-between items-start mb-3">
+                                        <div className="flex justify-between items-start mb-4">
                                             <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="relative w-10 h-10 rounded-full bg-slate-900 border border-slate-600 shadow-sm overflow-hidden shrink-0">
+                                                <div className="relative w-12 h-12 rounded-full bg-slate-900 border border-slate-600 shadow-md overflow-hidden shrink-0 group-hover:border-[#d4af37] transition-colors">
                                                     {item.img_url ? (
                                                         <img 
                                                             src={item.img_url} 
@@ -291,18 +287,17 @@ export default function LottoResultLinks() {
                                                         />
                                                     ) : null}
                                                     {/* Fallback Icon */}
-                                                    {/* ✅ แก้ไขจุด CSS Conflict: ถ้าไม่มีรูปให้แสดง flex ถ้ามีให้ซ่อน */}
                                                     <div className={`absolute inset-0 items-center justify-center bg-slate-800 text-slate-500 ${!item.img_url ? 'flex' : 'hidden'}`}>
-                                                        <Globe size={18} />
+                                                        <Globe size={20} />
                                                     </div>
                                                 </div>
 
                                                 <div className="min-w-0">
-                                                    <h3 className="font-bold text-slate-100 text-sm leading-tight group-hover:text-[#d4af37] transition-colors truncate pr-2">
+                                                    <h3 className="font-bold text-slate-100 text-base leading-tight group-hover:text-[#d4af37] transition-colors truncate pr-2">
                                                         {item.name}
                                                     </h3>
                                                     {item.code.includes('VIP') && (
-                                                        <span className="inline-block text-[9px] px-1.5 py-0.5 bg-linear-to-r from-amber-500 to-orange-500 rounded text-black font-bold mt-0.5">
+                                                        <span className="inline-block text-[10px] px-2 py-0.5 bg-linear-to-r from-amber-500 to-orange-500 rounded text-black font-extrabold mt-1 shadow-sm">
                                                             VIP
                                                         </span>
                                                     )}
@@ -314,30 +309,30 @@ export default function LottoResultLinks() {
                                                     href={ensureHttp(linkUrl)} 
                                                     target="_blank" 
                                                     rel="noopener noreferrer"
-                                                    className="text-slate-600 group-hover:text-white transition-colors"
+                                                    className="text-slate-500 group-hover:text-[#d4af37] transition-colors p-1"
                                                 >
-                                                    <ExternalLink size={16} />
+                                                    <ExternalLink size={20} />
                                                 </a>
                                             ) : (
-                                                <span className="text-slate-700 cursor-not-allowed">
-                                                    <Ban size={16} />
+                                                <span className="text-slate-700 cursor-not-allowed p-1">
+                                                    <Ban size={20} />
                                                 </span>
                                             )}
                                         </div>
 
                                         {/* Time Info */}
-                                        <div className="flex items-center justify-between text-xs bg-slate-900/50 rounded-lg p-2 mb-3 border border-slate-700/50">
+                                        <div className="flex items-center justify-between text-xs bg-slate-900/60 rounded-xl p-3 mb-4 border border-slate-700/50 gap-2">
                                             <div className="flex flex-col items-center flex-1 border-r border-slate-700/50 pr-2">
-                                                <span className="text-red-400 font-medium mb-0.5 flex items-center gap-1">
-                                                    <Clock size={10} /> ปิดรับ
+                                                <span className="text-red-400 font-medium mb-1 flex items-center gap-1.5">
+                                                    <Clock size={12} /> ปิดรับ
                                                 </span>
-                                                <span className="text-white font-mono">{item.close_time?.substring(0, 5) || '-'}</span>
+                                                <span className="text-white font-mono font-bold text-sm tracking-wide">{item.close_time?.substring(0, 5) || '-'}</span>
                                             </div>
                                             <div className="flex flex-col items-center flex-1 pl-2">
-                                                <span className="text-emerald-400 font-medium mb-0.5 flex items-center gap-1">
-                                                    <CheckCircle2 size={10} /> ผลออก
+                                                <span className="text-emerald-400 font-medium mb-1 flex items-center gap-1.5">
+                                                    <CheckCircle2 size={12} /> ผลออก
                                                 </span>
-                                                <span className="text-white font-mono">{item.result_time?.substring(0, 5) || '-'}</span>
+                                                <span className="text-white font-mono font-bold text-sm tracking-wide">{item.result_time?.substring(0, 5) || '-'}</span>
                                             </div>
                                         </div>
 
@@ -348,26 +343,26 @@ export default function LottoResultLinks() {
                                                 target="_blank" 
                                                 rel="noopener noreferrer"
                                                 className={`
-                                                    mt-auto w-full py-2 rounded-lg 
+                                                    mt-auto w-full py-2.5 rounded-xl
                                                     bg-linear-to-r from-slate-700 to-slate-800 
                                                     border border-slate-600
-                                                    text-slate-300 font-medium text-xs
+                                                    text-slate-300 font-bold text-sm
                                                     flex items-center justify-center gap-2
                                                     hover:bg-linear-to-r ${bgGradient}
-                                                    group-hover:text-white group-hover:border-transparent group-hover:font-bold
-                                                    transition-all duration-300 shadow-lg
+                                                    group-hover:text-white group-hover:border-transparent
+                                                    transition-all duration-300 shadow-lg group-hover:shadow-xl
                                                 `}
                                             >
                                                 <span>ไปที่หน้าผลรางวัล</span>
-                                                <ChevronRight size={14} />
+                                                <ChevronRight size={16} />
                                             </a>
                                         ) : (
                                             <button 
                                                 disabled
                                                 className="
-                                                    mt-auto w-full py-2 rounded-lg 
+                                                    mt-auto w-full py-2.5 rounded-xl
                                                     bg-slate-800/50 border border-slate-700
-                                                    text-slate-600 font-medium text-xs
+                                                    text-slate-600 font-medium text-sm
                                                     flex items-center justify-center gap-2 cursor-not-allowed
                                                 "
                                             >
