@@ -32,6 +32,7 @@ import LottoMarket from './pages/member/LottoMarket';
 import BettingRoom from './pages/member/BettingRoom';
 import MemberResults from './pages/member/MemberResults';
 import Profile from './pages/member/Profile';
+import LottoResultLinks from './pages/member/LottoResultLinks';
 
 // --- Logic การ Redirect ตาม Role ---
 const RedirectBasedOnRole = () => {
@@ -156,6 +157,7 @@ function App() {
               <Route path="history" element={<HistoryMain />} />
               <Route path="results" element={<MemberResults />} />
               <Route path="profile" element={<Profile />} />
+              <Route path="resultslink" element={<LottoResultLinks />} />
             </Route>
           </Route>
 

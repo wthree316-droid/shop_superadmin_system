@@ -74,6 +74,7 @@ export default function MemberLayout() {
     { path: '/play', label: 'ตลาดหวย', icon: Store },
     { path: '/history', label: 'โพยของฉัน', icon: List },
     { path: '/results', label: 'ผลรางวัล', icon: FileText },
+    { path: '/resultslink', label: 'ลิ้งค์ผลรางวัล', icon: FileText },
 
   ];
 

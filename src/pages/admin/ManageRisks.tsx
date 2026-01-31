@@ -281,14 +281,25 @@ const handleSaveRisks = async () => {
       if (!confirm(`⚠️ ยืนยันลบเลขอั้น "ทั้งหมด" ของวันที่ ${selectedDate}?`)) return;
 
       setIsLoading(true);
-      try {
-          const deletePromises = risks.map(r => client.delete(`/play/risks/${r.id}`));
-          await Promise.all(deletePromises);
-          setRisks([]);
-          toast.success("ล้างข้อมูลเรียบร้อย");
-      } catch (err) { toast.error("เกิดข้อผิดพลาด"); openRiskModal(selectedLotto); } 
-      finally { setIsLoading(false); }
-  };
+    try {
+        // ✅ แก้ไข: ยิง API ครั้งเดียว ลบเกลี้ยง
+        await client.delete(`/play/risks/clear`, {
+            params: {
+                lotto_id: selectedLotto.id,
+                date: selectedDate
+            }
+        });
+        
+        setRisks([]);
+        toast.success("ล้างข้อมูลเรียบร้อย");
+    } catch (err) { 
+        console.error(err);
+        toast.error("เกิดข้อผิดพลาดในการลบ"); 
+        openRiskModal(selectedLotto); // โหลดข้อมูลเดิมกลับมา
+    } finally { 
+        setIsLoading(false); 
+    }
+};
 
   const getRisksByType = () => {
       const grouped: Record<string, any[]> = {};

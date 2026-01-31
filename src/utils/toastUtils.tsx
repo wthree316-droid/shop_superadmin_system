@@ -99,7 +99,8 @@ export const alertAction = (
     message: string,
     title = 'แจ้งเตือน',
     type: 'success' | 'error' | 'info' = 'info',
-    buttonText = 'ตกลง'
+    buttonText = 'ตกลง',
+    onClose?: () => void // ✅ เพิ่มบรรทัดนี้ (รับฟังก์ชันเสริม)
 ) => {
     const config = {
         success: { 
@@ -134,7 +135,10 @@ export const alertAction = (
             }
             actions={
                 <button 
-                    onClick={() => toast.dismiss(t.id)}
+                    onClick={() => {
+                        toast.dismiss(t.id);
+                        if (onClose) onClose(); // ✅ สั่งทำงานฟังก์ชันที่ส่งมา (เช่น ดีดออก)
+                    }}
                     className={`w-full ${config.btn} px-4 py-2.5 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95`}
                 >
                     {buttonText}
@@ -142,7 +146,8 @@ export const alertAction = (
             }
         />
     ), {
-        duration: 3000, // ลดเวลาแสดงผลลงเล็กน้อยให้ดูกระชับ
-        position: 'top-center'
+        duration: Infinity, // ✅ เปลี่ยนเป็น Infinity เพื่อบังคับให้กดปุ่มเท่านั้นถึงจะหาย
+        position: 'top-center',
+        id: 'alert-toast' // ป้องกันการเด้งซ้ำ
     });
 };

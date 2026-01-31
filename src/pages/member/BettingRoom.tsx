@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as htmlToImage from 'html-to-image';
 import client from '../../api/client';
+
 import { v4 as uuidv4 } from 'uuid';
 import { 
   Trash2, Loader2, 
@@ -18,6 +19,8 @@ import { type CartItem } from '../../types/lotto';
 import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '../../types/lottoLogic';
 import { supabase } from '../../utils/supabaseClient.ts';
 import toast from 'react-hot-toast';
+// ✅ เพิ่ม confirmAction เข้ามา
+import { alertAction, confirmAction } from '../../utils/toastUtils';
 
 // --- Sub-Component: ตัวนับถอยหลัง ---
 
@@ -91,8 +94,6 @@ const getCloseDate = (lotto: any, now: Date) => {
   const closeDate = new Date(now);
   closeDate.setHours(cH, cM, 0, 0);
 
-  // 🔥 จุดที่แก้: ถ้าเลยเวลาปิดแล้ว ให้ปัดไปวันพรุ่งนี้ (หรือรอบถัดไป)
-  // เพื่อให้ระบบรู้ว่า "อ๋อ นี่คือรอบที่กำลังเปิดรับอยู่" ไม่ใช่รอบเก่าที่จบไปแล้ว
   if (now > closeDate) {
       closeDate.setDate(closeDate.getDate() + 1);
   }
@@ -140,6 +141,7 @@ export default function BettingRoom() {
     const priceBottomRef = useRef<HTMLInputElement>(null);
     const addButtonRef = useRef<HTMLButtonElement>(null);
     const billRef = useRef<HTMLDivElement>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Focus Helper
     const focusInput = () => {
@@ -201,7 +203,7 @@ export default function BettingRoom() {
     const [risks, setRisks] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [history, setHistory] = useState<any[]>([]);
-    const [lottoStats, setLottoStats] = useState<any[]>([]); // สถิติผลรางวัล
+    const [lottoStats, setLottoStats] = useState<any[]>([]);
 
     // Input States
     const [tab, setTab] = useState<'2' | '3' | '19' | 'run' | 'win'>('2');
@@ -219,10 +221,15 @@ export default function BettingRoom() {
     const [note, setNote] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // ✅ ใช้ useCallback เพื่อป้องกันการ re-render loop
+    // ✅ แก้ไข: ใช้ alertAction แทน alert()
     const handleTimeUp = useCallback(() => {
-        alert("⛔ หมดเวลาแทงแล้ว!\nระบบจะพาท่านกลับไปยังหน้าตลาด");
-        navigate('/play');
+        alertAction(
+            "หมดเวลาแทงแล้ว!\nระบบจะพาท่านกลับไปยังหน้าตลาด",
+            "⛔ หมดเวลา",
+            "error",
+            "ตกลง",
+            () => navigate('/play')
+        );
     }, [navigate]);
 
     const isItemClosed = (item: CartItem) => {
@@ -245,7 +252,6 @@ export default function BettingRoom() {
 
     const fetchLottoStats = async (lottoId: string) => {
         try {
-            // ดึงผลย้อนหลัง 5 งวด
             const res = await client.get(`/reward/history?lotto_type_id=${lottoId}&limit=5`);
             setLottoStats(res.data);
         } catch (err) { 
@@ -254,7 +260,6 @@ export default function BettingRoom() {
     };
 
     const fetchData = async () => {
-        // ✅ แก้ไข 1: ถ้าไม่มี ID ให้หยุดโหลดและ redirect (ป้องกันหมุนค้าง)
         if(!id) {
             setLoading(false);
             navigate('/play');
@@ -280,15 +285,11 @@ export default function BettingRoom() {
                 const now = new Date();
                 const realTargetDate = getCloseDate(currentLotto, now);
                 
-                // ถ้าคำนวณวันปิดได้ และเวลานั้นผ่านไปแล้วจริงๆ (ซึ่งปกติ getCloseDate จะคืนค่าอนาคตเสมอ ถ้าคืนค่าอดีตแปลว่าผิดปกติ)
                 if (realTargetDate && now > realTargetDate) {
                     toast.error("⛔ หวยนี้ปิดรับแล้ว (หมดเวลา)");
                     navigate('/play'); 
                     return;
                 }
-                
-                // (เสริม) ถ้าอยากเช็ค Open Time ด้วย ให้เพิ่ม Logic checkIsOpen แบบ LottoMarket ตรงนี้ก็ได้
-                // แต่เบื้องต้นแค่นี้ก็กันคนเข้าผิดเวลาได้ระดับหนึ่งแล้ว
             }
 
             setLotto(currentLotto);
@@ -298,7 +299,6 @@ export default function BettingRoom() {
                 applyThemeFromHex(currentLotto.theme_color);
             }
 
-            // ✅ โหลดข้อมูลเสริม (ทำพร้อมกันและรอให้เสร็จก่อนปิด Loading)
             await Promise.all([
                 fetchHistory(id),
                 fetchLottoStats(id)
@@ -309,63 +309,108 @@ export default function BettingRoom() {
             toast.error("ไม่พบข้อมูลหวย");
             navigate('/play');
         } finally {
-            setLoading(false); // ✅ ปิด Loading เสมอ
+            setLoading(false);
         }
     };
 
-    const handleCancelTicket = async (ticketId: string) => {
-        if(!confirm("ยืนยันการยกเลิกโพยนี้? เงินจะถูกคืนทันที")) return;
-        try {
-            await client.patch(`/play/tickets/${ticketId}/cancel`);
-            toast.success("ยกเลิกโพยสำเร็จ");
-            if (id) fetchHistory(id); 
-        } catch(err: any) {
-            toast.error(err.response?.data?.detail || 'ยกเลิกไม่สำเร็จ');
-        }
+    // ✅ แก้ไข: ใช้ confirmAction แทน confirm()
+    const handleCancelTicket = (ticketId: string) => {
+        confirmAction(
+            "ยืนยันการยกเลิกโพยนี้? เงินจะถูกคืนทันที",
+            async () => {
+                try {
+                    await client.patch(`/play/tickets/${ticketId}/cancel`);
+                    toast.success("ยกเลิกโพยสำเร็จ");
+                    if (id) fetchHistory(id); 
+                } catch(err: any) {
+                    toast.error(err.response?.data?.detail || 'ยกเลิกไม่สำเร็จ');
+                }
+            },
+            "ยืนยัน",
+            "ยกเลิก"
+        );
     };
 
     useEffect(() => {
         fetchData();
     }, [id]); 
 
-    // --- Realtime: ฟังการเปลี่ยนแปลงเลขอั้น/ปิดรับ ---
+    useEffect(() => {
+        if (!lotto || !lotto.close_time) return;
+
+        const checkTimeInterval = setInterval(() => {
+            const now = new Date();
+            const [cH, cM] = String(lotto.close_time).split(':').map(Number);
+            
+            const closeDeadline = new Date();
+            closeDeadline.setHours(cH, cM, 0, 0);
+
+            if (now > closeDeadline) {
+                clearInterval(checkTimeInterval);
+                
+                // ✅ ใช้ alertAction สำหรับ Auto Kick
+                alertAction(
+                    `หวย ${lotto.name} ปิดรับแทงแล้ว (ปิด ${lotto.close_time.substring(0, 5)} น.)`,
+                    '⛔ หมดเวลาแทง!',
+                    'error',
+                    'กลับหน้าตลาด',
+                    () => navigate('/play')
+                );
+            }
+        }, 1000); 
+
+        return () => clearInterval(checkTimeInterval);
+    }, [lotto, navigate]);    
+
     useEffect(() => {
         if (!id) return;
 
         console.log("🔌 Connecting to Realtime Risks for Room:", id);
 
         const channel = supabase
-            .channel(`realtime-number_risks-${id}`)
+            .channel(`realtime-risks-${id}`)
             .on(
                 'postgres_changes',
                 {
-                    event: '*', // ฟังทุกอย่าง (Insert, Update, Delete)
+                    event: '*',
                     schema: 'public',
                     table: 'number_risks',
-                    filter: `lotto_type_id=eq.${id}` // ✅ กรองเฉพาะหวยห้องนี้
+                    filter: `lotto_type_id=eq.${id}`
                 },
                 (payload) => {
                     console.log('⚡ มีการเปลี่ยนแปลงเลขอั้น:', payload);
 
-                    // 1. แจ้งเตือนลูกค้า
-                    toast('⚠️ มีการอัปเดตเลขอั้น/ปิดรับ กรุณาตรวจสอบ', {
-                        icon: '📢',
-                        style: { border: '1px solid #FFD700', color: '#B45309' },
-                        duration: 4000
-                    });
+                    if (debounceRef.current) {
+                        clearTimeout(debounceRef.current);
+                    }
 
-                    // 2. ดึงข้อมูลเลขอั้นใหม่ทันที! (Fetch ทับ State เดิม)
-                    // การทำแบบนี้จะทำให้ฟังก์ชัน isItemClosed ทำงานใหม่
-                    // และปุ่มตัวเลขบนหน้าจอจะเปลี่ยนสี (แดง/ขีดฆ่า) ทันทีโดยไม่ต้องรีเฟรช
-                    client.get(`/play/risks/${id}`).then(res => {
-                        setRisks(res.data);
-                    });
+                    debounceRef.current = setTimeout(() => {
+                        console.log("🔔 Debounce Triggered: อัปเดตข้อมูลจริง");
+
+                        toast('⚠️ มีการอัปเดตเลขอั้น/ปิดรับใหม่', {
+                            id: 'risk-update',
+                            icon: '🔄',
+                            style: {
+                                border: '1px solid #FFA500',
+                                padding: '16px',
+                                color: '#713200',
+                            },
+                            duration: 3000
+                        });
+
+                        client.get(`/play/risks/${id}`).then(res => {
+                            setRisks(res.data);
+                        });
+
+                        debounceRef.current = null;
+                    }, 1000);
                 }
             )
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
+            if (debounceRef.current) clearTimeout(debounceRef.current);
         };
     }, [id]);
 
@@ -373,8 +418,14 @@ export default function BettingRoom() {
     const handleTabChange = (newTab: typeof tab) => {
         const hasData = bufferNumbers.length > 0 || currentInput.length > 0;
         if (hasData && newTab !== tab) {
-            const confirmChange = window.confirm("⚠️ มีรายการเลขที่เลือกค้างอยู่\nยืนยันที่จะเปลี่ยนหรือไม่?");
-            if (!confirmChange) return; 
+            // ✅ แก้ไข: ใช้ confirmAction เปลี่ยน Tab
+            confirmAction(
+                "⚠️ มีรายการเลขที่เลือกค้างอยู่\nยืนยันที่จะเปลี่ยนหรือไม่?",
+                () => setTab(newTab),
+                "เปลี่ยน",
+                "ยกเลิก"
+            );
+            return; 
         }
         setTab(newTab);
     };
@@ -382,8 +433,14 @@ export default function BettingRoom() {
     const handleWinModeChange = (newMode: typeof winMode) => {
         const hasData = bufferNumbers.length > 0 || currentInput.length > 0;
         if (hasData && newMode !== winMode) {
-            const confirmChange = window.confirm("⚠️ ข้อมูลจะถูกล้าง ยืนยันหรือไม่?");
-            if (!confirmChange) return;
+            // ✅ แก้ไข: ใช้ confirmAction เปลี่ยนโหมดวิน
+            confirmAction(
+                "⚠️ ข้อมูลจะถูกล้าง ยืนยันหรือไม่?",
+                () => setWinMode(newMode),
+                "ยืนยัน",
+                "ยกเลิก"
+            );
+            return;
         }
         setWinMode(newMode);
     };
@@ -768,9 +825,7 @@ export default function BettingRoom() {
         return allGroups;
     };
 
-    // ฟังก์ชันคัดลอกเลขในกลุ่ม
     const copyGroupNumbers = (instances: any[]) => {
-        // ดึงเฉพาะตัวเลขออกมา ต่อกันด้วย , (เช่น 001,002,003)
         const textToCopy = instances.map(inst => inst.number).join(',');
         
         navigator.clipboard.writeText(textToCopy).then(() => {
@@ -794,7 +849,6 @@ export default function BettingRoom() {
             const payload = {
                 lotto_type_id: lotto.id,
                 note: note,
-                // ✅ ใช้ cart ทั้งก้อนส่งไปเลยครับ
                 items: cart.map(item => ({ 
                     number: item.number, 
                     bet_type: item.bet_type, 
