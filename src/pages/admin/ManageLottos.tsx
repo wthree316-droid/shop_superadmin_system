@@ -41,14 +41,11 @@ const getContrastTextColor = (hexColor: string) => {
     return brightness > 145 ? '#1e293b' : '#ffffff';
 };
 
-// ✅ [OPTIMIZED] ใส่ memo เพื่อป้องกันการ render ซ้ำซ้อนในแต่ละแถว
 const CategoryBadgeSelect = memo(({ currentId, categories, onChange, lottoId }: any) => {
-    // ใช้ useMemo หา activeCat เพื่อลดการ loop หาใหม่ทุกครั้ง
     const activeCat = useMemo(() => 
         categories.find((c: any) => c.id === currentId) || { label: 'ไม่ระบุ', color: '#94a3b8' },
     [categories, currentId]);
     
-    // Style Calculation
     const style = useMemo(() => {
         const isHex = activeCat.color?.startsWith('#');
         return isHex ? { backgroundColor: activeCat.color, color: getContrastTextColor(activeCat.color) } : {};
@@ -61,7 +58,6 @@ const CategoryBadgeSelect = memo(({ currentId, categories, onChange, lottoId }: 
         : `appearance-none pl-3 pr-8 py-1 rounded-full font-bold text-[10px] cursor-pointer ${activeCat.color} w-full text-center`;
     }, [activeCat.color]);
 
-    // Handler wrapper
     const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         onChange(lottoId, e.target.value);
     };
@@ -87,7 +83,7 @@ const CategoryBadgeSelect = memo(({ currentId, categories, onChange, lottoId }: 
     );
 });
 
-// --- Sub-Components (Memoized) ---
+// --- Sub-Components ---
 const LottoRow = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
     return (
         <tr className="hover:bg-blue-50/30 transition-colors group">
@@ -107,8 +103,6 @@ const LottoRow = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCatego
                 <div className="font-bold text-slate-800">{lotto.name}</div>
                 <div className="flex items-center gap-2 mt-1.5">
                     <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 rounded border border-slate-200">{lotto.code}</span>
-                    
-                    {/* ✅ [OPTIMIZED] ส่ง lotto.id และ function หลักไปเลย (ไม่ต้องสร้าง anonymous function ใหม่) */}
                     <CategoryBadgeSelect 
                         currentId={lotto.category} 
                         categories={categories}
@@ -159,7 +153,6 @@ const LottoCard = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCateg
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 rounded border border-slate-200">{lotto.code}</span>
                         </div>
-                        {/* Quick Select on Mobile */}
                         <div className="w-full">
                             <CategoryBadgeSelect 
                                 currentId={lotto.category} 
@@ -171,7 +164,6 @@ const LottoCard = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCateg
                     </div>
                 </div>
             </div>
-            
             <div className="grid grid-cols-2 gap-2 mb-3">
                 <div className="bg-red-50 p-2 rounded-lg text-center border border-red-100">
                     <span className="text-[10px] text-red-400 font-bold uppercase block">ปิดรับ</span>
@@ -254,7 +246,6 @@ const LottoListContainer = memo(({ lottos, categories, isLoading, onToggle, onEd
     );
 });
 
-// ... CustomNumberSelect & TimeSelector (เหมือนเดิม เพราะอยู่ใน Modal ไม่ส่งผลต่อตาราง) ...
 const CustomNumberSelect = memo(({ value, options, onChange }: any) => {
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -313,7 +304,6 @@ const TimeSelector = memo(({ label, value, onChange, colorClass, iconColorClass 
     );
 });
 
-// --- Main Component ---
 export default function ManageLottos() {
   const [lottos, setLottos] = useState<LottoType[]>([]);
   const [rateProfiles, setRateProfiles] = useState<RateProfile[]>([]);
@@ -337,7 +327,6 @@ export default function ManageLottos() {
   
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
  
-
   const [scheduleType, setScheduleType] = useState<'weekly' | 'monthly'>('weekly');
   const [monthlyDates, setMonthlyDates] = useState<number[]>([1, 16]);
 
@@ -360,9 +349,8 @@ export default function ManageLottos() {
       ]);
 
       const sortedLottos = resLottos.data.sort((a: any, b: any) => {
-        // ฟังก์ชันแปลงเวลาเป็น "คะแนน" เพื่อใช้เรียงลำดับ
         const getTimeScore = (timeStr: string | null) => {
-            if (!timeStr) return 9999; // ไม่มีเวลา เอาไว้ท้ายสุด
+            if (!timeStr) return 9999;
             const [h, m] = timeStr.split(':').map(Number);
             if (h < 5) return (h + 24) * 60 + m; 
             return h * 60 + m;
@@ -380,9 +368,21 @@ export default function ManageLottos() {
   };
 
   const toggleStatus = useCallback(async (id: string) => {
+    // 1. Optimistic Update (เปลี่ยนหน้าจอทันที)
     setLottos(prev => prev.map(l => l.id === id ? { ...l, is_active: !l.is_active } : l));
-    try { await client.patch(`/play/lottos/${id}/toggle`); } 
-    catch (err) { fetchData(); }
+    
+    try { 
+        // 2. เรียก API
+        await client.patch(`/play/lottos/${id}/toggle`); 
+        // 3. ✅ [NEW] เรียก fetchData ซ้ำเพื่อความชัวร์ (เพราะ Backend ล้าง Cache แล้ว)
+        // เพื่อป้องกันกรณี Optimistic พลาด หรือมี logic อื่นแทรกซ้อน
+        // แต่ไม่ต้องรอก็ได้ ให้มันทำงาน background
+        fetchData();
+    } 
+    catch (err) { 
+        // ถ้าพัง โหลดข้อมูลเดิมกลับมา
+        fetchData(); 
+    }
   }, []);
 
   const handleDelete = useCallback(async (id: string) => {
@@ -411,7 +411,7 @@ export default function ManageLottos() {
       img_url: lotto.img_url || '',
       rate_profile_id: lotto.rate_profile_id || '',
       open_days: lotto.open_days || [],
-      open_time: formatTimeForInput(lotto.open_time),
+      open_time: formatTimeForInput(lotto.open_time || '00:00:00'),
       close_time: formatTimeForInput(lotto.close_time || '15:30:00'),
       result_time: formatTimeForInput(lotto.result_time || '16:00:00'),
       api_link: lotto.api_link || ''
@@ -433,12 +433,9 @@ export default function ManageLottos() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      // ✅ [แก้ไข] สร้าง payload
       const payload = { 
           ...formData,
-          
           rate_profile_id: formData.rate_profile_id || null,
-
           rules: {
             schedule_type: scheduleType,
             close_dates: scheduleType === 'monthly' ? monthlyDates : undefined
@@ -447,7 +444,7 @@ export default function ManageLottos() {
       };
 
       if (editingId) {
-        await client.put(`/play/lottos/${editingId}`, payload); // ใช้ route ของ shop (เช็ค path ให้ตรงกับ backend)
+        await client.put(`/play/lottos/${editingId}`, payload);
         toast.success('แก้ไขหวยสำเร็จ!');
       } else {
         await client.post('/play/lottos', payload);
@@ -543,62 +540,44 @@ export default function ManageLottos() {
     }
   };
 
-  // ✅ [OPTIMIZED] 
   const handleQuickCategoryChange = useCallback(async (lottoId: string, newCategoryId: string) => {
-      // 1. หาข้อมูลหวยจาก State ที่มีอยู่แล้ว (ข้อมูลครบกว่าเรียก API get_detail)
       const currentLotto = lottos.find(l => l.id === lottoId);
       if (!currentLotto) return;
 
-      // 2. Optimistic Update: อัปเดตหน้าจอทันที
       setLottos(prev => prev.map(l => 
           l.id === lottoId ? { ...l, category: newCategoryId } : l
       ));
       
       try {
-        // 3. เตรียมข้อมูลสำหรับส่ง Update (Construct Payload)
-        // ต้องระบุฟิลด์ให้ชัดเจน เพื่อไม่ให้ส่งขยะ หรือส่งค่า null ที่ไม่ควรส่งไป
         const payload = {
             name: currentLotto.name,
             code: currentLotto.code,
-            category: newCategoryId, // <-- เปลี่ยนแค่ตรงนี้
+            category: newCategoryId, 
             img_url: currentLotto.img_url,
             rate_profile_id: currentLotto.rate_profile_id,
             api_link: currentLotto.api_link,
             is_active: currentLotto.is_active,
-            
-            // จัดการเรื่องเวลา
             open_time: formatTimeForInput(currentLotto.open_time),
             close_time: formatTimeForInput(currentLotto.close_time),
             result_time: formatTimeForInput(currentLotto.result_time),
-            
-            // จัดการเรื่อง Rules และ Days
             open_days: currentLotto.open_days,
             rules: currentLotto.rules
         };
 
-        // 4. ส่งข้อมูลไปบันทึก
         await client.put(`/play/lottos/${lottoId}`, payload);
         toast.success("เปลี่ยนหมวดหมู่สำเร็จ");
-
+        // fetchData(); // ไม่จำเป็นต้องโหลดใหม่ทั้งหมดถ้าไม่ต้องการ เพราะ Optimistic Update ทำงานแล้ว
       } catch (err: any) {
           console.error(err);
-          // ดึง Error จาก Backend มาแสดง (ถ้ามี)
           const msg = err.response?.data?.detail || "เปลี่ยนหมวดหมู่ไม่สำเร็จ";
-          
-          // ถ้าเป็น Error Validation (422) จะได้รู้ว่าขาดอะไร
-          if (err.response?.status === 422) {
-             console.log("Validation Error:", err.response.data);
-          }
-
           toast.error(msg);
-          fetchData(); // โหลดข้อมูลเดิมกลับมาถ้าพัง
+          fetchData(); 
       }
   }, [lottos]);
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-8 animate-fade-in">
-      
-      {/* --- Header --- */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
           <h2 className="text-xl md:text-2xl font-black text-slate-800 flex items-center gap-2 tracking-tight">
@@ -608,35 +587,22 @@ export default function ManageLottos() {
         </div>
         
         <div className="flex w-full md:w-auto gap-2 flex-wrap md:flex-nowrap">
-            <button
-              onClick={() => setShowCatModal(true)}
-              className="flex-1 md:flex-none bg-white text-slate-600 border border-slate-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-slate-50 active:scale-95 transition-all"
-            >
+            <button onClick={() => setShowCatModal(true)} className="flex-1 md:flex-none bg-white text-slate-600 border border-slate-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-slate-50 active:scale-95 transition-all">
               <FolderCog size={18} /> <span className="hidden sm:inline">หมวดหมู่</span>
             </button>
-
-            <button
-              onClick={() => setShowBulkModal(true)}
-              className="flex-1 md:flex-none bg-indigo-50 text-indigo-600 border border-indigo-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-indigo-100 active:scale-95 transition-all"
-            >
+            <button onClick={() => setShowBulkModal(true)} className="flex-1 md:flex-none bg-indigo-50 text-indigo-600 border border-indigo-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-indigo-100 active:scale-95 transition-all">
               <Coins size={18} /> <span className="hidden sm:inline">ปรับเรททั้งหมด</span><span className="sm:hidden">Set Rates</span>
             </button>
-            <button
-              onClick={handleImportTemplates}
-              className="flex-1 md:flex-none bg-white text-purple-600 border border-purple-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-purple-50 active:scale-95 transition-all"
-            >
+            <button onClick={handleImportTemplates} className="flex-1 md:flex-none bg-white text-purple-600 border border-purple-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-purple-50 active:scale-95 transition-all">
               <Database size={18} /> <span className="hidden sm:inline">ดึงจากระบบกลาง</span><span className="sm:hidden">Import</span>
             </button>
-            <button
-              onClick={openCreateModal}
-              className="flex-1 md:flex-none bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg hover:bg-black active:scale-95 transition-all"
-            >
+            <button onClick={openCreateModal} className="flex-1 md:flex-none bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg hover:bg-black active:scale-95 transition-all">
               <Plus size={20} /> เพิ่มหวยใหม่
             </button>
         </div>
       </div>
 
-      {/* --- Desktop Table View --- */}
+      {/* Desktop Table */}
       {!isMobile && (
         <LottoTableContainer 
             lottos={lottos}
@@ -648,7 +614,7 @@ export default function ManageLottos() {
         />
       )}
 
-      {/* --- Mobile Card View --- */}
+      {/* Mobile Card */}
       {isMobile && (
         <LottoListContainer 
             lottos={lottos}
@@ -661,11 +627,10 @@ export default function ManageLottos() {
         />
       )}
 
-      {/* --- Modal Form (Create/Edit Lotto) --- */}
+      {/* Modal Form */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95">
-            {/* Modal Header */}
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div>
                 <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
@@ -678,30 +643,18 @@ export default function ManageLottos() {
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="overflow-y-auto p-5 md:p-6 flex-1 bg-white custom-scrollbar">
               <form id="lotto-form" onSubmit={handleSaveLotto} className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-6">
                     <div className="w-full md:w-1/3 flex flex-col gap-3">
                         <div>
-                            <label className="text-sm font-bold text-slate-700 uppercase mb-2 block">
-                                รูปปก / ธงชาติ
-                            </label>
-                            
-                            {/* ใช้ FlagSelector เพียวๆ เลย เพราะมันมี preview ในตัวอยู่แล้ว */}
-                            <FlagSelector 
-                                currentUrl={formData.img_url} 
-                                onSelect={(url) => setFormData({ ...formData, img_url: url })} 
-                            />
+                            <label className="text-sm font-bold text-slate-700 uppercase mb-2 block">รูปปก / ธงชาติ</label>
+                            <FlagSelector currentUrl={formData.img_url} onSelect={(url) => setFormData({ ...formData, img_url: url })} />
                         </div>
-
-                        {/* Helper Text ย้ายมาอยู่ข้างล่างแบบคลีนๆ */}
                         <div className="bg-blue-50 text-blue-600 text-xs p-3 rounded-lg flex items-start gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-info shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
                             <span>แนะนำให้เลือกรูปจากคลังภาพของระบบ เพื่อความรวดเร็วและถูกต้องของการแสดงผล</span>
                         </div>
-
-                        <input type="hidden" value={formData.img_url} />
                     </div>
 
                     <div className="flex-1 space-y-4">
@@ -737,39 +690,18 @@ export default function ManageLottos() {
                 <div className="space-y-3">
                     <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Clock size={16} /> ตั้งค่าเวลา</h4>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-                        
-                        {/* ✅ 1. [เพิ่มใหม่] ส่วนเลือกรูปแบบ รายวัน vs รายเดือน */}
                         <div>
                             <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">รูปแบบการออกผล</label>
                             <div className="flex gap-2 p-1 bg-white border border-slate-200 rounded-lg w-fit">
-                                <button
-                                    type="button"
-                                    onClick={() => setScheduleType('weekly')}
-                                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${
-                                        scheduleType === 'weekly' ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                                    }`}
-                                >
-                                    รายสัปดาห์
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setScheduleType('monthly')}
-                                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${
-                                        scheduleType === 'monthly' ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                                    }`}
-                                >
-                                    รายเดือน (หวยไทย)
-                                </button>
+                                <button type="button" onClick={() => setScheduleType('weekly')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${scheduleType === 'weekly' ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>รายสัปดาห์</button>
+                                <button type="button" onClick={() => setScheduleType('monthly')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${scheduleType === 'monthly' ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>รายเดือน (หวยไทย)</button>
                             </div>
                         </div>
 
-                        {/* ✅ 2. ส่วนเลือกวัน (ใช้ Logic สลับการแสดงผล) */}
                         <div>
                             <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">
                                 {scheduleType === 'weekly' ? 'วันเปิดรับ' : 'เลือกวันที่หวยออก'}
                             </label>
-                            
-                            {/* กรณี 2.1: รายสัปดาห์ (โค้ดเดิมของคุณ 100%) */}
                             {scheduleType === 'weekly' && (
                                 <div className="flex gap-2 flex-wrap">
                                     {DAYS.map(d => (
@@ -777,19 +709,13 @@ export default function ManageLottos() {
                                             type="button" 
                                             key={d.id} 
                                             onClick={() => toggleDay(d.id)} 
-                                            className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
-                                                formData.open_days.includes(d.id) 
-                                                ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
-                                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
-                                            }`}
+                                            className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${formData.open_days.includes(d.id) ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}
                                         >
                                             {d.short}
                                         </button>
                                     ))}
                                 </div>
                             )}
-
-                            {/* กรณี 2.2: รายเดือน (เพิ่มใหม่ - สไตล์ปุ่มเหมือนเดิมแต่เป็นเลข 1-31) */}
                             {scheduleType === 'monthly' && (
                                 <div className="flex gap-2 flex-wrap max-h-30 overflow-y-auto custom-scrollbar p-1">
                                     {[...Array(31)].map((_, i) => {
@@ -799,15 +725,8 @@ export default function ManageLottos() {
                                             <button
                                                 type="button"
                                                 key={date}
-                                                onClick={() => {
-                                                    if (isSelected) setMonthlyDates(monthlyDates.filter(d => d !== date));
-                                                    else setMonthlyDates([...monthlyDates, date].sort((a,b)=>a-b));
-                                                }}
-                                                className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
-                                                    isSelected
-                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                                                    : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'
-                                                }`}
+                                                onClick={() => { if (isSelected) setMonthlyDates(monthlyDates.filter(d => d !== date)); else setMonthlyDates([...monthlyDates, date].sort((a,b)=>a-b)); }}
+                                                className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${isSelected ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'}`}
                                             >
                                                 {date}
                                             </button>
@@ -817,16 +736,13 @@ export default function ManageLottos() {
                             )}
                         </div>
 
-                        {/* ✅ 3. TimeSelectors (โค้ดเดิมของคุณ 100%) */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <TimeSelector label="เปิดรับ" value={formData.open_time} onChange={(v:string)=>setFormData({...formData, open_time: v})} colorClass="border-green-200" iconColorClass="text-green-600" />
                             <TimeSelector label="ปิดรับ" value={formData.close_time} onChange={(v:string)=>setFormData({...formData, close_time: v})} colorClass="border-red-200" iconColorClass="text-red-600" />
                             <TimeSelector label="ผลออก" value={formData.result_time} onChange={(v:string)=>setFormData({...formData, result_time: v})} colorClass="border-blue-200" iconColorClass="text-blue-600" />
                         </div>
-
                     </div>
                 </div>
-
               </form>
             </div>
 
@@ -840,144 +756,69 @@ export default function ManageLottos() {
         </div>
       )}
 
-      {/* ... (Categories and Bulk Modal remain unchanged) ... */}
+      {/* Categories & Bulk Modals (Unchanged) */}
        {showCatModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95">
-                {/* Header */}
                 <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-                    <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                        <FolderCog className="text-slate-600"/> จัดการหมวดหมู่
-                    </h3>
+                    <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><FolderCog className="text-slate-600"/> จัดการหมวดหมู่</h3>
                     <button onClick={() => setShowCatModal(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button>
                 </div>
-                
-                {/* Scrollable Body */}
                 <div className="overflow-y-auto p-6 flex-1 custom-scrollbar">
-                    
-                    {/* ส่วนฟอร์มสร้าง/แก้ไข */}
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1">
-                            {editingCatId ? <Pencil size={12}/> : <Plus size={12}/>} 
-                            {editingCatId ? 'แก้ไขหมวดหมู่' : 'สร้างใหม่'}
-                        </h4>
-                        
+                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1">{editingCatId ? <Pencil size={12}/> : <Plus size={12}/>} {editingCatId ? 'แก้ไขหมวดหมู่' : 'สร้างใหม่'}</h4>
                         <div className="space-y-3">
                             <div className="flex gap-3">
                                 <div className="flex-1">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">ชื่อหมวดหมู่</label>
-                                    <input 
-                                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-blue-500 outline-none text-sm"
-                                        placeholder="เช่น หวยต่างประเทศ"
-                                        value={catForm.label}
-                                        onChange={e => setCatForm({...catForm, label: e.target.value})}
-                                    />
+                                    <input className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-blue-500 outline-none text-sm" placeholder="เช่น หวยต่างประเทศ" value={catForm.label} onChange={e => setCatForm({...catForm, label: e.target.value})} />
                                 </div>
                                 <div className="w-20">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block text-center">ลำดับ</label>
-                                    <input 
-                                        type="number"
-                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-2 font-mono text-center text-slate-800 focus:border-blue-500 outline-none text-sm"
-                                        value={catForm.order_index}
-                                        onChange={e => setCatForm({...catForm, order_index: Number(e.target.value)})}
-                                    />
+                                    <input type="number" className="w-full bg-white border border-slate-200 rounded-lg px-2 py-2 font-mono text-center text-slate-800 focus:border-blue-500 outline-none text-sm" value={catForm.order_index} onChange={e => setCatForm({...catForm, order_index: Number(e.target.value)})} />
                                 </div>
                             </div>
-                            
                             <div>
                                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Palette size={10}/> สีหมวดหมู่</label>
                                 <div className="flex items-center gap-3">
                                     <div className="relative w-10 h-10 overflow-hidden rounded-lg shadow-sm border border-slate-200">
-                                        <input 
-                                            type="color"
-                                            className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer"
-                                            value={catForm.color.startsWith('#') ? catForm.color : '#2563EB'}
-                                            onChange={e => setCatForm({...catForm, color: e.target.value})}
-                                        />
+                                        <input type="color" className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer" value={catForm.color.startsWith('#') ? catForm.color : '#2563EB'} onChange={e => setCatForm({...catForm, color: e.target.value})} />
                                     </div>
                                     <div className="flex-1">
-                                        <input 
-                                            type="text" 
-                                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono uppercase text-slate-600 focus:border-blue-500 outline-none"
-                                            value={catForm.color}
-                                            onChange={e => setCatForm({...catForm, color: e.target.value})}
-                                            maxLength={7}
-                                        />
+                                        <input type="text" className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono uppercase text-slate-600 focus:border-blue-500 outline-none" value={catForm.color} onChange={e => setCatForm({...catForm, color: e.target.value})} maxLength={7} />
                                     </div>
                                 </div>
                             </div>
-
                             <div className="flex gap-2 pt-2">
-                                {editingCatId && (
-                                    <button 
-                                        onClick={cancelEditCategory}
-                                        className="flex-1 py-2 bg-white border border-slate-200 text-slate-500 rounded-lg font-bold text-xs hover:bg-slate-100"
-                                    >
-                                        ยกเลิก
-                                    </button>
-                                )}
-                                <button 
-                                    onClick={handleSaveCategory}
-                                    disabled={isCatSubmitting}
-                                    className="flex-1 py-2 bg-slate-800 text-white rounded-lg font-bold shadow-md hover:bg-black active:scale-95 transition-all flex justify-center items-center gap-2 text-xs"
-                                >
+                                {editingCatId && <button onClick={cancelEditCategory} className="flex-1 py-2 bg-white border border-slate-200 text-slate-500 rounded-lg font-bold text-xs hover:bg-slate-100">ยกเลิก</button>}
+                                <button onClick={handleSaveCategory} disabled={isCatSubmitting} className="flex-1 py-2 bg-slate-800 text-white rounded-lg font-bold shadow-md hover:bg-black active:scale-95 transition-all flex justify-center items-center gap-2 text-xs">
                                     {isCatSubmitting ? <Loader2 className="animate-spin" size={14} /> : (editingCatId ? <Save size={14} /> : <Plus size={14} />)} 
                                     {editingCatId ? 'บันทึกแก้ไข' : 'สร้างเลย'}
                                 </button>
                             </div>
                         </div>
                     </div>
-
-                    {/* ส่วนรายการที่มีอยู่ */}
                     <div>
-                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex justify-between items-center">
-                            <span>รายการที่มีอยู่ ({categories.length})</span>
-                        </h4>
-                        
+                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex justify-between items-center"><span>รายการที่มีอยู่ ({categories.length})</span></h4>
                         <div className="space-y-2">
                             {categories.length === 0 ? (
-                                <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 rounded-xl text-sm">
-                                    ยังไม่มีหมวดหมู่
-                                </div>
+                                <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 rounded-xl text-sm">ยังไม่มีหมวดหมู่</div>
                             ) : (
                                 categories.map((cat: any) => {
                                     const isSystem = !cat.shop_id; 
                                     const isHex = cat.color?.startsWith('#');
                                     const badgeStyle = isHex ? { backgroundColor: cat.color, color: getContrastTextColor(cat.color) } : {};
                                     const badgeClass = isHex ? 'px-2 py-1 rounded text-[10px] font-bold' : `px-2 py-1 rounded text-[10px] font-bold ${cat.color}`;
-
                                     return (
                                         <div key={cat.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-blue-200 transition-colors group">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold flex items-center justify-center border border-slate-200 shrink-0">
-                                                    {cat.order_index || 999}
-                                                </div>
-                                                
-                                                <span className={badgeClass} style={badgeStyle}>
-                                                    ตัวอย่าง
-                                                </span>
-                                                <span className="font-bold text-slate-700 text-sm flex items-center gap-2">
-                                                    {cat.label}
-                                                    {isSystem && <span className="bg-gray-100 text-gray-400 text-[9px] px-1.5 py-0.5 rounded border border-gray-200">SYSTEM</span>}
-                                                </span>
+                                                <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold flex items-center justify-center border border-slate-200 shrink-0">{cat.order_index || 999}</div>
+                                                <span className={badgeClass} style={badgeStyle}>ตัวอย่าง</span>
+                                                <span className="font-bold text-slate-700 text-sm flex items-center gap-2">{cat.label} {isSystem && <span className="bg-gray-100 text-gray-400 text-[9px] px-1.5 py-0.5 rounded border border-gray-200">SYSTEM</span>}</span>
                                             </div>
-                                            
                                             <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                <button 
-                                                    onClick={() => startEditCategory(cat)}
-                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                                                    title="แก้ไข"
-                                                >
-                                                    <Pencil size={14} />
-                                                </button>
-
-                                                <button 
-                                                    onClick={() => handleDeleteCategory(cat.id)}
-                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                                    title="ลบหมวดหมู่"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
+                                                <button onClick={() => startEditCategory(cat)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="แก้ไข"><Pencil size={14} /></button>
+                                                <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="ลบหมวดหมู่"><Trash2 size={14} /></button>
                                             </div>
                                         </div>
                                     );
@@ -985,7 +826,6 @@ export default function ManageLottos() {
                             )}
                         </div>
                     </div>
-
                 </div>
             </div>
         </div>
@@ -995,34 +835,18 @@ export default function ManageLottos() {
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
                 <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                    <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                        <Coins className="text-indigo-600"/> ตั้งค่าเรททั้งหมด
-                    </h3>
+                    <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Coins className="text-indigo-600"/> ตั้งค่าเรททั้งหมด</h3>
                     <button onClick={() => setShowBulkModal(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button>
                 </div>
-                
                 <div className="p-6">
-                    <p className="text-sm text-slate-500 mb-4">
-                        เลือกโปรไฟล์เรทราคาที่ต้องการนำไปใช้กับ <b>หวยทั้งหมด ({lottos.length} รายการ)</b> ที่มีอยู่ในระบบขณะนี้
-                    </p>
-                    
+                    <p className="text-sm text-slate-500 mb-4">เลือกโปรไฟล์เรทราคาที่ต้องการนำไปใช้กับ <b>หวยทั้งหมด ({lottos.length} รายการ)</b> ที่มีอยู่ในระบบขณะนี้</p>
                     <label className="text-xs font-bold text-slate-700 uppercase mb-2 block">เลือก Rate Profile</label>
-                    <select 
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-200 outline-none mb-6"
-                        value={bulkRateId}
-                        onChange={(e) => setBulkRateId(e.target.value)}
-                    >
+                    <select className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-200 outline-none mb-6" value={bulkRateId} onChange={(e) => setBulkRateId(e.target.value)}>
                         <option value="">-- กรุณาเลือก --</option>
                         {rateProfiles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                     </select>
-
-                    <button 
-                        onClick={handleBulkUpdate}
-                        disabled={isBulkUpdating || !bulkRateId}
-                        className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isBulkUpdating ? <Loader2 className="animate-spin" /> : <CheckCircle size={18} />} 
-                        {isBulkUpdating ? 'กำลังประมวลผล...' : 'ยืนยันการเปลี่ยนเรท'}
+                    <button onClick={handleBulkUpdate} disabled={isBulkUpdating || !bulkRateId} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isBulkUpdating ? <Loader2 className="animate-spin" /> : <CheckCircle size={18} />} {isBulkUpdating ? 'กำลังประมวลผล...' : 'ยืนยันการเปลี่ยนเรท'}
                     </button>
                 </div>
             </div>

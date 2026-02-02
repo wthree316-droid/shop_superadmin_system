@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import client from '../../api/client';
+import { supabase } from '../../utils/supabaseClient';
 import { 
   Sparkles, Search, Clock, Layers, 
   TrendingUp, Crown,  
@@ -11,30 +12,54 @@ import {
 // ✅ 1. ฟังก์ชันเช็คว่า "เปิดรับแทงอยู่หรือไม่?" (Real-time Check)
 // --------------------------------------------------------
 const checkIsOpen = (lotto: any, now: Date) => {
-    // ถ้าไม่มีเวลาปิด ถือว่าเปิดตลอด (หรือปิดถาวรแล้วแต่ข้อมูล)
+
+    if (lotto.is_active === false) return false;
     if (!lotto.close_time) return false;
 
-    // --- A. หวยรายเดือน (Monthly) ---
+    // -----------------------------------------------------
+    // 🅰️ กรณี: หวยรายเดือน (Monthly) เช่น หวยรัฐบาล
+    // -----------------------------------------------------
     if (lotto.rules?.schedule_type === 'monthly') {
         const closeDates = (lotto.rules.close_dates || [1, 16]).map(Number);
-        const today = now.getDate();
+        const todayDate = now.getDate(); // วันที่ 1-31
         
-        // ถ้า "วันนี้" เป็นวันหวยออก
-        if (closeDates.includes(today)) {
+        // ถ้า "วันนี้" เป็นวันหวยออก (เช่นวันที่ 1 หรือ 16)
+        if (closeDates.includes(todayDate)) {
              const [cH, cM] = lotto.close_time.split(':').map(Number);
              const closeToday = new Date(now);
              closeToday.setHours(cH, cM, 0, 0);
-             // ต้องยังไม่เลยเวลาปิด
+             
+             // ถ้าเวลายังไม่เกินเวลาปิด -> เปิด (True)
+             // ถ้าเกินแล้ว -> ปิด (False)
              return now <= closeToday;
         }
-        // วันอื่นเปิดตลอด (ซื้อล่วงหน้าได้)
+        
+        // วันอื่นๆ (วันที่ 2-15, 17-31) ให้เปิดตลอด 24 ชม. (เพื่อรับแทงล่วงหน้า)
         return true; 
+        
+        // ⚠️ หมายเหตุ: เรา return ตรงนี้เลย เพื่อ "ไม่ให้" ไปเช็ค จันทร์-อาทิตย์ ด้านล่าง
+        // เพราะหวยรัฐบาลออกได้ทุกวัน ไม่สนว่าจะเป็นวันหยุดหรือไม่
     }
 
-    // --- B. หวยรายวัน (Daily) ---
-    // ต้องเช็ค open_time ด้วย (ถ้ามี)
+    // -----------------------------------------------------
+    // 🅱️ กรณี: หวยรายวัน/หุ้น (เช็ควัน จันทร์-อาทิตย์)
+    // -----------------------------------------------------
+    // ถ้ามีข้อมูลวันเปิด และวันนี้ไม่อยู่ในรายการ -> ปิด
+    if (lotto.open_days && Array.isArray(lotto.open_days) && lotto.open_days.length > 0) {
+        const daysMap = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+        const currentDayStr = daysMap[now.getDay()];
+        
+        // ถ้าวันนี้ไม่อยู่ในลิสต์เปิดรับ -> ปิดเลย
+        if (!lotto.open_days.includes(currentDayStr)) {
+            return false; 
+        }
+    }
+
+    // -----------------------------------------------------
+    // 🕒 เช็คเวลา (สำหรับหวยรายวัน)
+    // -----------------------------------------------------
     if (!lotto.open_time) {
-        // ถ้าไม่ระบุเวลาเปิด ให้ดูแค่ว่าเลยเวลาปิดของวันนี้หรือยัง
+        // ถ้าไม่ระบุเวลาเปิด ให้ดูแค่ว่าเลยเวลาปิดหรือยัง
         const [cH, cM] = lotto.close_time.split(':').map(Number);
         const closeToday = new Date(now);
         closeToday.setHours(cH, cM, 0, 0);
@@ -47,10 +72,9 @@ const checkIsOpen = (lotto: any, now: Date) => {
     const closeStr = lotto.close_time.substring(0, 5);
 
     if (openStr < closeStr) {
-        // กรณีปกติ (08:00 - 15:30)
         return currentStr >= openStr && currentStr <= closeStr;
     } else {
-        // กรณีข้ามวัน (04:00 - 01:00)
+        // ข้ามวัน
         return currentStr >= openStr || currentStr <= closeStr;
     }
 };
@@ -77,7 +101,7 @@ const getCloseDate = (lotto: any, now: Date) => {
           if (d === currentDay) {
               const closeToday = new Date(now);
               closeToday.setHours(cH, cM, 0, 0);
-              if (now < closeToday) { targetDay = d; break; }
+              if (now <= closeToday) { targetDay = d; break; }
           }
       }
 
@@ -183,6 +207,29 @@ export default function LottoMarket() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('realtime-lottos-market')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'lotto_types' },
+        (payload) => {
+          const updatedLotto = payload.new;
+          // อัปเดตข้อมูลใน State ทันที
+          setLottos((prevLottos) => 
+            prevLottos.map((l) => 
+              l.id === updatedLotto.id ? { ...l, ...updatedLotto } : l
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const displayCategories = useMemo(() => {
       return [{ id: 'ALL', label: 'ทั้งหมด', color: 'bg-blue-600' }, ...categories];
   }, [categories]);
@@ -191,8 +238,8 @@ export default function LottoMarket() {
     const filtered = lottos.filter(l => {
       const catMatch = categoryId === 'ALL' || l.category === categoryId;
       const searchMatch = l.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const activeMatch = l.is_active;
-      return catMatch && searchMatch && activeMatch;
+      
+      return catMatch && searchMatch;
     });
 
     return filtered.sort((a, b) => {

@@ -9,22 +9,21 @@ const DAYS = [
   { id: 'WED', label: 'พุธ' }, { id: 'THU', label: 'พฤหัส' }, { id: 'FRI', label: 'ศุกร์' }, { id: 'SAT', label: 'เสาร์' },
 ];
 
+// ✅ แก้ไข: ตั้งค่าเริ่มต้นให้เปิดครบ 7 วัน (ป้องกัน user ลืมติ๊ก)
 const INITIAL_FORM_STATE = {
   name: '', 
   code: '', 
-  category: '', // เริ่มต้นเป็นค่าว่าง
+  category: '', 
   img_url: '',
   rate_profile_id: '', 
-  open_days: [] as string[],
+  open_days: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], // Default เปิดทุกวัน
   open_time: '00:00', 
   close_time: '15:30', 
   result_time: '16:00', 
   api_link: ''
 };
 
-// --- 2. Custom Components (Light/Gold Theme) ---
-
-// ตัวเลือกตัวเลข (Custom Dropdown)
+// --- Custom Components ---
 const CustomNumberSelect = ({ value, options, onChange }: any) => {
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -88,7 +87,6 @@ const CustomNumberSelect = ({ value, options, onChange }: any) => {
     );
 };
 
-// ตัวเลือกเวลา (HH:mm)
 const TimeSelector = ({ label, value, onChange, iconColorClass }: any) => {
     const [h, m] = (value || '00:00').split(':');
     const HOURS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
@@ -112,28 +110,22 @@ const TimeSelector = ({ label, value, onChange, iconColorClass }: any) => {
     );
 };
 
-// --- 3. Main Component ---
+// --- Main Component ---
 export default function ManageLottoTemplates() {
 
   const [lottos, setLottos] = useState<LottoType[]>([]);
   const [rateProfiles, setRateProfiles] = useState<RateProfile[]>([]);
-  
-  // ✅ เพิ่ม State สำหรับเก็บหมวดหมู่จาก DB
   const [categories, setCategories] = useState<any[]>([]);
 
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
-  // States
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+  const [scheduleType, setScheduleType] = useState('weekly'); 
+  const [monthlyDates, setMonthlyDates] = useState<number[]>([1, 16]);
 
-  const [scheduleType, setScheduleType] = useState('weekly'); // 'weekly' | 'monthly'
-  const [monthlyDates, setMonthlyDates] = useState<number[]>([1, 16]); // Default หวยไทย
-
-  // Load Data
   useEffect(() => {
     fetchData();
   }, []);
@@ -141,30 +133,25 @@ export default function ManageLottoTemplates() {
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      // ✅ ดึง Categories ด้วย
+      // ต้องมั่นใจว่า Backend มี Endpoint /play/lottos/templates แล้ว
       const [resLottos, resRates, resCats] = await Promise.all([
         client.get('/play/lottos/templates'), 
         client.get('/play/rates'),
         client.get('/play/categories') 
       ]);
+
       const sortedLottos = resLottos.data.sort((a: any, b: any) => {
-        // ฟังก์ชันแปลงเวลาเป็น "คะแนน" เพื่อใช้เรียงลำดับ
         const getTimeScore = (timeStr: string | null) => {
-            if (!timeStr) return 9999; // ไม่มีเวลา เอาไว้ท้ายสุด
+            if (!timeStr) return 9999;
             const [h, m] = timeStr.split(':').map(Number);
-            
-            // 🔥 Logic สำคัญ: ถ้าเวลาน้อยกว่า 05:00 (ตี 5) ให้ถือว่าเป็นของวันถัดไป (บวก 24 ชม.)
-            // ทำให้ 01:00 มีค่ามากกว่า 23:00 และไปอยู่ท้ายตาราง
             if (h < 5) return (h + 24) * 60 + m; 
-            
             return h * 60 + m;
         };
-
         const scoreA = getTimeScore(a.close_time);
         const scoreB = getTimeScore(b.close_time);
-
         return scoreA - scoreB;
     });
+
       setLottos(sortedLottos);
       setRateProfiles(resRates.data);
       setCategories(resCats.data);
@@ -180,20 +167,18 @@ export default function ManageLottoTemplates() {
     return timeStr.substring(0, 5);
   };
 
-  // Handlers
   const openCreateModal = () => {
     setEditingId(null);
     setFormData({
         ...INITIAL_FORM_STATE,
         category: categories.length > 0 ? categories[0].id : ''
     });
-    // ✅ [เพิ่มใหม่] Reset ค่าเมื่อสร้างใหม่
     setScheduleType('weekly');
     setMonthlyDates([1, 16]);
     setShowModal(true);
   };
 
-  const openEditModal = (lotto: any) => { // เปลี่ยน Type เป็น any ชั่วคราวเพื่อให้เข้าถึง rules ได้ง่าย
+  const openEditModal = (lotto: any) => {
     setEditingId(lotto.id);
     setFormData({
       name: lotto.name,
@@ -208,7 +193,6 @@ export default function ManageLottoTemplates() {
       api_link: lotto.api_link || ''
     });
 
-    // ✅ [เพิ่มใหม่] ดึงค่า config จาก rules มาใส่ State
     const rules = lotto.rules || {};
     if (rules.schedule_type === 'monthly') {
         setScheduleType('monthly');
@@ -225,11 +209,9 @@ export default function ManageLottoTemplates() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      // ✅ [แก้ไข] สร้าง payload ที่รวม rules เข้าไป
       const payload = { 
           ...formData, 
           rate_profile_id: formData.rate_profile_id || null, 
-          
           is_template: true,
           rules: {
             schedule_type: scheduleType,
@@ -239,8 +221,6 @@ export default function ManageLottoTemplates() {
       };
 
       if (editingId) {
-        // ต้องส่ง rules เดิมไปด้วยไหม? ถ้าต้องการ merge ให้ดึง lottos.find มาก่อน
-        // แต่ถ้าแม่แบบปกติ rules ไม่ซับซ้อน ทับไปเลยก็ได้ครับ
         await client.put(`/play/lottos/${editingId}`, payload);
         alert('แก้ไขแม่แบบสำเร็จ!');
       } else {
@@ -275,7 +255,7 @@ export default function ManageLottoTemplates() {
   return (
     <div className="max-w-7xl mx-auto animate-fade-in pb-12">
       
-      {/* --- Header Section --- */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
           <h2 className="text-3xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
@@ -297,7 +277,7 @@ export default function ManageLottoTemplates() {
         </button>
       </div>
 
-      {/* --- Table Card --- */}
+      {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
         {isLoading ? (
           <div className="p-20 text-center text-slate-400 flex flex-col items-center">
@@ -342,7 +322,6 @@ export default function ManageLottoTemplates() {
                         <div className="text-xs font-mono text-amber-600 mt-1 bg-amber-50 px-2 py-0.5 rounded-md inline-block border border-amber-100">{lotto.code}</div>
                     </td>
                     <td className="p-4 text-center">
-                        {/* ✅ ค้นหาชื่อหมวดหมู่จาก State categories */}
                         <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold border border-gray-200">
                            {categories.find(c => c.id === lotto.category)?.label || 'ไม่ระบุ'}
                         </span>
@@ -354,18 +333,10 @@ export default function ManageLottoTemplates() {
                     </td>
                     <td className="p-4 text-center">
                         <div className="flex justify-center gap-2">
-                            <button 
-                                onClick={() => openEditModal(lotto)} 
-                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="แก้ไข"
-                            >
+                            <button onClick={() => openEditModal(lotto)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="แก้ไข">
                                 <Pencil size={18} />
                             </button>
-                            <button 
-                                onClick={() => handleDelete(lotto.id)} 
-                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="ลบ"
-                            >
+                            <button onClick={() => handleDelete(lotto.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="ลบ">
                                 <Trash2 size={18} />
                             </button>
                         </div>
@@ -386,11 +357,10 @@ export default function ManageLottoTemplates() {
         )}
       </div>
 
-      {/* --- Modal Form --- */}
+      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] text-slate-800 animate-in zoom-in-95 duration-200">
-                {/* Modal Header */}
                 <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
                     <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                         {editingId ? <Pencil size={20} className="text-blue-500"/> : <Plus size={20} className="text-amber-500"/>} 
@@ -401,75 +371,40 @@ export default function ManageLottoTemplates() {
                     </button>
                 </div>
                 
-                {/* Modal Body */}
                 <div className="overflow-y-auto p-6 flex-1 custom-scrollbar">
                     <form id="lotto-form" onSubmit={handleSaveLotto} className="space-y-6">
                          
-                         {/* Top Section: Image & Basic Info */}
                          <div className="flex flex-col md:flex-row gap-6">
                             <div className="w-full md:w-1/3 flex flex-col gap-3">
                                 <div>
-                                    <label className="text-sm font-bold text-slate-700 uppercase mb-2 block">
-                                        รูปปก / ธงชาติ
-                                    </label>
-                                    
-                                    {/* ใช้ FlagSelector เพียวๆ เลย เพราะมันมี preview ในตัวอยู่แล้ว */}
-                                    <FlagSelector 
-                                        currentUrl={formData.img_url} 
-                                        onSelect={(url) => setFormData({ ...formData, img_url: url })} 
-                                    />
+                                    <label className="text-sm font-bold text-slate-700 uppercase mb-2 block">รูปปก / ธงชาติ</label>
+                                    <FlagSelector currentUrl={formData.img_url} onSelect={(url) => setFormData({ ...formData, img_url: url })} />
                                 </div>
-
-                                {/* Helper Text ย้ายมาอยู่ข้างล่างแบบคลีนๆ */}
                                 <div className="bg-blue-50 text-blue-600 text-xs p-3 rounded-lg flex items-start gap-2">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-info shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                                    <span>แนะนำให้เลือกรูปจากคลังภาพของระบบ เพื่อความรวดเร็วและถูกต้องของการแสดงผล</span>
+                                    <span>แนะนำให้เลือกรูปจากคลังภาพเพื่อความรวดเร็ว</span>
                                 </div>
-
-                                <input type="hidden" value={formData.img_url} />
                             </div>
                             
-                            {/* Text Inputs */}
                             <div className="flex-1 space-y-4">
                                 <div>
                                     <label className="block text-sm font-bold mb-1 text-gray-700">ชื่อหวย <span className="text-red-500">*</span></label>
-                                    <input 
-                                        className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none transition-all placeholder-gray-400" 
-                                        placeholder="เช่น หวยรัฐบาลไทย"
-                                        value={formData.name || ''} 
-                                        onChange={e => setFormData({...formData, name: e.target.value})} 
-                                        required 
-                                    />
+                                    <input required className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none transition-all placeholder-gray-400" placeholder="เช่น หวยรัฐบาลไทย" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold mb-1 text-gray-700">รหัส (Code) <span className="text-red-500">*</span></label>
-                                    <input 
-                                        className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 font-mono focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none uppercase placeholder-gray-400" 
-                                        placeholder="EX: THAI"
-                                        value={formData.code || ''} 
-                                        onChange={e => setFormData({...formData, code: e.target.value})} 
-                                        required 
-                                    />
+                                    <input required className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 font-mono focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none uppercase placeholder-gray-400" placeholder="EX: THAI" value={formData.code || ''} onChange={e => setFormData({...formData, code: e.target.value})} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold mb-1 text-gray-700">หมวดหมู่</label>
-                                    {/* ✅ ใช้ Categories จาก Database */}
-                                    <select 
-                                        className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none"
-                                        value={formData.category}
-                                        onChange={e => setFormData({...formData, category: e.target.value})}
-                                    >
+                                    <select className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
                                         <option value="">-- เลือกหมวดหมู่ --</option>
                                         {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                                     </select>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold mb-1 text-amber-600">เรทราคาเริ่มต้น</label>
-                                    <select 
-                                        className="w-full bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-amber-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none font-bold"
-                                        value={formData.rate_profile_id || ''} 
-                                        onChange={e => setFormData({...formData, rate_profile_id: e.target.value})}
-                                    >
+                                    <select className="w-full bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-amber-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none font-bold" value={formData.rate_profile_id || ''} onChange={e => setFormData({...formData, rate_profile_id: e.target.value})}>
                                         <option value="">-- เลือกเรทราคา --</option>
                                         {rateProfiles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                                     </select>
@@ -479,39 +414,26 @@ export default function ManageLottoTemplates() {
 
                          <div className="h-px bg-gray-100 my-4" />
 
-                         {/* Time Settings */}
                          <div className="space-y-4">
                             <h4 className="font-bold text-gray-800 flex items-center gap-2">
                                 <Clock size={18} className="text-amber-500" /> ตั้งค่าเวลา (ค่าเริ่มต้น)
                             </h4>
                             <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-200 space-y-4">
                                 
-                                {/* ✅ [เพิ่มใหม่] ส่วนเลือกรูปแบบ รายวัน vs รายเดือน */}
                                 <div>
                                     <label className="block text-xs font-bold mb-2 text-gray-500 uppercase tracking-wider">รูปแบบการออกผล</label>
                                     <div className="flex gap-4 mb-4">
                                         <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-lg border border-gray-200 hover:border-amber-400 transition-colors">
-                                            <input 
-                                                type="radio" 
-                                                className="w-4 h-4 text-amber-500 focus:ring-amber-500"
-                                                checked={scheduleType === 'weekly'} 
-                                                onChange={() => setScheduleType('weekly')}
-                                            />
+                                            <input type="radio" className="w-4 h-4 text-amber-500 focus:ring-amber-500" checked={scheduleType === 'weekly'} onChange={() => setScheduleType('weekly')} />
                                             <span className="text-sm font-bold text-slate-700">รายวัน / สัปดาห์</span>
                                         </label>
                                         <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-lg border border-gray-200 hover:border-amber-400 transition-colors">
-                                            <input 
-                                                type="radio" 
-                                                className="w-4 h-4 text-amber-500 focus:ring-amber-500"
-                                                checked={scheduleType === 'monthly'} 
-                                                onChange={() => setScheduleType('monthly')}
-                                            />
+                                            <input type="radio" className="w-4 h-4 text-amber-500 focus:ring-amber-500" checked={scheduleType === 'monthly'} onChange={() => setScheduleType('monthly')} />
                                             <span className="text-sm font-bold text-slate-700">ระบุวันที่ (เช่น หวยไทย)</span>
                                         </label>
                                     </div>
                                 </div>
 
-                                {/* ✅ Case 1: เลือกแบบ Weekly (แสดงปุ่ม จ-อา เดิม) */}
                                 {scheduleType === 'weekly' && (
                                     <div className="animate-in fade-in slide-in-from-top-2">
                                         <label className="block text-xs font-bold mb-2 text-gray-500 uppercase tracking-wider">วันเปิดรับ</label>
@@ -521,11 +443,7 @@ export default function ManageLottoTemplates() {
                                                     type="button" 
                                                     key={d.id} 
                                                     onClick={() => toggleDay(d.id)}
-                                                    className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
-                                                        formData.open_days.includes(d.id) 
-                                                        ? 'bg-amber-500 text-white border-amber-500 shadow-md scale-105' 
-                                                        : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400 hover:text-gray-600'
-                                                    }`}
+                                                    className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${formData.open_days.includes(d.id) ? 'bg-amber-500 text-white border-amber-500 shadow-md scale-105' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400 hover:text-gray-600'}`}
                                                 >
                                                     {d.label[0]}
                                                 </button>
@@ -534,7 +452,6 @@ export default function ManageLottoTemplates() {
                                     </div>
                                 )}
 
-                                {/* ✅ Case 2: เลือกแบบ Monthly (แสดงปุ่มตัวเลข 1-31) */}
                                 {scheduleType === 'monthly' && (
                                     <div className="animate-in fade-in slide-in-from-top-2">
                                         <label className="block text-xs font-bold mb-2 text-gray-500 uppercase tracking-wider">เลือกวันที่หวยออก</label>
@@ -550,11 +467,7 @@ export default function ManageLottoTemplates() {
                                                             if (isSelected) setMonthlyDates(monthlyDates.filter(d => d !== date));
                                                             else setMonthlyDates([...monthlyDates, date].sort((a,b)=>a-b));
                                                         }}
-                                                        className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${
-                                                            isSelected 
-                                                            ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105' 
-                                                            : 'bg-white text-gray-400 border-gray-200 hover:border-blue-400 hover:text-blue-600'
-                                                        }`}
+                                                        className={`w-9 h-9 rounded-lg text-xs font-bold border transition-all ${isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105' : 'bg-white text-gray-400 border-gray-200 hover:border-blue-400 hover:text-blue-600'}`}
                                                     >
                                                         {date}
                                                     </button>
@@ -565,24 +478,9 @@ export default function ManageLottoTemplates() {
                                     </div>
                                 )}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <TimeSelector 
-                                        label="เวลาเปิด" 
-                                        value={formData.open_time} 
-                                        onChange={(v:string)=>setFormData({...formData, open_time: v})} 
-                                        iconColorClass="text-emerald-600" 
-                                    />
-                                    <TimeSelector 
-                                        label="เวลาปิด" 
-                                        value={formData.close_time} 
-                                        onChange={(v:string)=>setFormData({...formData, close_time: v})} 
-                                        iconColorClass="text-rose-600" 
-                                    />
-                                    <TimeSelector 
-                                        label="ผลออก" 
-                                        value={formData.result_time} 
-                                        onChange={(v:string)=>setFormData({...formData, result_time: v})} 
-                                        iconColorClass="text-blue-600" 
-                                    />
+                                    <TimeSelector label="เวลาเปิด" value={formData.open_time} onChange={(v:string)=>setFormData({...formData, open_time: v})} iconColorClass="text-emerald-600" />
+                                    <TimeSelector label="เวลาปิด" value={formData.close_time} onChange={(v:string)=>setFormData({...formData, close_time: v})} iconColorClass="text-rose-600" />
+                                    <TimeSelector label="ผลออก" value={formData.result_time} onChange={(v:string)=>setFormData({...formData, result_time: v})} iconColorClass="text-blue-600" />
                                 </div>
                             </div>
                          </div>
@@ -590,22 +488,10 @@ export default function ManageLottoTemplates() {
                     </form>
                 </div>
 
-                {/* Modal Footer */}
                 <div className="p-5 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex justify-end gap-3">
-                    <button 
-                        onClick={() => setShowModal(false)} 
-                        className="px-4 py-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition-colors font-bold"
-                    >
-                        ยกเลิก
-                    </button>
-                    <button 
-                        type="submit" 
-                        form="lotto-form" 
-                        disabled={isSubmitting}
-                        className="px-6 py-2 bg-linear-to-r from-yellow-400 to-amber-500 text-white rounded-lg font-bold shadow-lg shadow-amber-200 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />} 
-                        บันทึกข้อมูล
+                    <button onClick={() => setShowModal(false)} className="px-4 py-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition-colors font-bold">ยกเลิก</button>
+                    <button type="submit" form="lotto-form" disabled={isSubmitting} className="px-6 py-2 bg-linear-to-r from-yellow-400 to-amber-500 text-white rounded-lg font-bold shadow-lg shadow-amber-200 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />} บันทึกข้อมูล
                     </button>
                 </div>
            </div>

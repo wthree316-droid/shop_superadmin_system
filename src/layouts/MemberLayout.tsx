@@ -2,19 +2,21 @@ import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-  Store, List, FileText, LogOut, Wallet, Menu, X, User, Bell, ChevronRight, Crown, Link as LinkIcon 
+  Store, List, FileText, LogOut, Wallet, Menu, X, User, Bell, ChevronRight,  Crown, Link as LinkIcon 
 } from 'lucide-react';
 
 import { useShop } from '../contexts/ShopContext';
 import client from '../api/client'; 
 import { supabase } from '../utils/supabaseClient'; 
 import toast from 'react-hot-toast';
-
+import RulesModal from '../components/modals/RulesModal';
 
 export default function MemberLayout() {
   const { logout, user } = useAuth();
   const { shop, isLoading } = useShop(); 
-  
+
+  const [showRules, setShowRules] = useState(false);
+
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -214,26 +216,41 @@ export default function MemberLayout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
-        <header className="h-16 flex items-center justify-between px-4 md:px-8 bg-white/80 backdrop-blur-xl border-b border-white/60 sticky top-0 z-20">
-           <div className="flex items-center gap-3">
-               <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 rounded-lg active:scale-95 transition-transform" style={{ color: themeColor }}>
-                 <Menu size={24} />
-               </button>
-               <div>
-                  <h2 className="font-bold text-slate-800 text-base md:text-lg flex items-center gap-2">
-                   ยินดีต้อนรับ, <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-700 to-indigo-600">{user?.full_name?.split(' ')[0] || user?.username}</span> 👋
-                  </h2>
-               </div>
-           </div>
-           <div className="flex items-center gap-3">
-              <button className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 hover:text-[#d4af37] hover:border-[#d4af37] transition-all relative">
-                  <Bell size={18} />
-                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-              </button>
-              <div className="w-9 h-9 rounded-full bg-linear-to-tr from-[#d4af37] to-[#8a6e28] p-0.5">
-                  <div className="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden"><User size={18} className="text-slate-700" /></div>
-              </div>
+        <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
+            <header className="h-16 flex items-center justify-between px-4 md:px-8 bg-white/80 backdrop-blur-xl border-b border-white/60 sticky top-0 z-20">
+            <div className="flex items-center gap-3">
+                <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 rounded-lg active:scale-95 transition-transform" style={{ color: themeColor }}>
+                    <Menu size={24} />
+                </button>
+                <div>
+                    <h2 className="font-bold text-slate-800 text-base md:text-lg flex items-center gap-2">
+                        ยินดีต้อนรับ, <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-700 to-indigo-600">{user?.full_name?.split(' ')[0] || user?.username}</span> 👋
+                    </h2>
+                </div>
+            </div>
+            <div className="flex items-center gap-3">
+
+                <button 
+                    onClick={() => setShowRules(true)}
+                    className="hidden md:flex items-center gap-2 px-3 py-2 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-800 rounded-lg transition-all">
+                    <FileText size={18} />
+                    <span>กติกา</span>
+                </button>
+
+                {/* ปุ่มแบบ Icon อย่างเดียวสำหรับมือถือ */}
+                <button 
+                    onClick={() => setShowRules(true)}
+                    className="md:hidden p-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all">
+                    <FileText size={20} />
+                </button>
+                <button className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 hover:text-[#d4af37] hover:border-[#d4af37] transition-all relative">
+                    <Bell size={18} />
+                    <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                </button>
+
+                <div className="w-9 h-9 rounded-full bg-linear-to-tr from-[#d4af37] to-[#8a6e28] p-0.5">
+                    <div className="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden"><User size={18} className="text-slate-700" /></div>
+                </div>
            </div>
         </header>
 
@@ -260,6 +277,7 @@ export default function MemberLayout() {
             </Link>
         </div>
       </main>
+      <RulesModal isOpen={showRules} onClose={() => setShowRules(false)} />
     </div>
   );
 }

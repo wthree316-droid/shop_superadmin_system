@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as htmlToImage from 'html-to-image';
 import client from '../../api/client';
@@ -13,20 +13,26 @@ import {
   History, 
   FileText,
   Camera,
-  Check, Copy
+  Check, Copy,
+  Clock // ✅ เพิ่ม icon Clock
 } from 'lucide-react';
 import { type CartItem } from '../../types/lotto';
 import { generateNumbers, generateSpecialNumbers, generateReturnNumbers } from '../../types/lottoLogic';
 import { supabase } from '../../utils/supabaseClient.ts';
 import toast from 'react-hot-toast';
-// ✅ เพิ่ม confirmAction เข้ามา
 import { alertAction, confirmAction } from '../../utils/toastUtils';
 
-// --- Sub-Component: ตัวนับถอยหลัง ---
+// --- Helper Functions ---
+
+// ✅ 1. เพิ่มฟังก์ชันหาวันปัจจุบัน (SUN, MON, ...)
+const getTodayShort = () => {
+  const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  return days[new Date().getDay()];
+};
 
 const CountDownTimer = ({ targetDate, onTimeout }: { targetDate: Date | null; onTimeout: () => void }) => {
     const [timeLeft, setTimeLeft] = useState('00:00:00');
-
+    
     useEffect(() => {
         if (!targetDate) return;
 
@@ -221,7 +227,7 @@ export default function BettingRoom() {
     const [note, setNote] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // ✅ แก้ไข: ใช้ alertAction แทน alert()
+    // Alert Action
     const handleTimeUp = useCallback(() => {
         alertAction(
             "หมดเวลาแทงแล้ว!\nระบบจะพาท่านกลับไปยังหน้าตลาด",
@@ -231,6 +237,49 @@ export default function BettingRoom() {
             () => navigate('/play')
         );
     }, [navigate]);
+
+    useEffect(() => {
+        if (!id) return;
+
+        const statusChannel = supabase
+            .channel(`realtime-lotto-status-${id}`)
+            .on(
+                'postgres_changes',
+                { 
+                    event: 'UPDATE', 
+                    schema: 'public', 
+                    table: 'lotto_types', 
+                    filter: `id=eq.${id}` 
+                },
+                (payload) => {
+                    const updated = payload.new;
+                    
+                    // อัปเดต State
+                    setLotto((prev: any) => ({ ...prev, is_active: updated.is_active }));
+                    
+                    // 🔴 ถ้าแอดมินกดปิด (is_active = false) -> ดีดออกทันที!
+                    if (!updated.is_active) {
+                        // เรียกใช้ฟังก์ชันดีดออกได้เลย (หรือจะเขียน alertAction ตรงนี้ก็ได้)
+                        alertAction(
+                            "แอดมินทำการปิดรับแทงหวยนี้แล้ว",
+                            "⛔ ปิดรับแทง",
+                            "error",
+                            "กลับหน้าตลาด",
+                            () => navigate('/play')
+                        );
+                    } 
+                    // 🟢 ถ้าเปิด
+                    else {
+                        toast.success("✅ หวยเปิดรับแทงแล้ว");
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(statusChannel);
+        };
+    }, [id, navigate]); // ใส่ dependency ให้ครบ
 
     const isItemClosed = (item: CartItem) => {
         return risks.some(r => 
@@ -275,10 +324,10 @@ export default function BettingRoom() {
 
             const currentLotto = resLotto.data;
 
+            // ตรวจสอบสถานะ active (สำหรับ Redirect) แต่เดี๋ยวเราจะมีหน้า Block UI ด้วย
             if (!currentLotto.is_active) {
-                toast.error("⛔ หวยนี้ปิดรับแทงชั่วคราว");
-                navigate('/play'); 
-                return;
+                // toast.error("⛔ หวยนี้ปิดรับแทงชั่วคราว");
+                // ไม่ต้อง Redirect ที่นี่ ปล่อยให้ไป Render หน้าปิด
             }
 
             if (currentLotto.close_time) {
@@ -313,7 +362,6 @@ export default function BettingRoom() {
         }
     };
 
-    // ✅ แก้ไข: ใช้ confirmAction แทน confirm()
     const handleCancelTicket = (ticketId: string) => {
         confirmAction(
             "ยืนยันการยกเลิกโพยนี้? เงินจะถูกคืนทันที",
@@ -333,39 +381,10 @@ export default function BettingRoom() {
 
     useEffect(() => {
         fetchData();
-    }, [id]); 
-
-    useEffect(() => {
-        if (!lotto || !lotto.close_time) return;
-
-        const checkTimeInterval = setInterval(() => {
-            const now = new Date();
-            const [cH, cM] = String(lotto.close_time).split(':').map(Number);
-            
-            const closeDeadline = new Date();
-            closeDeadline.setHours(cH, cM, 0, 0);
-
-            if (now > closeDeadline) {
-                clearInterval(checkTimeInterval);
-                
-                // ✅ ใช้ alertAction สำหรับ Auto Kick
-                alertAction(
-                    `หวย ${lotto.name} ปิดรับแทงแล้ว (ปิด ${lotto.close_time.substring(0, 5)} น.)`,
-                    '⛔ หมดเวลาแทง!',
-                    'error',
-                    'กลับหน้าตลาด',
-                    () => navigate('/play')
-                );
-            }
-        }, 1000); 
-
-        return () => clearInterval(checkTimeInterval);
-    }, [lotto, navigate]);    
+    }, [id]);  
 
     useEffect(() => {
         if (!id) return;
-
-        console.log("🔌 Connecting to Realtime Risks for Room:", id);
 
         const channel = supabase
             .channel(`realtime-risks-${id}`)
@@ -377,16 +396,12 @@ export default function BettingRoom() {
                     table: 'number_risks',
                     filter: `lotto_type_id=eq.${id}`
                 },
-                (payload) => {
-                    console.log('⚡ มีการเปลี่ยนแปลงเลขอั้น:', payload);
-
+                (_payload) => {
                     if (debounceRef.current) {
                         clearTimeout(debounceRef.current);
                     }
 
                     debounceRef.current = setTimeout(() => {
-                        console.log("🔔 Debounce Triggered: อัปเดตข้อมูลจริง");
-
                         toast('⚠️ มีการอัปเดตเลขอั้น/ปิดรับใหม่', {
                             id: 'risk-update',
                             icon: '🔄',
@@ -414,11 +429,9 @@ export default function BettingRoom() {
         };
     }, [id]);
 
-    
     const handleTabChange = (newTab: typeof tab) => {
         const hasData = bufferNumbers.length > 0 || currentInput.length > 0;
         if (hasData && newTab !== tab) {
-            // ✅ แก้ไข: ใช้ confirmAction เปลี่ยน Tab
             confirmAction(
                 "⚠️ มีรายการเลขที่เลือกค้างอยู่\nยืนยันที่จะเปลี่ยนหรือไม่?",
                 () => setTab(newTab),
@@ -433,7 +446,6 @@ export default function BettingRoom() {
     const handleWinModeChange = (newMode: typeof winMode) => {
         const hasData = bufferNumbers.length > 0 || currentInput.length > 0;
         if (hasData && newMode !== winMode) {
-            // ✅ แก้ไข: ใช้ confirmAction เปลี่ยนโหมดวิน
             confirmAction(
                 "⚠️ ข้อมูลจะถูกล้าง ยืนยันหรือไม่?",
                 () => setWinMode(newMode),
@@ -827,7 +839,6 @@ export default function BettingRoom() {
 
     const copyGroupNumbers = (instances: any[]) => {
         const textToCopy = instances.map(inst => inst.number).join(',');
-        
         navigator.clipboard.writeText(textToCopy).then(() => {
             toast.success('คัดลอกตัวเลขเรียบร้อย!');
         }).catch(() => {
@@ -842,7 +853,6 @@ export default function BettingRoom() {
 
     const submitTicket = async () => {
         if (cart.length === 0) return;
-        
         setIsSubmitting(true);
         const toastId = toast.loading('กำลังส่งโพย...');
         try {
@@ -857,14 +867,11 @@ export default function BettingRoom() {
             };
 
             const res = await client.post('/play/submit_ticket', payload);
-            
             toast.dismiss(toastId);
             toast.success(`ส่งโพยสำเร็จ! รหัส: ${res.data.id.slice(0, 8)}`, { duration: 4000 });
-            
             setCart([]);
             setNote('');
             if(id) fetchHistory(id); 
-
         } catch (err: any) {
             console.error(err);
             toast.dismiss(toastId);
@@ -882,8 +889,54 @@ export default function BettingRoom() {
     
     const labels = tab === '3' ? { top: '3 ตัวบน', bottom: '3 ตัวโต๊ด' } : (tab === 'run' ? { top: 'วิ่งบน', bottom: 'วิ่งล่าง' } : { top: 'บน', bottom: 'ล่าง' });
 
+    // ✅ 2. Logic เช็ควันเปิด
+    const isDayOpen = useMemo(() => {
+        // ถ้าเป็นหวยรายเดือน ให้เปิดตลอด (ยกเว้น Logic เวลาใน getCloseDate จะจัดการเอง)
+        if (lotto?.rules?.schedule_type === 'monthly') return true; 
+
+        if (!lotto || !lotto.open_days) return true; // กันเหนียว
+        const today = getTodayShort();
+        return lotto.open_days.includes(today);
+    }, [lotto]);
+
     if(loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-500 w-10 h-10"/></div>;
-    if(!lotto) return null;
+    
+    // ✅ 3. ถ้าไม่มี Lotto หรือ ปิดรับ (is_active) หรือ วันไม่ตรง -> โชว์หน้า Block
+    if (!lotto || (!lotto.is_active || !isDayOpen)) {
+        return (
+            <div className="min-h-screen bg-slate-50 font-sans">
+                {/* Header */}
+                <div className="bg-slate-900 text-white p-4 sticky top-0 z-30 flex items-center gap-3 shadow-lg">
+                    <button onClick={() => navigate('/play')} className="p-2 hover:bg-white/10 rounded-lg transition-all">
+                        <ArrowLeft size={20} />
+                    </button>
+                    <h1 className="text-lg font-bold truncate">{lotto ? lotto.name : 'ไม่พบข้อมูล'}</h1>
+                </div>
+
+                {/* Content Block */}
+                <div className="flex flex-col items-center justify-center h-[80vh] p-6 text-center animate-in zoom-in-95">
+                    <div className="w-24 h-24 bg-slate-200 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                        <Clock size={48} className="text-slate-400" />
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-700 mb-2">
+                        {lotto && !lotto.is_active ? 'ปิดรับแทงชั่วคราว' : 'วันนี้ไม่อยู่ในรอบเปิดรับ'}
+                    </h2>
+                    <p className="text-slate-500 mb-8 max-w-xs">
+                        {lotto && !lotto.is_active 
+                            ? 'ทางระบบได้ทำการปิดรับแทงหวยนี้ชั่วคราว กรุณาตรวจสอบใหม่ภายหลัง'
+                            : `หวยนี้เปิดรับเฉพาะวัน: ${lotto?.open_days?.join(', ') || '-'}`
+                        }
+                    </p>
+                    <button 
+                        onClick={() => navigate('/play')}
+                        className="px-8 py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:scale-105 transition-all"
+                    >
+                        กลับหน้าตลาด
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div 
@@ -1312,7 +1365,7 @@ export default function BettingRoom() {
                 {/* ----------------- ส่วน Sidebar ขวา (Desktop) ----------------- */}
                 <div className="hidden lg:flex w-80 bg-[#1e293b] text-white border-l border-gray-700 flex-col shadow-xl z-10 overflow-y-auto">
                     
-                    {/* ✅ 1. Header สถิติ (แทนที่ Header อัตราจ่ายเดิม) */}
+                    {/* Header สถิติ */}
                     <div className="p-4 bg-[#0f172a] border-b border-gray-700">
                         <h3 className="font-bold text-lg text-amber-400 flex items-center gap-2">
                             <History size={18}/> สถิติผลรางวัล
@@ -1322,7 +1375,7 @@ export default function BettingRoom() {
 
                     <div className="p-3 space-y-6">
                         
-                        {/* ✅ 2. ตารางสถิติ */}
+                        {/* ตารางสถิติ */}
                         <div className="bg-[#1e293b] rounded-lg overflow-hidden border border-gray-700">
                             <table className="w-full text-xs text-center">
                                 <thead className="bg-[#334155] text-white font-bold">
@@ -1358,7 +1411,7 @@ export default function BettingRoom() {
                             </table>
                         </div>
 
-                        {/* ✅ 3. ส่วนเลขอั้น/ปิดรับ (คงไว้) */}
+                        {/* ส่วนเลขอั้น/ปิดรับ */}
                         <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1 mt-4">
                             <Settings2 size={12}/> เลขอั้น / ปิดรับ
                         </h4>
@@ -1444,7 +1497,7 @@ export default function BettingRoom() {
                             )}
                         </div>
 
-                        {/* ✅ 4. ส่วนประวัติโพยล่าสุด (คงไว้) */}
+                        {/* ประวัติโพยล่าสุด */}
                         <div>
                             <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1 mt-4"><History size={12}/> ประวัติโพยล่าสุด</h4>
                             <div className="bg-[#0f172a] rounded-lg border border-gray-700 overflow-hidden">

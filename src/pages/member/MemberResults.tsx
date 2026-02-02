@@ -12,7 +12,7 @@ export default function MemberResults() {
   const [categories, setCategories] = useState<any[]>([]);
   const [resultsMap, setResultsMap] = useState<any>({});
   
-  // เก็บข้อมูลความเสี่ยง (เตรียมไว้เฉยๆ ตอนนี้ยังไม่ใช้เพื่อลดโหลด)
+  // ✅ เก็บข้อมูลความเสี่ยงแบบกลุ่ม { lotto_id: [RiskItems...] }
   const [risksMap, setRisksMap] = useState<Record<string, any[]>>({}); 
 
   const [loading, setLoading] = useState(true);
@@ -31,18 +31,19 @@ export default function MemberResults() {
       const day = String(selectedDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
 
-      const [resLottos, resCats, resResults] = await Promise.all([
+      // ✅ ยิง 4 API พร้อมกัน (เพิ่ม Risks เข้ามา)
+      const [resLottos, resCats, resResults, resRisks] = await Promise.all([
         client.get('/play/lottos'),
         client.get('/play/categories'),
-        client.get(`/reward/daily?date=${dateStr}`)
+        client.get(`/reward/daily?date=${dateStr}`),
+        client.get(`/play/risks/daily/all?date=${dateStr}`) // ✅ API ใหม่
       ]);
 
       const activeLottos = resLottos.data.filter((l: any) => l.is_active);
       setLottos(activeLottos);
       setCategories(resCats.data);
       setResultsMap(resResults.data || {});
-
-      // ✅ ลบโค้ดส่วน forEach โหลด Risks ออกแล้ว เพื่อความปลอดภัยของ Server
+      setRisksMap(resRisks.data || {}); // ✅ เก็บข้อมูลเลขอั้นลง State
 
     } catch (err) {
       console.error("Error fetching results:", err);
@@ -63,18 +64,21 @@ export default function MemberResults() {
     toast.success('คัดลอกเรียบร้อย');
   };
 
-  // Logic เช็คเลขอั้น (ยังคงไว้ แต่จะทำงานเมื่อมีข้อมูลใน risksMap เท่านั้น)
+  // ✅ Logic เช็คเลขอั้น (ทำงานสมบูรณ์แล้ว)
   const getNumberClass = (lottoId: string, number: string, type: '3top' | '2down' | '2up') => {
-      const risks = risksMap[lottoId];
-      if (!risks) return "text-slate-700";
+      // ถ้าไม่มีเลข หรือไม่มีข้อมูลอั้น ให้กลับเป็นสีปกติ
+      if (!number || !risksMap[lottoId]) return "text-slate-700";
 
+      const risks = risksMap[lottoId];
+      
+      // หาว่าเลขนี้โดนอั้นไหม (เช็คทั้งแบบระบุประเภท และแบบเหมา ALL)
       const riskItem = risks.find((r: any) => 
           r.number === number && (r.specific_bet_type === type || r.specific_bet_type === 'ALL')
       );
 
       if (riskItem) {
-          if (riskItem.risk_type === 'CLOSE') return "text-red-600 drop-shadow-sm font-black"; 
-          if (riskItem.risk_type === 'HALF') return "text-orange-500 drop-shadow-sm font-black"; 
+          if (riskItem.risk_type === 'CLOSE') return "text-red-600 drop-shadow-sm font-black"; // เลขปิด (แดง)
+          if (riskItem.risk_type === 'HALF') return "text-orange-500 drop-shadow-sm font-black"; // จ่ายครึ่ง (ส้ม)
       }
       return "text-slate-700"; 
   };
@@ -82,14 +86,12 @@ export default function MemberResults() {
   const groupedLottos = useMemo(() => {
     if (!lottos.length || !categories.length) return [];
     
-    // เรียงหมวดหมู่ตาม order_index
     const sortedCats = [...categories].sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
     
-    // เพิ่มหมวด "อื่นๆ" สำหรับหวยที่ไม่มีหมวด
     const groups = sortedCats.map(cat => ({
       ...cat,
       lottos: lottos
-        .filter(l => l.category === cat.id && resultsMap[l.id]) // กรองเฉพาะที่มีผลแล้ว
+        .filter(l => l.category === cat.id && resultsMap[l.id]) 
         .sort((a, b) => {
            if (!a.close_time) return 1;
            if (!b.close_time) return -1;
@@ -97,7 +99,6 @@ export default function MemberResults() {
         })
     })).filter(group => group.lottos.length > 0);
 
-    // หวยที่ไม่มีหมวดหมู่
     const uncategorized = lottos.filter(l => !l.category && resultsMap[l.id]);
     if (uncategorized.length > 0) {
         groups.push({ id: 'other', label: 'อื่นๆ', color: 'bg-gray-500', lottos: uncategorized } as any);
@@ -161,7 +162,6 @@ export default function MemberResults() {
               Object.keys(resultsMap).length > 0 && groupedLottos.length > 0 ? (
                   groupedLottos.map((cat) => (
                       <div key={cat.id} className="animate-slide-up">
-                          {/* Category Header */}
                           <div className="flex items-center gap-2 mb-3 px-2">
                               <span className={`w-2 h-2 rounded-full ${cat.color?.replace('bg-', 'bg-') || 'bg-blue-500'}`}></span>
                               <h2 className="font-bold text-slate-500 text-sm uppercase tracking-wider">{cat.label}</h2>
@@ -185,6 +185,7 @@ export default function MemberResults() {
                                               const result = resultsMap[lotto.id];
                                               const twoTop = result.top_3 ? result.top_3.slice(-2) : '';
 
+                                              // ✅ เรียกใช้ Helper Function เพื่อเปลี่ยนสี
                                               const top3Class = getNumberClass(lotto.id, result.top_3, '3top');
                                               const top2Class = getNumberClass(lotto.id, twoTop, '2up'); 
                                               const bottomClass = getNumberClass(lotto.id, result.bottom_2, '2down');
