@@ -8,7 +8,7 @@ import {
 import client from '../../api/client';
 
 // --------------------------------------------------------
-// 🔗 Config: จับคู่รหัสหวย (Code) กับ ลิงก์ดูผล (เหมือนเดิม)
+// 🔗 Config: จับคู่รหัสหวย (Code) กับ ลิงก์ดูผล
 // --------------------------------------------------------
 const EXTERNAL_LINKS: Record<string, string> = {
     // --- รัฐบาลไทย/ออมสิน/ธกส ---
@@ -16,6 +16,9 @@ const EXTERNAL_LINKS: Record<string, string> = {
     'THAI_GOV_70': 'https://news.sanook.com/lotto/',
     'GSB': 'https://www.gsb.or.th/lotto/',
     'BAAC': 'https://www.baac.or.th/lottery',
+
+    // --- หุ้นไทย (เพิ่มเติม) ---
+    'THAI_EVENING': 'https://portal.settrade.com/C13_MarketSummary.jsp?detail=SET',
 
     // --- ฮานอย ---
     'HANOI_HD': 'https://xosohd.com',
@@ -145,7 +148,7 @@ export default function LottoResultLinks() {
         return url;
     };
 
-    // --- Logic การกรอง (เหมือนเดิม) ---
+    // --- Logic การกรอง ---
     const filteredLottos = lottos.filter(item => {
         const code = item.code.toUpperCase();
         
@@ -154,7 +157,10 @@ export default function LottoResultLinks() {
         
         let matchCategory = true;
         if (activeTab !== 'ALL') {
-            if (activeTab === 'THAI') matchCategory = code.startsWith('THAI') || code.startsWith('GSB') || code.startsWith('BAAC');
+            if (activeTab === 'THAI') {
+                // ✅ แก้ไข: ไม่เอา THAI_EVENING (เพราะเป็นหุ้น)
+                matchCategory = (code.startsWith('THAI') && code !== 'THAI_EVENING') || code.startsWith('GSB') || code.startsWith('BAAC');
+            }
             else if (activeTab === 'HANOI') matchCategory = code.startsWith('HANOI') || code.startsWith('VIET');
             else if (activeTab === 'LAOS') matchCategory = code.startsWith('LAO');
             else if (activeTab === 'DOW') matchCategory = code.startsWith('DOW');
@@ -163,7 +169,9 @@ export default function LottoResultLinks() {
                 const isVIP = code.includes('VIP');
                 const isDow = code.startsWith('DOW');
                 const stockPrefixes = ['NIKKEI', 'CHINA', 'HANGSENG', 'TAIWAN', 'KOREA', 'SINGAPORE', 'INDIA', 'EGYPT', 'MALAYSIA', 'ENGLAND', 'GERMANY', 'RUSSIA', 'EURO'];
-                matchCategory = !isVIP && !isDow && stockPrefixes.some(p => code.startsWith(p));
+                
+                // ✅ แก้ไข: รวม THAI_EVENING เข้าหมวดหุ้น
+                matchCategory = code === 'THAI_EVENING' || (!isVIP && !isDow && stockPrefixes.some(p => code.startsWith(p)));
             } 
             else if (activeTab === 'OTHERS') matchCategory = code.startsWith('MK_') || code.startsWith('YIKI') || code.startsWith('OTHER');
         }
@@ -174,11 +182,8 @@ export default function LottoResultLinks() {
     return (
         <div className="min-h-screen bg-[#0F172A] pb-24 text-white font-sans">
             
-            {/* --- Header Section (Full Width Background) --- */}
+            {/* --- Header Section --- */}
             <div className="bg-linear-to-b from-[#1E293B] to-[#0F172A] border-b border-white/5 sticky top-0 z-30 pt-6 pb-4 shadow-2xl">
-                {/* ✅ จุดแก้ที่ 1: Container ของ Header 
-                   เปลี่ยนจาก max-w-lg เป็น max-w-7xl เพื่อให้กว้างเต็มตาบน PC
-                */}
                 <div className="px-4 max-w-7xl mx-auto flex flex-col items-center">
                     
                     <h1 className="text-3xl font-black text-transparent bg-clip-text bg-linear-to-r from-[#FFD700] via-[#FDB931] to-[#FFD700] text-center mb-6 flex items-center justify-center gap-3 drop-shadow-lg">
@@ -186,7 +191,6 @@ export default function LottoResultLinks() {
                         ผลรางวัล
                     </h1>
 
-                    {/* Search Bar (จำกัดความกว้างไว้ไม่ให้ยาวเกินไปบน PC) */}
                     <div className="relative mb-6 w-full max-w-lg">
                         <input
                             type="text"
@@ -198,7 +202,6 @@ export default function LottoResultLinks() {
                         <Search className="absolute left-4 top-3.5 text-slate-500" size={20} />
                     </div>
 
-                    {/* Category Tabs (จัดกึ่งกลาง) */}
                     <div className="w-full max-w-5xl">
                         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar justify-start md:justify-center">
                             {CATEGORIES.map(cat => {
@@ -226,10 +229,6 @@ export default function LottoResultLinks() {
             </div>
 
             {/* --- Content Area --- */}
-            {/* ✅ จุดแก้ที่ 2: Container ของเนื้อหา 
-               - max-w-7xl: ขยายความกว้างสูงสุด
-               - grid-cols: ปรับให้แสดงหลายคอลัมน์บนจอใหญ่ (1 -> 2 -> 3 -> 4)
-            */}
             <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
                 
                 {loading ? (
@@ -249,7 +248,10 @@ export default function LottoResultLinks() {
 
                             let matchedCat = CATEGORIES[0];
                             const code = item.code.toUpperCase();
-                            if (code.startsWith('THAI') || code.startsWith('GSB')) matchedCat = CATEGORIES.find(c => c.id === 'THAI')!;
+                            
+                            // ✅ แก้ไข Logic การเลือกสีพื้นหลังการ์ด ให้ถูกต้องตามหมวดหมู่
+                            if (code === 'THAI_EVENING') matchedCat = CATEGORIES.find(c => c.id === 'STOCKS')!;
+                            else if (code.startsWith('THAI') || code.startsWith('GSB')) matchedCat = CATEGORIES.find(c => c.id === 'THAI')!;
                             else if (code.startsWith('HANOI') || code.startsWith('VIET')) matchedCat = CATEGORIES.find(c => c.id === 'HANOI')!;
                             else if (code.startsWith('LAO')) matchedCat = CATEGORIES.find(c => c.id === 'LAOS')!;
                             else if (code.startsWith('DOW')) matchedCat = CATEGORIES.find(c => c.id === 'DOW')!;

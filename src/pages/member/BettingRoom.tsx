@@ -24,7 +24,7 @@ import { alertAction, confirmAction } from '../../utils/toastUtils';
 
 // --- Helper Functions ---
 
-// ✅ 1. เพิ่มฟังก์ชันหาวันปัจจุบัน (SUN, MON, ...)
+// ✅ 1. ฟังก์ชันหาวันปัจจุบัน (SUN, MON, ...)
 const getTodayShort = () => {
   const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   return days[new Date().getDay()];
@@ -32,7 +32,7 @@ const getTodayShort = () => {
 
 const CountDownTimer = ({ targetDate, onTimeout }: { targetDate: Date | null; onTimeout: () => void }) => {
     const [timeLeft, setTimeLeft] = useState('00:00:00');
-    
+
     useEffect(() => {
         if (!targetDate) return;
 
@@ -100,6 +100,8 @@ const getCloseDate = (lotto: any, now: Date) => {
   const closeDate = new Date(now);
   closeDate.setHours(cH, cM, 0, 0);
 
+  // หมายเหตุ: ตรงนี้เราตั้งใจหา "รอบถัดไป" ถ้าเวลาปัจจุบันเลยไปแล้ว
+  // แต่ในการใช้งานจริง เราจะใช้ useMemo ล็อคเวลาตอนเข้าหน้าเว็บไว้ เพื่อไม่ให้มันดีดไปวันพรุ่งนี้ตอนเรากำลังแทงอยู่
   if (now > closeDate) {
       closeDate.setDate(closeDate.getDate() + 1);
   }
@@ -227,6 +229,13 @@ export default function BettingRoom() {
     const [note, setNote] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // ✅ คำนวณ targetDate แค่ครั้งเดียวตอนโหลด lotto เพื่อไม่ให้เวลากระโดดไปวันพรุ่งนี้ตอนหมดเวลา
+    const targetDate = useMemo(() => {
+        if (!lotto) return null;
+        // ใช้เวลาปัจจุบันตอนที่โหลดข้อมูลมาคำนวณเป้าหมาย
+        return getCloseDate(lotto, new Date());
+    }, [lotto]); // จะคำนวณใหม่เฉพาะตอน lotto เปลี่ยน (เช่น โหลดครั้งแรก หรือ Realtime update)
+
     // Alert Action
     const handleTimeUp = useCallback(() => {
         alertAction(
@@ -237,49 +246,6 @@ export default function BettingRoom() {
             () => navigate('/play')
         );
     }, [navigate]);
-
-    useEffect(() => {
-        if (!id) return;
-
-        const statusChannel = supabase
-            .channel(`realtime-lotto-status-${id}`)
-            .on(
-                'postgres_changes',
-                { 
-                    event: 'UPDATE', 
-                    schema: 'public', 
-                    table: 'lotto_types', 
-                    filter: `id=eq.${id}` 
-                },
-                (payload) => {
-                    const updated = payload.new;
-                    
-                    // อัปเดต State
-                    setLotto((prev: any) => ({ ...prev, is_active: updated.is_active }));
-                    
-                    // 🔴 ถ้าแอดมินกดปิด (is_active = false) -> ดีดออกทันที!
-                    if (!updated.is_active) {
-                        // เรียกใช้ฟังก์ชันดีดออกได้เลย (หรือจะเขียน alertAction ตรงนี้ก็ได้)
-                        alertAction(
-                            "แอดมินทำการปิดรับแทงหวยนี้แล้ว",
-                            "⛔ ปิดรับแทง",
-                            "error",
-                            "กลับหน้าตลาด",
-                            () => navigate('/play')
-                        );
-                    } 
-                    // 🟢 ถ้าเปิด
-                    else {
-                        toast.success("✅ หวยเปิดรับแทงแล้ว");
-                    }
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(statusChannel);
-        };
-    }, [id, navigate]); // ใส่ dependency ให้ครบ
 
     const isItemClosed = (item: CartItem) => {
         return risks.some(r => 
@@ -383,10 +349,38 @@ export default function BettingRoom() {
         fetchData();
     }, [id]);  
 
+    // ✅ useEffect สำหรับ Realtime (แก้ไขแล้ว)
     useEffect(() => {
         if (!id) return;
 
-        const channel = supabase
+        // 1. Channel สำหรับดูสถานะหวย (เปิด/ปิด)
+        const statusChannel = supabase
+            .channel(`realtime-lotto-status-${id}`)
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'lotto_types', filter: `id=eq.${id}` },
+                (payload) => {
+                    const updated = payload.new;
+                    setLotto((prev: any) => ({ ...prev, is_active: updated.is_active }));
+                    
+                    if (!updated.is_active) {
+                        // ✅ เพิ่มการเด้งออกเมื่อแอดมินปิด
+                        alertAction(
+                            "แอดมินปิดรับแทงหวยนี้แล้ว ระบบจะพาท่านกลับหน้าตลาด",
+                            "⛔ ปิดรับแทง",
+                            "error",
+                            "ตกลง",
+                            () => navigate('/play')
+                        );
+                    } else {
+                        toast.success("✅ หวยเปิดรับแทงแล้ว");
+                    }
+                }
+            )
+            .subscribe();
+
+        // 2. Channel สำหรับเลขอั้น (เหมือนเดิม)
+        const riskChannel = supabase
             .channel(`realtime-risks-${id}`)
             .on(
                 'postgres_changes',
@@ -424,10 +418,11 @@ export default function BettingRoom() {
             .subscribe();
 
         return () => {
-            supabase.removeChannel(channel);
+            supabase.removeChannel(statusChannel);
+            supabase.removeChannel(riskChannel);
             if (debounceRef.current) clearTimeout(debounceRef.current);
         };
-    }, [id]);
+    }, [id, navigate]);
 
     const handleTabChange = (newTab: typeof tab) => {
         const hasData = bufferNumbers.length > 0 || currentInput.length > 0;
@@ -889,7 +884,7 @@ export default function BettingRoom() {
     
     const labels = tab === '3' ? { top: '3 ตัวบน', bottom: '3 ตัวโต๊ด' } : (tab === 'run' ? { top: 'วิ่งบน', bottom: 'วิ่งล่าง' } : { top: 'บน', bottom: 'ล่าง' });
 
-    // ✅ 2. Logic เช็ควันเปิด
+    // ✅ Logic เช็ควันเปิด
     const isDayOpen = useMemo(() => {
         // ถ้าเป็นหวยรายเดือน ให้เปิดตลอด (ยกเว้น Logic เวลาใน getCloseDate จะจัดการเอง)
         if (lotto?.rules?.schedule_type === 'monthly') return true; 
@@ -901,7 +896,7 @@ export default function BettingRoom() {
 
     if(loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-500 w-10 h-10"/></div>;
     
-    // ✅ 3. ถ้าไม่มี Lotto หรือ ปิดรับ (is_active) หรือ วันไม่ตรง -> โชว์หน้า Block
+    // ✅ ถ้าไม่มี Lotto หรือ ปิดรับ (is_active) หรือ วันไม่ตรง -> โชว์หน้า Block
     if (!lotto || (!lotto.is_active || !isDayOpen)) {
         return (
             <div className="min-h-screen bg-slate-50 font-sans">
@@ -946,7 +941,8 @@ export default function BettingRoom() {
         >
             <div className="mt-1 mx-4">
                 <CountDownTimer 
-                targetDate={lotto ? getCloseDate(lotto, new Date()) : null}
+                // ✅ ส่ง targetDate ที่ล็อคค่าแล้ว (useMemo) ไม่เปลี่ยนตามการพิมพ์
+                targetDate={targetDate} 
                 onTimeout={handleTimeUp}
                 />
             </div>
