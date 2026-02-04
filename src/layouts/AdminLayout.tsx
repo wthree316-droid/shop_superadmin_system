@@ -11,8 +11,9 @@ import {
   Menu, 
   X,
   Store,
-  Crown // เพิ่ม icon
+  Crown 
 } from 'lucide-react'; 
+import { confirmAction } from '../utils/toastUtils';
 
 export default function AdminLayout() {
   const { logout, user } = useAuth();
@@ -47,13 +48,13 @@ export default function AdminLayout() {
       const rootDomain = import.meta.env.VITE_ROOT_DOMAIN || 'ntlot.com'; // ⚠️ ค่าเดียวกับ .env
       const protocol = window.location.protocol;
 
-      if(confirm('ยืนยันกลับสู่ระบบจัดการหลัก (Super Admin)?')) {
+      confirmAction('ยืนยันกลับสู่ระบบจัดการหลัก (Super Admin)?', () => {
           localStorage.removeItem('token'); // ลบ Token ร้านค้าทิ้ง
           localStorage.removeItem('is_impersonating');
           
           // Redirect กลับบ้าน
           window.location.href = `${protocol}//${rootDomain}/super/dashboard`;
-      }
+      }, 'กลับสู่ระบบหลัก', 'ยกเลิก');
   };
 
 

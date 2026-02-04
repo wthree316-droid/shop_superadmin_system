@@ -4,8 +4,10 @@ import {
     Store, Users, Server, ShieldCheck, 
     Trash2, AlertTriangle, Loader2,
     ArrowRight, RefreshCw,
-    Banknote, Ticket, Clock, TrendingUp, BarChart3, RotateCcw
+    Banknote, Ticket, Clock, TrendingUp, BarChart3,
+    RotateCcw
 } from 'lucide-react';
+import { confirmAction, alertAction } from '../../utils/toastUtils';
 
 export default function SuperDashboard() {
   const getToday = () => {
@@ -78,20 +80,23 @@ export default function SuperDashboard() {
   };
 
   const handleGlobalCleanup = async () => {
-      const confirm1 = confirm("⚠️ คำเตือน: คุณกำลังจะล้างข้อมูลประวัติการแทงทั้งหมดในระบบ!");
-      if (!confirm1) return;
-      const input = prompt("ยืนยันครั้งสุดท้าย: ข้อมูลจะไม่สามารถกู้คืนได้\nกรุณาพิมพ์คำว่า 'YES' เพื่อยืนยันการลบ");
-      if (input !== 'YES') return;
+      confirmAction("⚠️ คำเตือน: คุณกำลังจะล้างข้อมูลประวัติการแทงทั้งหมดในระบบ!", async () => {
+          // Delay นิดนึงเพื่อให้ Toast หายไปก่อน prompt ขึ้น
+          setTimeout(async () => {
+              const input = prompt("ยืนยันครั้งสุดท้าย: ข้อมูลจะไม่สามารถกู้คืนได้\nกรุณาพิมพ์คำว่า 'YES' เพื่อยืนยันการลบ");
+              if (input !== 'YES') return;
 
-      try {
-          await client.delete('/system/cleanup/global');
-          alert('ล้างข้อมูลเรียบร้อย ระบบสะอาดเอี่ยม!');
-          fetchSystemStats();
-          fetchFinancialStats();
-          fetchShopPerformance();
-      } catch (err) {
-          alert('เกิดข้อผิดพลาดในการล้างข้อมูล');
-      }
+              try {
+                  await client.delete('/system/cleanup/global');
+                  alertAction('ล้างข้อมูลเรียบร้อย ระบบสะอาดเอี่ยม!', 'สำเร็จ', 'success');
+                  fetchSystemStats();
+                  fetchFinancialStats();
+                  fetchShopPerformance();
+              } catch (err) {
+                  alertAction('เกิดข้อผิดพลาดในการล้างข้อมูล', 'ข้อผิดพลาด', 'error');
+              }
+          }, 100);
+      }, 'ล้างข้อมูล', 'ยกเลิก');
   };
 
   // Component การ์ดแสดงผล

@@ -6,6 +6,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers';
+import { alertAction, confirmAction } from '../../utils/toastUtils';
 
 export default function History() {
   // --- Data States ---
@@ -118,17 +119,18 @@ export default function History() {
   };
   
   const handleCancel = async (ticketId: string) => {
-    if (!confirm('ยืนยันยกเลิกโพยนี้?')) return;
-    try {
-      await client.patch(`/play/tickets/${ticketId}/cancel`);
-      alert('ยกเลิกสำเร็จ');
-      
-      setTickets(prev => prev.map(t => 
-          t.id === ticketId ? { ...t, status: 'CANCELLED' } : t
-      ));
-      
-      setSelectedTicket(null);
-    } catch (err: any) { alert(`Error: ${err.response?.data?.detail}`); }
+    confirmAction('ยืนยันยกเลิกโพยนี้?', async () => {
+        try {
+          await client.patch(`/play/tickets/${ticketId}/cancel`);
+          alertAction('ยกเลิกสำเร็จ', 'สำเร็จ', 'success');
+          
+          setTickets(prev => prev.map(t => 
+              t.id === ticketId ? { ...t, status: 'CANCELLED' } : t
+          ));
+          
+          setSelectedTicket(null);
+        } catch (err: any) { alertAction(`Error: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error'); }
+    }, 'ยกเลิกโพย', 'ปิด');
   };
 
   const renderWinStatus = (ticket: any) => {

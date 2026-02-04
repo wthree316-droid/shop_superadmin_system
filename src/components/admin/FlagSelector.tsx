@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import client from '../../api/client';
 import { Image, X, Check, Loader2, Trash2, UploadCloud } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { confirmAction } from '../../utils/toastUtils';
 
 interface FlagSelectorProps {
     currentUrl?: string;
@@ -58,18 +59,18 @@ export default function FlagSelector({ currentUrl, onSelect }: FlagSelectorProps
 
     const handleDelete = async (fileName: string, e: React.MouseEvent) => {
         e.stopPropagation(); // ไม่ให้ Trigger การเลือกรูป
-        if (!window.confirm("คุณต้องการลบรูปนี้ใช่หรือไม่?")) return;
-
-        try {
-            // ส่งชื่อไฟล์ไปลบ (API รับ query param ?name=...)
-            await client.delete(`/media/flags?name=${fileName}`);
-            toast.success("ลบรูปภาพแล้ว");
-            
-            // ลบออกจาก State ทันที ไม่ต้องโหลดใหม่
-            setFlags(prev => prev.filter(f => f.name !== fileName));
-        } catch (error) {
-            toast.error("ลบไม่สำเร็จ (อาจมีการใช้งานอยู่)");
-        }
+        confirmAction("คุณต้องการลบรูปนี้ใช่หรือไม่?", async () => {
+            try {
+                // ส่งชื่อไฟล์ไปลบ (API รับ query param ?name=...)
+                await client.delete(`/media/flags?name=${fileName}`);
+                toast.success("ลบรูปภาพแล้ว");
+                
+                // ลบออกจาก State ทันที ไม่ต้องโหลดใหม่
+                setFlags(prev => prev.filter(f => f.name !== fileName));
+            } catch (error) {
+                toast.error("ลบไม่สำเร็จ (อาจมีการใช้งานอยู่)");
+            }
+        }, 'ลบรูปภาพ', 'ยกเลิก');
     };
 
     return (

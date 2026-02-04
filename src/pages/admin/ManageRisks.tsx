@@ -6,6 +6,7 @@ import {
   Calendar, Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { confirmAction } from '../../utils/toastUtils';
 
 // Config
 const BET_TYPES = [
@@ -212,27 +213,17 @@ export default function ManageRisks() {
   };
 
   const clearAllPending = () => {
-      if(confirm('ล้างรายการที่เตรียมไว้ทั้งหมด?')) {
+      confirmAction('ล้างรายการที่เตรียมไว้ทั้งหมด?', () => {
           setPending({}); setTyping({}); setGlobalInput('');
           inputRefs.current['2up']?.focus();
-      }
+      }, 'ยืนยัน', 'ยกเลิก');
   };
 
-const handleSaveRisks = async () => {
-    const hasData = Object.values(pending).some(list => list.length > 0);
-    if (!hasData) return toast.error("ยังไม่มีรายการเลขที่เลือก");
-
-    const today = new Date().toISOString().split('T')[0];
-    if (selectedDate < today) {
-        if(!confirm(`⚠️ คุณกำลังบันทึกข้อมูลย้อนหลังของวันที่ ${selectedDate}\nต้องการทำรายการต่อหรือไม่?`)) return;
-    }
-
+  const processSaveRisks = async () => {
     setIsLoading(true);
 
     try {
         // 1. แปลงข้อมูลจาก pending (Map) ให้เป็น Array ก้อนเดียว
-        // จากเดิม: { "2up": ["01", "02"], "3top": ["123"] }
-        // เป็น: [ {number: "01", type: "2up"}, {number: "02", type: "2up"}, {number: "123", type: "3top"} ]
         const riskItems: any[] = [];
         Object.entries(pending).forEach(([typeKey, numbers]) => {
             numbers.forEach(num => {
@@ -243,12 +234,12 @@ const handleSaveRisks = async () => {
             });
         });
 
-        // 2. ยิง API ครั้งเดียว (เปลี่ยน Path เป็น /batch)
+        // 2. ยิง API ครั้งเดียว
         await client.post('/play/risks/batch', {
             lotto_type_id: selectedLotto.id,
-            risk_type: riskType, // 'CLOSE' หรือ 'HALF'
+            risk_type: riskType, 
             items: riskItems,
-            date: selectedDate // ส่งวันที่ไปด้วยเผื่อ Backend ใช้
+            date: selectedDate 
         });
 
         toast.success(`บันทึกสำเร็จ ${riskItems.length} รายการ`);
@@ -265,41 +256,54 @@ const handleSaveRisks = async () => {
     } finally {
         setIsLoading(false);
     }
-};
+  };
+
+  const handleSaveRisks = async () => {
+    const hasData = Object.values(pending).some(list => list.length > 0);
+    if (!hasData) return toast.error("ยังไม่มีรายการเลขที่เลือก");
+
+    const today = new Date().toISOString().split('T')[0];
+    if (selectedDate < today) {
+        confirmAction(`⚠️ คุณกำลังบันทึกข้อมูลย้อนหลังของวันที่ ${selectedDate}\nต้องการทำรายการต่อหรือไม่?`, () => processSaveRisks(), 'ทำรายการต่อ', 'ยกเลิก');
+        return;
+    }
+
+    await processSaveRisks();
+  };
 
   const handleDeleteRisk = async (riskId: string) => {
-    if(!confirm('ต้องการปลดล็อคเลขนี้?')) return;
-    try {
-        await client.delete(`/play/risks/${riskId}`);
-        setRisks(risks.filter(r => r.id !== riskId));
-        toast.success("ลบเรียบร้อย");
-    } catch(err) { toast.error('ลบไม่สำเร็จ'); }
+    confirmAction('ต้องการปลดล็อคเลขนี้?', async () => {
+        try {
+            await client.delete(`/play/risks/${riskId}`);
+            setRisks(risks.filter(r => r.id !== riskId));
+            toast.success("ลบเรียบร้อย");
+        } catch(err) { toast.error('ลบไม่สำเร็จ'); }
+    }, 'ปลดล็อค', 'ยกเลิก');
   };
 
   const handleClearAllRisks = async () => {
       if (risks.length === 0) return;
-      if (!confirm(`⚠️ ยืนยันลบเลขอั้น "ทั้งหมด" ของวันที่ ${selectedDate}?`)) return;
-
-      setIsLoading(true);
-    try {
-        // ✅ แก้ไข: ยิง API ครั้งเดียว ลบเกลี้ยง
-        await client.delete(`/play/risks/clear`, {
-            params: {
-                lotto_id: selectedLotto.id,
-                date: selectedDate
-            }
-        });
-        
-        setRisks([]);
-        toast.success("ล้างข้อมูลเรียบร้อย");
-    } catch (err) { 
-        console.error(err);
-        toast.error("เกิดข้อผิดพลาดในการลบ"); 
-        openRiskModal(selectedLotto); // โหลดข้อมูลเดิมกลับมา
-    } finally { 
-        setIsLoading(false); 
-    }
-};
+      confirmAction(`⚠️ ยืนยันลบเลขอั้น "ทั้งหมด" ของวันที่ ${selectedDate}?`, async () => {
+          setIsLoading(true);
+          try {
+              await client.delete(`/play/risks/clear`, {
+                  params: {
+                      lotto_id: selectedLotto.id,
+                      date: selectedDate
+                  }
+              });
+              
+              setRisks([]);
+              toast.success("ล้างข้อมูลเรียบร้อย");
+          } catch (err) { 
+              console.error(err);
+              toast.error("เกิดข้อผิดพลาดในการลบ"); 
+              openRiskModal(selectedLotto); // โหลดข้อมูลเดิมกลับมา
+          } finally { 
+              setIsLoading(false); 
+          }
+      }, 'ล้างข้อมูล', 'ยกเลิก');
+  };
 
   const getRisksByType = () => {
       const grouped: Record<string, any[]> = {};

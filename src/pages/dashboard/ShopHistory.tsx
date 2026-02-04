@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers'; 
 import { useAuth } from '../../contexts/AuthContext'; 
+import { alertAction, confirmAction } from '../../utils/toastUtils';
 
 export default function ShopHistory() {
   const { user } = useAuth(); 
@@ -121,17 +122,18 @@ export default function ShopHistory() {
   };
 
   const handleCancelTicket = async (ticketId: string) => {
-      if(!confirm("ยืนยันการยกเลิกบิลนี้? เงินจะถูกคืนให้ลูกค้าทันที")) return;
-      try {
-          await client.patch(`/play/tickets/${ticketId}/cancel`);
-          alert("ยกเลิกสำเร็จ");
-          setTickets(prev => prev.map(t => 
-              t.id === ticketId ? { ...t, status: 'CANCELLED' } : t
-          ));
-          setSelectedTicket(null);
-      } catch(err: any) {
-          alert(`Error: ${err.response?.data?.detail}`);
-      }
+      confirmAction("ยืนยันการยกเลิกบิลนี้? เงินจะถูกคืนให้ลูกค้าทันที", async () => {
+          try {
+              await client.patch(`/play/tickets/${ticketId}/cancel`);
+              alertAction("ยกเลิกสำเร็จ", "สำเร็จ", "success");
+              setTickets(prev => prev.map(t => 
+                  t.id === ticketId ? { ...t, status: 'CANCELLED' } : t
+              ));
+              setSelectedTicket(null);
+          } catch(err: any) {
+              alertAction(`Error: ${err.response?.data?.detail}`, "ข้อผิดพลาด", "error");
+          }
+      }, "ยกเลิกบิล", "ปิด");
   };
 
   // --- Helper Renders ---

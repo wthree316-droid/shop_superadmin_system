@@ -5,6 +5,7 @@ import {
   Loader2, ArrowDown, ArrowRight // ✅ เพิ่มไอคอน
 } from 'lucide-react';
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers';
+import { alertAction, confirmAction } from '../../utils/toastUtils';
 
 export default function HistoryOutside() {
   // --- Data States ---
@@ -106,20 +107,21 @@ export default function HistoryOutside() {
   };
 
   const handleCancel = async (ticketId: string) => {
-    if (!confirm('ยืนยันยกเลิกโพยนี้? เงินจะคืนเข้าเครดิตทันที')) return;
-    try {
-      await client.patch(`/play/tickets/${ticketId}/cancel`);
-      alert('ยกเลิกสำเร็จ! คืนเงินเรียบร้อย');
-      
-      // อัปเดตสถานะในรายการทันที
-      setTickets(prev => prev.map(t => 
-          t.id === ticketId ? { ...t, status: 'CANCELLED' } : t
-      ));
-      
-      setSelectedTicket(null);
-    } catch (err: any) {
-      alert(`ยกเลิกไม่ได้: ${err.response?.data?.detail}`);
-    }
+    confirmAction('ยืนยันยกเลิกโพยนี้? เงินจะคืนเข้าเครดิตทันที', async () => {
+        try {
+          await client.patch(`/play/tickets/${ticketId}/cancel`);
+          alertAction('ยกเลิกสำเร็จ! คืนเงินเรียบร้อย', 'สำเร็จ', 'success');
+          
+          // อัปเดตสถานะในรายการทันที
+          setTickets(prev => prev.map(t => 
+              t.id === ticketId ? { ...t, status: 'CANCELLED' } : t
+          ));
+          
+          setSelectedTicket(null);
+        } catch (err: any) {
+          alertAction(`ยกเลิกไม่ได้: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error');
+        }
+    }, 'ยกเลิกโพย', 'ปิด');
   };
 
   const renderWinStatus = (ticket: any) => {

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import client from '../../api/client';
 import { 
-    Save, MessageSquare, Palette, Loader2, Globe, 
+    Palette, Loader2, Globe, 
     Image as ImageIcon, Layers, RefreshCw, CheckCircle2 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { confirmAction } from '../../utils/toastUtils';
 
 export default function ManageShopSettings() {
   const [loading, setLoading] = useState(false);
@@ -59,19 +60,19 @@ export default function ManageShopSettings() {
   };
 
   const handleInitDefaultCategories = async () => {
-        if (!confirm("ยืนยันการเพิ่มหมวดหมู่มาตรฐาน?\n(ระบบจะเพิ่มเฉพาะหมวดหมู่ที่ยังไม่มี)")) return;
-        
-        setLoading(true);
-        try {
-            const res = await client.post('/play/categories/init_defaults');
-            toast.success(res.data.message);
-            fetchCategories(); // รีเฟรชข้อมูลทันที
-        } catch (err: any) {
-            console.error(err);
-            toast.error('ทำรายการไม่สำเร็จ');
-        } finally {
-            setLoading(false);
-        }
+        confirmAction("ยืนยันการเพิ่มหมวดหมู่มาตรฐาน?\n(ระบบจะเพิ่มเฉพาะหมวดหมู่ที่ยังไม่มี)", async () => {
+            setLoading(true);
+            try {
+                const res = await client.post('/play/categories/init_defaults');
+                toast.success(res.data.message);
+                fetchCategories(); // รีเฟรชข้อมูลทันที
+            } catch (err: any) {
+                console.error(err);
+                toast.error('ทำรายการไม่สำเร็จ');
+            } finally {
+                setLoading(false);
+            }
+        });
     };
     
   // ฟังก์ชันบันทึกการตั้งค่าร้าน (สีหลัก + โลโก้ + ไลน์)
@@ -280,49 +281,6 @@ export default function ManageShopSettings() {
                 </div>
             )}
         </div>
-
-        {/* --- ส่วนที่ 3: LINE Settings (ย้ายมาไว้ล่างสุด) --- */}
-        <form className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-64 h-64 bg-green-50 rounded-full blur-3xl -mr-20 -mt-20 opacity-50 pointer-events-none"></div>
-             
-             <div className="flex items-center gap-3 mb-6 relative z-10 border-b border-slate-100 pb-4">
-                <div className="p-2 bg-green-100 text-green-600 rounded-lg">
-                    <MessageSquare size={24} />
-                </div>
-                <div>
-                    <h3 className="font-bold text-lg text-slate-800">3. ตั้งค่า LINE OA</h3>
-                    <p className="text-xs text-slate-500">เชื่อมต่อกับ LINE Messaging API สำหรับการแจ้งเตือน</p>
-                </div>
-            </div>
-            
-            <div className="space-y-4 relative z-10">
-                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1">Channel Access Token</label>
-                    <input 
-                        type="text"
-                        className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-sm font-mono focus:bg-white focus:ring-2 focus:ring-green-200 outline-none transition-all" 
-                        placeholder="วาง Token ยาวๆ..."
-                        value={shopData.line_channel_token}
-                        onChange={e => setShopData({...shopData, line_channel_token: e.target.value})}
-                    />
-                 </div>
-                 <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1">Your User ID (Admin)</label>
-                    <input 
-                        type="text"
-                        className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-sm font-mono focus:bg-white focus:ring-2 focus:ring-green-200 outline-none transition-all" 
-                        placeholder="Uxxxxxxxx..."
-                        value={shopData.line_target_id}
-                        onChange={e => setShopData({...shopData, line_target_id: e.target.value})}
-                    />
-                 </div>
-                 <div className="flex justify-end mt-2">
-                    <button onClick={handleSaveShop} className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-green-700 shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-                        <Save size={18}/> บันทึก LINE
-                    </button>
-                 </div>
-            </div>
-        </form>
 
     </div>
   );

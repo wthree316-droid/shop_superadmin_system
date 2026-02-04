@@ -3,6 +3,7 @@ import client from '../../api/client';
 import { Plus, X, Pencil, Loader2, Clock, CheckCircle, Trash2, Database, ChevronDown } from 'lucide-react';
 import type { LottoType, RateProfile } from '../../types/lotto';
 import FlagSelector from '../../components/admin/FlagSelector';
+import { alertAction, confirmAction } from '../../utils/toastUtils';
 
 const DAYS = [
   { id: 'SUN', label: 'อาทิตย์' }, { id: 'MON', label: 'จันทร์' }, { id: 'TUE', label: 'อังคาร' },
@@ -13,7 +14,7 @@ const DAYS = [
 const INITIAL_FORM_STATE = {
   name: '', 
   code: '', 
-  category: '', 
+  // category: '', // ตัดออก
   img_url: '',
   rate_profile_id: '', 
   open_days: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], // Default เปิดทุกวัน
@@ -115,7 +116,7 @@ export default function ManageLottoTemplates() {
 
   const [lottos, setLottos] = useState<LottoType[]>([]);
   const [rateProfiles, setRateProfiles] = useState<RateProfile[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  // const [categories, setCategories] = useState<any[]>([]); // ไม่ใช้แล้ว
 
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -134,10 +135,9 @@ export default function ManageLottoTemplates() {
     try {
       setIsLoading(true);
       // ต้องมั่นใจว่า Backend มี Endpoint /play/lottos/templates แล้ว
-      const [resLottos, resRates, resCats] = await Promise.all([
+      const [resLottos, resRates] = await Promise.all([
         client.get('/play/lottos/templates'), 
-        client.get('/play/rates'),
-        client.get('/play/categories') 
+        client.get('/play/rates')
       ]);
 
       const sortedLottos = resLottos.data.sort((a: any, b: any) => {
@@ -154,7 +154,7 @@ export default function ManageLottoTemplates() {
 
       setLottos(sortedLottos);
       setRateProfiles(resRates.data);
-      setCategories(resCats.data);
+      // setCategories(resCats.data);
     } catch (err) { 
         console.error("Fetch Error:", err); 
     } finally { 
@@ -171,8 +171,8 @@ export default function ManageLottoTemplates() {
     setEditingId(null);
     setFormData({
         ...INITIAL_FORM_STATE,
-        category: categories.length > 0 ? categories[0].id : ''
-    });
+        // category: categories.length > 0 ? categories[0].id : ''
+    } as any);
     setScheduleType('weekly');
     setMonthlyDates([1, 16]);
     setShowModal(true);
@@ -183,7 +183,7 @@ export default function ManageLottoTemplates() {
     setFormData({
       name: lotto.name,
       code: lotto.code,
-      category: lotto.category || (categories.length > 0 ? categories[0].id : ''),
+      // category: lotto.category || (categories.length > 0 ? categories[0].id : ''),
       img_url: lotto.img_url || '',
       rate_profile_id: lotto.rate_profile_id || '',
       open_days: lotto.open_days || [],
@@ -191,7 +191,7 @@ export default function ManageLottoTemplates() {
       close_time: formatTimeForInput(lotto.close_time || '15:30:00'),
       result_time: formatTimeForInput(lotto.result_time || '16:00:00'),
       api_link: lotto.api_link || ''
-    });
+    } as any);
 
     const rules = lotto.rules || {};
     if (rules.schedule_type === 'monthly') {
@@ -222,26 +222,27 @@ export default function ManageLottoTemplates() {
 
       if (editingId) {
         await client.put(`/play/lottos/${editingId}`, payload);
-        alert('แก้ไขแม่แบบสำเร็จ!');
+        alertAction('แก้ไขแม่แบบสำเร็จ!', 'สำเร็จ', 'success');
       } else {
         await client.post('/play/lottos', payload);
-        alert('สร้างแม่แบบสำเร็จ!');
+        alertAction('สร้างแม่แบบสำเร็จ!', 'สำเร็จ', 'success');
       }
       setShowModal(false);
       fetchData();
     } catch (err: any) {
-      alert(`Error: ${err.response?.data?.detail || 'เกิดข้อผิดพลาด'}`);
+      alertAction(`Error: ${err.response?.data?.detail || 'เกิดข้อผิดพลาด'}`, 'ข้อผิดพลาด', 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-      if(!confirm("ยืนยันลบแม่แบบนี้? (ร้านค้าที่ดึงไปแล้วจะไม่ได้รับผลกระทบ)")) return;
-      try {
-          await client.delete(`/play/lottos/${id}`);
-          fetchData();
-      } catch(err) { alert("ลบไม่สำเร็จ"); }
+      confirmAction("ยืนยันลบแม่แบบนี้? (ร้านค้าที่ดึงไปแล้วจะไม่ได้รับผลกระทบ)", async () => {
+          try {
+              await client.delete(`/play/lottos/${id}`);
+              fetchData();
+          } catch(err) { alertAction("ลบไม่สำเร็จ", "ข้อผิดพลาด", "error"); }
+      }, "ลบข้อมูล", "ยกเลิก");
   }
 
   const toggleDay = (dayId: string) => {
@@ -291,7 +292,7 @@ export default function ManageLottoTemplates() {
                 <tr>
                     <th className="p-5 w-24 text-center">รูปปก</th>
                     <th className="p-5">ชื่อหวย / รหัส</th>
-                    <th className="p-5 text-center">หมวดหมู่</th>
+                    {/* <th className="p-5 text-center">หมวดหมู่</th> */}
                     <th className="p-5 text-center">เวลาปิดรับ (Default)</th>
                     <th className="p-5 text-center">จัดการ</th>
                 </tr>
@@ -321,11 +322,11 @@ export default function ManageLottoTemplates() {
                         <div className="font-bold text-base text-slate-800">{lotto.name}</div>
                         <div className="text-xs font-mono text-amber-600 mt-1 bg-amber-50 px-2 py-0.5 rounded-md inline-block border border-amber-100">{lotto.code}</div>
                     </td>
-                    <td className="p-4 text-center">
+                    {/* <td className="p-4 text-center">
                         <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold border border-gray-200">
                            {categories.find(c => c.id === lotto.category)?.label || 'ไม่ระบุ'}
                         </span>
-                    </td>
+                    </td> */}
                     <td className="p-4 text-center">
                         <span className="font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
                             {formatTimeForInput(lotto.close_time)}
@@ -395,13 +396,13 @@ export default function ManageLottoTemplates() {
                                     <label className="block text-sm font-bold mb-1 text-gray-700">รหัส (Code) <span className="text-red-500">*</span></label>
                                     <input required className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 font-mono focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none uppercase placeholder-gray-400" placeholder="EX: THAI" value={formData.code || ''} onChange={e => setFormData({...formData, code: e.target.value})} />
                                 </div>
-                                <div>
+                                {/* <div>
                                     <label className="block text-sm font-bold mb-1 text-gray-700">หมวดหมู่</label>
                                     <select className="w-full bg-white border border-gray-300 p-2.5 rounded-lg text-slate-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
                                         <option value="">-- เลือกหมวดหมู่ --</option>
                                         {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                                     </select>
-                                </div>
+                                </div> */}
                                 <div>
                                     <label className="block text-sm font-bold mb-1 text-amber-600">เรทราคาเริ่มต้น</label>
                                     <select className="w-full bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-amber-800 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none font-bold" value={formData.rate_profile_id || ''} onChange={e => setFormData({...formData, rate_profile_id: e.target.value})}>

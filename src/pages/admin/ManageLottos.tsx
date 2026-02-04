@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { LottoType, RateProfile } from '../../types/lotto';
 import toast from 'react-hot-toast';
+import { alertAction, confirmAction } from '../../utils/toastUtils';
 
 // --- Configs ---
 const DAYS = [
@@ -386,11 +387,12 @@ export default function ManageLottos() {
   }, []);
 
   const handleDelete = useCallback(async (id: string) => {
-      if(!confirm('ยืนยันการลบหวยนี้?')) return;
-      try {
-          await client.delete(`/play/lottos/${id}`);
-          setLottos(prev => prev.filter(l => l.id !== id));
-      } catch(err:any) { alert(`ลบไม่สำเร็จ: ${err.response?.data?.detail}`); }
+      confirmAction('ยืนยันการลบหวยนี้?', async () => {
+          try {
+              await client.delete(`/play/lottos/${id}`);
+              setLottos(prev => prev.filter(l => l.id !== id));
+          } catch(err:any) { alertAction(`ลบไม่สำเร็จ: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error'); }
+      }, 'ลบหวย', 'ยกเลิก');
   }, []);
 
   const openCreateModal = useCallback(() => {
@@ -460,7 +462,7 @@ export default function ManageLottos() {
   };
 
   const handleSaveCategory = async () => {
-      if (!catForm.label) return alert("กรุณากรอกชื่อหมวดหมู่");
+      if (!catForm.label) return alertAction("กรุณากรอกชื่อหมวดหมู่", "แจ้งเตือน", "info");
       setIsCatSubmitting(true);
       try {
           if (editingCatId) {
@@ -473,7 +475,7 @@ export default function ManageLottos() {
           setEditingCatId(null);
           setCatForm({ label: '', color: '#2563EB', order_index: 999 });
       } catch (err: any) {
-          alert(`ทำรายการไม่สำเร็จ: ${err.response?.data?.detail}`);
+          alertAction(`ทำรายการไม่สำเร็จ: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error');
       } finally {
           setIsCatSubmitting(false);
       }
@@ -491,27 +493,29 @@ export default function ManageLottos() {
   };
 
   const handleDeleteCategory = async (id: string) => {
-      if (!confirm("⚠️ ต้องการลบหมวดหมู่นี้ใช่หรือไม่?")) return;
-      try {
-          await client.delete(`/play/categories/${id}`);
-          const res = await client.get('/play/categories');
-          setCategories(res.data);
-          if (editingCatId === id) cancelEditCategory();
-      } catch (err: any) {
-          alert(`ลบไม่สำเร็จ: ${err.response?.data?.detail}`);
-      }
+      confirmAction("⚠️ ต้องการลบหมวดหมู่นี้ใช่หรือไม่?", async () => {
+          try {
+              await client.delete(`/play/categories/${id}`);
+              const res = await client.get('/play/categories');
+              setCategories(res.data);
+              if (editingCatId === id) cancelEditCategory();
+          } catch (err: any) {
+              alertAction(`ลบไม่สำเร็จ: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error');
+          }
+      }, 'ลบหมวดหมู่', 'ยกเลิก');
   };
 
   const handleImportTemplates = async () => {
-    if (rateProfiles.length === 0) return alert("สร้าง Rate Profile ก่อนครับ");
-    if (!confirm("ดึงหวยมาตรฐานจากระบบกลาง?")) return;
-    setIsLoading(true);
-    try {
-        const res = await client.post('/play/lottos/import_defaults');
-        alert(`✅ ${res.data.message}`);
-        fetchData();
-    } catch (err: any) { alert(`Error: ${err.response?.data?.detail}`); } 
-    finally { setIsLoading(false); }
+    if (rateProfiles.length === 0) return alertAction("สร้าง Rate Profile ก่อนครับ", "แจ้งเตือน", "info");
+    confirmAction("ดึงหวยมาตรฐานจากระบบกลาง?", async () => {
+        setIsLoading(true);
+        try {
+            const res = await client.post('/play/lottos/import_defaults');
+            alertAction(`✅ ${res.data.message}`, 'สำเร็จ', 'success');
+            fetchData();
+        } catch (err: any) { alertAction(`Error: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error'); } 
+        finally { setIsLoading(false); }
+    }, 'ดึงข้อมูล', 'ยกเลิก');
   };
 
   const toggleDay = (dayId: string) => {
@@ -523,21 +527,21 @@ export default function ManageLottos() {
   };
 
   const handleBulkUpdate = async () => {
-    if (!bulkRateId) return alert("กรุณาเลือกเรทราคา");
-    if (!confirm(`⚠️ คำเตือน: คุณต้องการเปลี่ยนเรทราคาของหวย "ทุกรายการ" เป็นเรทที่เลือกใช่หรือไม่?`)) return;
-
-    setIsBulkUpdating(true);
-    try {
-        const res = await client.put('/play/lottos/bulk-rate-update', { rate_profile_id: bulkRateId });
-        alert(`✅ อัปเดตสำเร็จ! เปลี่ยนเรทราคาให้หวยจำนวน ${res.data.updated_count} รายการเรียบร้อยแล้ว`);
-        setShowBulkModal(false);
-        fetchData(); 
-    } catch (err: any) {
-        console.error(err);
-        alert(`❌ เกิดข้อผิดพลาด: ${err.response?.data?.detail || 'Unknown error'}`);
-    } finally {
-        setIsBulkUpdating(false);
-    }
+    if (!bulkRateId) return alertAction("กรุณาเลือกเรทราคา", "แจ้งเตือน", "info");
+    confirmAction(`⚠️ คำเตือน: คุณต้องการเปลี่ยนเรทราคาของหวย "ทุกรายการ" เป็นเรทที่เลือกใช่หรือไม่?`, async () => {
+        setIsBulkUpdating(true);
+        try {
+            const res = await client.put('/play/lottos/bulk-rate-update', { rate_profile_id: bulkRateId });
+            alertAction(`✅ อัปเดตสำเร็จ! เปลี่ยนเรทราคาให้หวยจำนวน ${res.data.updated_count} รายการเรียบร้อยแล้ว`, 'สำเร็จ', 'success');
+            setShowBulkModal(false);
+            fetchData(); 
+        } catch (err: any) {
+            console.error(err);
+            alertAction(`❌ เกิดข้อผิดพลาด: ${err.response?.data?.detail || 'Unknown error'}`, 'ข้อผิดพลาด', 'error');
+        } finally {
+            setIsBulkUpdating(false);
+        }
+    }, 'ยืนยันเปลี่ยนเรท', 'ยกเลิก');
   };
 
   const handleQuickCategoryChange = useCallback(async (lottoId: string, newCategoryId: string) => {
