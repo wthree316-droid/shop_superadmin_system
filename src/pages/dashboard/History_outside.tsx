@@ -22,7 +22,7 @@ export default function HistoryOutside() {
   };
   const [startDate, setStartDate] = useState(getToday());
   const [endDate, setEndDate] = useState(getToday());
-  const [filterStatus, setFilterStatus] = useState('ALL'); 
+  const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL', 'PENDING', 'WIN', 'LOSE', 'CANCELLED' 
 
   // --- Infinite Scroll States (✅ 2. Logic เลื่อนดูเรื่อยๆ) ---
   const [currentPage, setCurrentPage] = useState(1);
@@ -181,10 +181,16 @@ export default function HistoryOutside() {
           
           {/* Status Filter Tabs */}
           <div className="max-w-7xl mx-auto flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-            {['ALL', 'PENDING', 'WIN', 'LOSE', 'CANCELLED'].map(f => (
-                <button key={f} onClick={() => setFilterStatus(f)} 
-                    className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap border transition-all ${filterStatus === f ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
-                    {f === 'ALL' ? 'ทั้งหมด' : f}
+            {[
+              { label: 'ทั้งหมด', value: 'ALL' },
+              { label: 'รอผล', value: 'PENDING' },
+              { label: 'ถูกรางวัล', value: 'WIN' },
+              { label: 'ไม่ถูก', value: 'LOSE' },
+              { label: 'ยกเลิก', value: 'CANCELLED' }
+            ].map(f => (
+                <button key={f.value} onClick={() => setFilterStatus(f.value)} 
+                    className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap border transition-all ${filterStatus === f.value ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
+                    {f.label}
                 </button>
             ))}
           </div>
@@ -327,7 +333,7 @@ export default function HistoryOutside() {
                                                     <td className="p-3 text-right font-mono">{Number(item.amount).toLocaleString()}</td>
                                                     <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
                                                     <td className="p-3 text-right">
-                                                        {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">WIN</span> : 
+                                                        {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">ถูกรางวัล</span> : 
                                                         item.status === 'LOSE' ? <span className="text-red-400 text-xs">ไม่ถูก</span> : 
                                                         <span className="text-orange-400 text-xs font-medium">รอผล</span>}
                                                     </td>

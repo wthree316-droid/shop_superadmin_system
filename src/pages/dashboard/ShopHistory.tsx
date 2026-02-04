@@ -494,7 +494,7 @@ export default function ShopHistory() {
                                                     <td className="p-3 text-right font-mono">{Number(item.amount).toLocaleString()}</td>
                                                     <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
                                                     <td className="p-3 text-right">
-                                                        {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">WIN</span> : 
+                                                        {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">ถูกรางวัล</span> : 
                                                          item.status === 'LOSE' ? <span className="text-red-400 text-xs">ไม่ถูก</span> : 
                                                          <span className="text-orange-400 text-xs font-medium">รอผล</span>}
                                                     </td>

@@ -56,7 +56,7 @@ const checkIsOpen = (lotto: any, now: Date) => {
     }
 
     // -----------------------------------------------------
-    // 🕒 เช็คเวลา (สำหรับหวยรายวัน)
+    // 🕒 เช็คเวลา (สำหรับหวยรายวัน) รองรับข้ามวัน
     // -----------------------------------------------------
     if (!lotto.open_time) {
         // ถ้าไม่ระบุเวลาเปิด ให้ดูแค่ว่าเลยเวลาปิดหรือยัง
@@ -66,16 +66,18 @@ const checkIsOpen = (lotto: any, now: Date) => {
         return now <= closeToday;
     }
 
-    // กรณีมีทั้งเปิดและปิด (เช่น 08:00 - 15:30)
+    // กรณีมีทั้งเวลาเปิดและปิด (เช่น 08:00 - 15:30 หรือ 08:00 - 00:10)
     const currentStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     const openStr = lotto.open_time.substring(0, 5);
     const closeStr = lotto.close_time.substring(0, 5);
 
-    if (openStr < closeStr) {
-        return currentStr >= openStr && currentStr <= closeStr;
-    } else {
-        // ข้ามวัน
+    // ถ้า closeStr < openStr แสดงว่าข้ามวัน (เช่น 00:10 < 08:00)
+    if (closeStr < openStr) {
+        // ข้ามวัน: เปิดรับได้ถ้า เวลา >= เวลาเปิด หรือ เวลา <= เวลาปิด
         return currentStr >= openStr || currentStr <= closeStr;
+    } else {
+        // ปกติ (ไม่ข้ามวัน): เปิดรับได้ถ้า เวลา >= เวลาเปิด และ เวลา <= เวลาปิด
+        return currentStr >= openStr && currentStr <= closeStr;
     }
 };
 
@@ -117,10 +119,28 @@ const getCloseDate = (lotto: any, now: Date) => {
   const closeDate = new Date(now);
   closeDate.setHours(cH, cM, 0, 0);
 
-  // ถ้าเลยเวลาปิดแล้ว เป้าหมายคือพรุ่งนี้
-  if (now >= closeDate) {
-      closeDate.setDate(closeDate.getDate() + 1);
+  // เช็คว่าข้ามวันหรือไม่
+  const isOvernight = lotto.open_time && lotto.close_time && 
+                      lotto.close_time.substring(0, 5) < lotto.open_time.substring(0, 5);
+
+  if (isOvernight) {
+      // กรณีข้ามวัน: ถ้าเวลาปัจจุบัน < เวลาปิด แสดงว่ายังเป็นรอบเดิม (ไม่ต้องเลื่อนวัน)
+      // ถ้าเวลาปัจจุบัน >= เวลาปิด ให้เลื่อนไปพรุ่งนี้
+      const currentTimeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      const closeTimeStr = lotto.close_time.substring(0, 5);
+      
+      if (currentTimeStr > closeTimeStr) {
+          // เลยเวลาปิดแล้ว (เช่น เวลา 05:00 > 00:10) ให้เป้าหมายเป็นพรุ่งนี้
+          closeDate.setDate(closeDate.getDate() + 1);
+      }
+      // ถ้าเวลาปัจจุบัน <= เวลาปิด (เช่น เวลา 00:05 <= 00:10) ให้เป้าหมายเป็นวันนี้
+  } else {
+      // กรณีปกติ (ไม่ข้ามวัน): ถ้าเลยเวลาปิดแล้ว เป้าหมายคือพรุ่งนี้
+      if (now >= closeDate) {
+          closeDate.setDate(closeDate.getDate() + 1);
+      }
   }
+  
   return closeDate;
 };
 
@@ -243,13 +263,20 @@ export default function LottoMarket() {
     });
 
     return filtered.sort((a, b) => {
-      // เรียง Open ขึ้นก่อน Closed
+      // 1. เรียงตาม category order_index ก่อน
+      const catA = categories.find(c => c.id === a.category);
+      const catB = categories.find(c => c.id === b.category);
+      const orderA = catA?.order_index ?? 999;
+      const orderB = catB?.order_index ?? 999;
+      if (orderA !== orderB) return orderA - orderB;
+      
+      // 2. เรียง Open ขึ้นก่อน Closed (ภายในหมวดเดียวกัน)
       const openA = checkIsOpen(a, now);
       const openB = checkIsOpen(b, now);
       if (openA && !openB) return -1;
       if (!openA && openB) return 1;
       
-      // ถ้าสถานะเหมือนกัน เรียงตามเวลาปิด
+      // 3. ถ้าสถานะเหมือนกัน เรียงตามเวลาปิด
       const dateA = getCloseDate(a, now);
       const dateB = getCloseDate(b, now);
       if (!dateA) return 1; 

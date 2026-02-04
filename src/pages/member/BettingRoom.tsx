@@ -100,11 +100,26 @@ const getCloseDate = (lotto: any, now: Date) => {
   const closeDate = new Date(now);
   closeDate.setHours(cH, cM, 0, 0);
 
-  // หมายเหตุ: ตรงนี้เราตั้งใจหา "รอบถัดไป" ถ้าเวลาปัจจุบันเลยไปแล้ว
-  // แต่ในการใช้งานจริง เราจะใช้ useMemo ล็อคเวลาตอนเข้าหน้าเว็บไว้ เพื่อไม่ให้มันดีดไปวันพรุ่งนี้ตอนเรากำลังแทงอยู่
-  if (now > closeDate) {
-      closeDate.setDate(closeDate.getDate() + 1);
+  // เช็คว่าข้ามวันหรือไม่
+  const isOvernight = lotto.open_time && lotto.close_time && 
+                      lotto.close_time.substring(0, 5) < lotto.open_time.substring(0, 5);
+
+  if (isOvernight) {
+      // กรณีข้ามวัน
+      const currentTimeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      const closeTimeStr = lotto.close_time.substring(0, 5);
+      
+      if (currentTimeStr > closeTimeStr) {
+          // เลยเวลาปิดแล้ว ให้เป้าหมายเป็นพรุ่งนี้
+          closeDate.setDate(closeDate.getDate() + 1);
+      }
+  } else {
+      // กรณีปกติ (ไม่ข้ามวัน)
+      if (now > closeDate) {
+          closeDate.setDate(closeDate.getDate() + 1);
+      }
   }
+  
   return closeDate;
 };
 
@@ -258,7 +273,14 @@ export default function BettingRoom() {
     const fetchHistory = async (lottoId: string) => {
         try {
             const res = await client.get(`/play/history?limit=15&lotto_type_id=${lottoId}`);
-            setHistory(Array.isArray(res.data) ? res.data : []); 
+            const historyData = Array.isArray(res.data) ? res.data : [];
+            
+            // เรียงลำดับโพยตามเวลาสร้างล่าสุดก่อน (ใหม่สุดขึ้นก่อน)
+            const sortedHistory = historyData.sort((a: any, b: any) => {
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            });
+            
+            setHistory(sortedHistory); 
         } catch (err) {
             console.error("Fetch history error", err);
             setHistory([]); 
