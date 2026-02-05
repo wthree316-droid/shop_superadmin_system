@@ -197,17 +197,13 @@ export default function History() {
           }
       }));
 
-      // Sort Logic
-      result.sort((a, b) => {
-          // 1. Priority Sort: Selected Category comes first
-          if (selectedCategory !== 'ALL') {
-              const isA = a.category.id === selectedCategory;
-              const isB = b.category.id === selectedCategory;
-              if (isA && !isB) return -1;
-              if (!isA && isB) return 1;
-          }
+      // Filter by Category (Strict)
+      if (selectedCategory !== 'ALL') {
+          result = result.filter(g => g.category.id === selectedCategory);
+      }
 
-          // 2. Secondary Sort: Time (Close or Result Time)
+      // Sort Logic (Time only)
+      result.sort((a, b) => {
           const timeA = a.lotto.close_time || "23:59";
           const timeB = b.lotto.close_time || "23:59";
           return timeA.localeCompare(timeB);
