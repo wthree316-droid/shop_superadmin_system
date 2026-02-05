@@ -170,6 +170,7 @@ export default function ShopHistory() {
               groups[lottoId] = {
                   id: lottoId,
                   name: lottoName,
+                  close_time: ticket.lotto_type?.close_time || '23:59',
                   items: []
               };
           }
@@ -207,6 +208,20 @@ export default function ShopHistory() {
                   totalCancelled
               }
           };
+      }).sort((a: any, b: any) => {
+          // Sort Logic Same as History.tsx
+          const getTimeScore = (timeStr: string | null) => {
+              if (!timeStr) return -1;
+              const [h, m] = timeStr.split(':').map(Number);
+              if (h < 5) return (h + 24) * 60 + m; 
+              return h * 60 + m;
+          };
+
+          const scoreA = getTimeScore(a.close_time);
+          const scoreB = getTimeScore(b.close_time);
+          
+          // Descending Order (มากไปน้อย)
+          return scoreB - scoreA;
       });
   }, [tickets, filterStatus]);
 

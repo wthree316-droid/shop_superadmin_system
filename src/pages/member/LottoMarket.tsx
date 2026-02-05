@@ -285,6 +285,26 @@ export default function LottoMarket() {
     });
   };
 
+  // 🔥 คำนวณหวยด่วน (Urgent Lottos) < 1 ชั่วโมง
+  const urgentLottos = useMemo(() => {
+    return lottos.filter(l => {
+        const isOpen = checkIsOpen(l, now);
+        if (!isOpen) return false;
+        
+        const closeDate = getCloseDate(l, now);
+        if (!closeDate) return false;
+        
+        const diff = closeDate.getTime() - now.getTime();
+        // น้อยกว่า 1 ชม. (3600000 ms) และต้องยังไม่ปิด (diff > 0)
+        return diff > 0 && diff <= 60 * 60 * 1000; 
+    }).sort((a, b) => {
+        // เรียงตัวที่เวลาเหลือน้อยสุดขึ้นก่อน
+        const dateA = getCloseDate(a, now);
+        const dateB = getCloseDate(b, now);
+        return (dateA?.getTime() || 0) - (dateB?.getTime() || 0);
+    });
+  }, [lottos, now]);
+
   // --- LottoCard Component ---
   const LottoCard = ({ lotto }: { lotto: any }) => {
       // ใช้ checkIsOpen เป็นตัวหลักในการบอกว่า "เปิดหรือปิด"
@@ -438,6 +458,21 @@ export default function LottoMarket() {
       <div className="p-4">
         {filter === 'ALL' && searchTerm === '' ? (
             <div className="space-y-6">
+                
+                {/* 🔥 โซนหวยด่วน (โค้งสุดท้าย) */}
+                {urgentLottos.length > 0 && (
+                    <div className="animate-in slide-in-from-top-4 fade-in duration-500">
+                        <h2 className="text-sm font-black text-red-600 mb-3 pl-2 border-l-4 border-red-500 flex items-center gap-2">
+                            <Clock size={18} className="animate-pulse" /> โค้งสุดท้าย (ปิดใน 1 ชม.)
+                        </h2>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 bg-red-50/50 p-3 rounded-xl border border-red-100 shadow-inner mb-6">
+                            {urgentLottos.map(lotto => (
+                                <LottoCard key={`urgent-${lotto.id}`} lotto={lotto} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {displayCategories.slice(1).map(cat => {
                     const catLottos = getFilteredLottos(cat.id);
                     if (catLottos.length === 0) return null;

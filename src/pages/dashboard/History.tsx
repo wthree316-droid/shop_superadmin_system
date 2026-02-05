@@ -202,11 +202,21 @@ export default function History() {
           result = result.filter(g => g.category.id === selectedCategory);
       }
 
-      // Sort Logic (Time only)
+      // Sort Logic (Time Score: Late night > Evening > Morning)
       result.sort((a, b) => {
-          const timeA = a.lotto.close_time || "23:59";
-          const timeB = b.lotto.close_time || "23:59";
-          return timeA.localeCompare(timeB);
+          const getTimeScore = (timeStr: string | null) => {
+              if (!timeStr) return -1;
+              const [h, m] = timeStr.split(':').map(Number);
+              // Shift 00:00-04:59 to be "later" than 23:59 (e.g., 25:00, 26:00)
+              if (h < 5) return (h + 24) * 60 + m; 
+              return h * 60 + m;
+          };
+
+          const scoreA = getTimeScore(a.lotto.close_time);
+          const scoreB = getTimeScore(b.lotto.close_time);
+          
+          // Descending Order (มากไปน้อย: ดึก -> เช้า)
+          return scoreB - scoreA;
       });
 
       return result;
