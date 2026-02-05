@@ -35,7 +35,7 @@ export default function ShopHistory() {
   // --- Infinite Scroll States ---
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [itemsPerPage] = useState(30); 
+  const [itemsPerPage] = useState(100); 
   
   // --- Modal State ---
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
