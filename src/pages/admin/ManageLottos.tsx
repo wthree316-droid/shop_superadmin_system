@@ -392,7 +392,7 @@ export default function ManageLottos() {
   const toggleStatus = useCallback(async (id: string) => {
     // ✅ [FIX] ป้องกันการกดซ้ำ ID เดียวกัน
     if (togglingIds.has(id)) {
-        console.log(`Toggle ${id} already in progress, skipping...`);
+        console.log(`⏭️ Toggle ${id} already in progress, skipping...`);
         return;
     }
     
@@ -404,19 +404,19 @@ export default function ManageLottos() {
       try { 
           // 1. เรียก API และรอให้เสร็จ
           const response = await client.patch(`/play/lottos/${id}/toggle`); 
-          console.log(`Toggle ${id} API success:`, response.data);
+          console.log(`✅ Toggle API success:`, response.data);
           
-          // 2. รอสักครู่ให้ Backend commit & clear cache
-          await new Promise(resolve => setTimeout(resolve, 150));
+          // 2. ✅ [OPTIMIZED] รอให้ Backend commit (ลดจาก 150ms → 100ms)
+          await new Promise(resolve => setTimeout(resolve, 100));
           
           // 3. โหลดข้อมูลใหม่จาก Backend
           await fetchData();
           
-          // 4. รอให้ React render เสร็จ (ให้เวลา setState batching)
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // 4. ✅ [OPTIMIZED] รอให้ React render (ลดจาก 100ms → 50ms)
+          await new Promise(resolve => setTimeout(resolve, 50));
       } 
       catch (err: any) { 
-          console.error(`Toggle ${id} error:`, err);
+          console.error(`❌ Toggle ${id} error:`, err);
           toast.error('เปลี่ยนสถานะไม่สำเร็จ');
           // ถ้าพัง โหลดข้อมูลเดิมกลับมาเพื่อ sync
           await fetchData(); 
@@ -429,7 +429,7 @@ export default function ManageLottos() {
           });
       }
     }).catch(err => {
-        console.error('Queue error:', err);
+        console.error('❌ Queue error:', err);
     });
     
     // ไม่ต้อง return เพราะ Queue จัดการให้แล้ว
