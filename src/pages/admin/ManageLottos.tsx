@@ -340,6 +340,7 @@ export default function ManageLottos() {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [isCatSubmitting, setIsCatSubmitting] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set()); // ✅ [FIX] เก็บ ID ที่กำลัง toggle
+  const toggleQueueRef = useRef<Promise<void>>(Promise.resolve()); // ✅ [FIX] Queue สำหรับ serialize toggles
   
   const [bulkRateId, setBulkRateId] = useState('');
   
@@ -358,9 +359,7 @@ export default function ManageLottos() {
       return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => { fetchData(); }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
       const [resLottos, resRates, resCats] = await Promise.all([
@@ -386,36 +385,55 @@ export default function ManageLottos() {
       setCategories(resCats.data);
     } catch (err) { console.error(err); } 
     finally { setIsLoading(false); }
-  };
+  }, []); // ไม่มี dependencies เพราะใช้แค่ setState
+  
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const toggleStatus = useCallback(async (id: string) => {
-    // ✅ [FIX] ป้องกันการกดซ้ำ
-    if (togglingIds.has(id)) return;
-    
-    // ✅ [FIX] เพิ่ม ID เข้า Set (แสดงว่ากำลัง toggle)
-    setTogglingIds(prev => new Set(prev).add(id));
-    
-    try { 
-        // 1. เรียก API และรอให้เสร็จ
-        await client.patch(`/play/lottos/${id}/toggle`); 
-        
-        // 2. ✅ [FIX] รอ API เสร็จแล้วค่อยโหลดข้อมูลใหม่
-        await fetchData();
-    } 
-    catch (err) { 
-        console.error('Toggle error:', err);
-        toast.error('เปลี่ยนสถานะไม่สำเร็จ');
-        // ถ้าพัง โหลดข้อมูลเดิมกลับมา
-        await fetchData(); 
-    } finally {
-        // ✅ [FIX] ลบ ID ออกจาก Set (toggle เสร็จแล้ว)
-        setTogglingIds(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(id);
-            return newSet;
-        });
+    // ✅ [FIX] ป้องกันการกดซ้ำ ID เดียวกัน
+    if (togglingIds.has(id)) {
+        console.log(`Toggle ${id} already in progress, skipping...`);
+        return;
     }
-  }, [togglingIds]);
+    
+    // ✅ [FIX] เพิ่มเข้า Queue (Serialize toggles) เพื่อป้องกัน Race Condition
+    toggleQueueRef.current = toggleQueueRef.current.then(async () => {
+      // เพิ่ม ID เข้า Set (แสดงว่ากำลัง toggle)
+      setTogglingIds(prev => new Set(prev).add(id));
+      
+      try { 
+          // 1. เรียก API และรอให้เสร็จ
+          const response = await client.patch(`/play/lottos/${id}/toggle`); 
+          console.log(`Toggle ${id} API success:`, response.data);
+          
+          // 2. รอสักครู่ให้ Backend commit & clear cache
+          await new Promise(resolve => setTimeout(resolve, 150));
+          
+          // 3. โหลดข้อมูลใหม่จาก Backend
+          await fetchData();
+          
+          // 4. รอให้ React render เสร็จ (ให้เวลา setState batching)
+          await new Promise(resolve => setTimeout(resolve, 100));
+      } 
+      catch (err: any) { 
+          console.error(`Toggle ${id} error:`, err);
+          toast.error('เปลี่ยนสถานะไม่สำเร็จ');
+          // ถ้าพัง โหลดข้อมูลเดิมกลับมาเพื่อ sync
+          await fetchData(); 
+      } finally {
+          // ลบ ID ออกจาก Set (toggle เสร็จแล้ว)
+          setTogglingIds(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(id);
+              return newSet;
+          });
+      }
+    }).catch(err => {
+        console.error('Queue error:', err);
+    });
+    
+    // ไม่ต้อง return เพราะ Queue จัดการให้แล้ว
+  }, [togglingIds, fetchData]);
 
   const handleDelete = useCallback(async (id: string) => {
       confirmAction('ยืนยันการลบหวยนี้?', async () => {
