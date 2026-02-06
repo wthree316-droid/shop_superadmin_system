@@ -124,15 +124,21 @@ const LottoCard: React.FC<LottoCardProps> = ({ lotto, now, onNavigate }) => {
 
 // Memoize to prevent unnecessary re-renders
 export default React.memo(LottoCard, (prevProps, nextProps) => {
-  // Only re-render if:
-  // 1. Lotto ID changed
-  // 2. Lotto is_active changed
-  // 3. Time changed significantly (30 seconds bucket)
-  return (
+  // Re-render only when relevant props change
+  const lottoEqual = (
     prevProps.lotto.id === nextProps.lotto.id &&
+    prevProps.lotto.name === nextProps.lotto.name &&
+    prevProps.lotto.img_url === nextProps.lotto.img_url &&
     prevProps.lotto.is_active === nextProps.lotto.is_active &&
     prevProps.lotto.close_time === nextProps.lotto.close_time &&
     prevProps.lotto.open_time === nextProps.lotto.open_time &&
-    Math.floor(prevProps.now.getTime() / 30000) === Math.floor(nextProps.now.getTime() / 30000)
+    prevProps.lotto.result_time === nextProps.lotto.result_time
   );
+  
+  // Time changed significantly? (30 second buckets to reduce re-renders)
+  const timeEqual = Math.floor(prevProps.now.getTime() / 30000) === 
+                    Math.floor(nextProps.now.getTime() / 30000);
+  
+  // Return true to skip re-render (props are equal)
+  return lottoEqual && timeEqual;
 });
