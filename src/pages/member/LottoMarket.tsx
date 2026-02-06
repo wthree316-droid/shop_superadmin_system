@@ -1,232 +1,76 @@
-import { useState, useEffect, useMemo } from 'react';
+// ============================================
+// LottoMarket - Optimized & Production-Ready
+// ============================================
+
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import client from '../../api/client';
 import { supabase } from '../../utils/supabaseClient';
 import { 
-  Sparkles, Search, Clock, Layers, 
-  TrendingUp, Crown,  
-  Globe, Lock
+  Sparkles, Search, Clock, Layers, Loader2, AlertCircle
 } from 'lucide-react';
+import type { LottoType, Category } from '../../types/lotto';
+import { 
+  checkIsOpen, 
+  getCloseDate, 
+  getCategoryColorStyle,
+  TIME_CONSTANTS,
+  sortLottos
+} from '../../utils/lottoHelpers';
+import { getCategoryIcon } from '../../components/lotto/CategoryIcon';
+import LottoCard from '../../components/lotto/LottoCard';
 
-// --------------------------------------------------------
-// ✅ 1. ฟังก์ชันเช็คว่า "เปิดรับแทงอยู่หรือไม่?" (Real-time Check)
-// --------------------------------------------------------
-const checkIsOpen = (lotto: any, now: Date) => {
+// ============================================
+// Main Component
+// ============================================
 
-    if (lotto.is_active === false) return false;
-    if (!lotto.close_time) return false;
-
-    // -----------------------------------------------------
-    // 🅰️ กรณี: หวยรายเดือน (Monthly) เช่น หวยรัฐบาล
-    // -----------------------------------------------------
-    if (lotto.rules?.schedule_type === 'monthly') {
-        const closeDates = (lotto.rules.close_dates || [1, 16]).map(Number);
-        const todayDate = now.getDate(); // วันที่ 1-31
-        
-        // ถ้า "วันนี้" เป็นวันหวยออก (เช่นวันที่ 1 หรือ 16)
-        if (closeDates.includes(todayDate)) {
-             const [cH, cM] = lotto.close_time.split(':').map(Number);
-             const closeToday = new Date(now);
-             closeToday.setHours(cH, cM, 0, 0);
-             
-             // ถ้าเวลายังไม่เกินเวลาปิด -> เปิด (True)
-             // ถ้าเกินแล้ว -> ปิด (False)
-             return now <= closeToday;
-        }
-        
-        // วันอื่นๆ (วันที่ 2-15, 17-31) ให้เปิดตลอด 24 ชม. (เพื่อรับแทงล่วงหน้า)
-        return true; 
-        
-        // ⚠️ หมายเหตุ: เรา return ตรงนี้เลย เพื่อ "ไม่ให้" ไปเช็ค จันทร์-อาทิตย์ ด้านล่าง
-        // เพราะหวยรัฐบาลออกได้ทุกวัน ไม่สนว่าจะเป็นวันหยุดหรือไม่
-    }
-
-    // -----------------------------------------------------
-    // 🅱️ กรณี: หวยรายวัน/หุ้น (เช็ควัน จันทร์-อาทิตย์)
-    // -----------------------------------------------------
-    // ถ้ามีข้อมูลวันเปิด และวันนี้ไม่อยู่ในรายการ -> ปิด
-    if (lotto.open_days && Array.isArray(lotto.open_days) && lotto.open_days.length > 0) {
-        const daysMap = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-        const currentDayStr = daysMap[now.getDay()];
-        
-        // ถ้าวันนี้ไม่อยู่ในลิสต์เปิดรับ -> ปิดเลย
-        if (!lotto.open_days.includes(currentDayStr)) {
-            return false; 
-        }
-    }
-
-    // -----------------------------------------------------
-    // 🕒 เช็คเวลา (สำหรับหวยรายวัน) รองรับข้ามวัน
-    // -----------------------------------------------------
-    if (!lotto.open_time) {
-        // ถ้าไม่ระบุเวลาเปิด ให้ดูแค่ว่าเลยเวลาปิดหรือยัง
-        const [cH, cM] = lotto.close_time.split(':').map(Number);
-        const closeToday = new Date(now);
-        closeToday.setHours(cH, cM, 0, 0);
-        return now <= closeToday;
-    }
-
-    // กรณีมีทั้งเวลาเปิดและปิด (เช่น 08:00 - 15:30 หรือ 08:00 - 00:10)
-    const currentStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    const openStr = lotto.open_time.substring(0, 5);
-    const closeStr = lotto.close_time.substring(0, 5);
-
-    // ถ้า closeStr < openStr แสดงว่าข้ามวัน (เช่น 00:10 < 08:00)
-    if (closeStr < openStr) {
-        // ข้ามวัน: เปิดรับได้ถ้า เวลา >= เวลาเปิด หรือ เวลา <= เวลาปิด
-        return currentStr >= openStr || currentStr <= closeStr;
-    } else {
-        // ปกติ (ไม่ข้ามวัน): เปิดรับได้ถ้า เวลา >= เวลาเปิด และ เวลา <= เวลาปิด
-        return currentStr >= openStr && currentStr <= closeStr;
-    }
-};
-
-// --------------------------------------------------------
-// ✅ 2. ฟังก์ชันคำนวณวันปิดรอบถัดไป (Target Close Date)
-// --------------------------------------------------------
-const getCloseDate = (lotto: any, now: Date) => {
-  if (!lotto.close_time) return null;
-  
-  const [cH, cM] = lotto.close_time.split(':').map(Number);
-  const rules = lotto.rules || {}; 
-
-  // --- A. หวยรายเดือน ---
-  if (rules.schedule_type === 'monthly') {
-      const targetDates = (rules.close_dates || [1, 16]).map(Number).sort((a: number, b: number) => a - b);
-      const currentDay = now.getDate();
-      let targetDay = -1;
-      let targetMonth = now.getMonth();
-      let targetYear = now.getFullYear();
-
-      for (const d of targetDates) {
-          if (d > currentDay) { targetDay = d; break; }
-          if (d === currentDay) {
-              const closeToday = new Date(now);
-              closeToday.setHours(cH, cM, 0, 0);
-              if (now <= closeToday) { targetDay = d; break; }
-          }
-      }
-
-      if (targetDay === -1) {
-          targetDay = targetDates[0]; 
-          targetMonth++; 
-          if (targetMonth > 11) { targetMonth = 0; targetYear++; }
-      }
-      return new Date(targetYear, targetMonth, targetDay, cH, cM, 0, 0);
-  }
-
-  // --- B. หวยรายวัน ---
-  const closeDate = new Date(now);
-  closeDate.setHours(cH, cM, 0, 0);
-
-  // เช็คว่าข้ามวันหรือไม่
-  const isOvernight = lotto.open_time && lotto.close_time && 
-                      lotto.close_time.substring(0, 5) < lotto.open_time.substring(0, 5);
-
-  if (isOvernight) {
-      // กรณีข้ามวัน: ถ้าเวลาปัจจุบัน < เวลาปิด แสดงว่ายังเป็นรอบเดิม (ไม่ต้องเลื่อนวัน)
-      // ถ้าเวลาปัจจุบัน >= เวลาปิด ให้เลื่อนไปพรุ่งนี้
-      const currentTimeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-      const closeTimeStr = lotto.close_time.substring(0, 5);
-      
-      if (currentTimeStr > closeTimeStr) {
-          // เลยเวลาปิดแล้ว (เช่น เวลา 05:00 > 00:10) ให้เป้าหมายเป็นพรุ่งนี้
-          closeDate.setDate(closeDate.getDate() + 1);
-      }
-      // ถ้าเวลาปัจจุบัน <= เวลาปิด (เช่น เวลา 00:05 <= 00:10) ให้เป้าหมายเป็นวันนี้
-  } else {
-      // กรณีปกติ (ไม่ข้ามวัน): ถ้าเลยเวลาปิดแล้ว เป้าหมายคือพรุ่งนี้
-      if (now >= closeDate) {
-          closeDate.setDate(closeDate.getDate() + 1);
-      }
-  }
-  
-  return closeDate;
-};
-
-const formatTimeRemaining = (diff: number) => {
-  if (diff <= 0) return null;
-  const h = Math.floor(diff / (1000 * 60 * 60));
-  const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  const s = Math.floor((diff % (1000 * 60)) / 1000);
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-};
-
-// --------------------------------------------------------
-// ✅ 3. ฟังก์ชัน UI (Icon & Color)
-// --------------------------------------------------------
-const getCategoryFlag = (label: string) => {
-  const name = label.toLowerCase();
-  
-  const Flag = ({ code }: { code: string }) => (
-    <img src={`https://flagcdn.com/w40/${code}.png`} srcSet={`https://flagcdn.com/w80/${code}.png 2x`} alt={label} className="w-5 h-auto rounded-xs shadow-sm object-cover mr-1.5" />
-  );
-
-  const IconBadge = ({ icon: Icon, colorClass, style }: any) => (
-    <div className={`w-5 h-3.5 flex items-center justify-center rounded-xs shadow-sm mr-1.5 ${colorClass || ''}`} style={style}>
-       <Icon size={12} strokeWidth={3} className="text-white" />
-    </div>
-  );
-
-  if (name.includes('vip')) return <IconBadge icon={Crown} style={{ background: 'linear-gradient(to right, #FBBF24, #F59E0B)' }} />;
-  if (name.includes('หุ้น') || name.includes('stock')) return <IconBadge icon={TrendingUp} colorClass="bg-blue-500" />;
-  if (name.includes('อื่น') || name.includes('etc')) return <IconBadge icon={Search} colorClass="bg-gray-500" />;
-
-  if (name.includes('ไทย') || name.includes('รัฐบาล')) return <Flag code="th" />;
-  if (name.includes('ฮานอย') || name.includes('เวียดนาม')) return <Flag code="vn" />;
-  if (name.includes('ลาว')) return <Flag code="la" />;
-  if (name.includes('มาเล')) return <Flag code="my" />;
-  if (name.includes('จีน')) return <Flag code="cn" />;
-  if (name.includes('เกาหลี')) return <Flag code="kr" />;
-  if (name.includes('ญี่ปุ่น') || name.includes('นิเคอิ')) return <Flag code="jp" />;
-  if (name.includes('ไต้หวัน')) return <Flag code="tw" />;
-  if (name.includes('สิงคโปร์')) return <Flag code="sg" />;
-  if (name.includes('อินเดีย')) return <Flag code="in" />;
-  if (name.includes('รัสเซีย')) return <Flag code="ru" />;
-  if (name.includes('เยอรมัน')) return <Flag code="de" />;
-  if (name.includes('อังกฤษ')) return <Flag code="gb" />;
-  if (name.includes('ดาวโจนส์') || name.includes('อเมริกา') || name.includes('us')) return <Flag code="us" />;
-  if (name.includes('ฮ่องกง')) return <Flag code="hk" />;
-  if (name.includes('อียิปต์')) return <Flag code="eg" />;
-  
-  return <Globe size={16} className="text-gray-400 mr-1.5" />;
-};
-
-const getCategoryColorStyle = (cat: any) => {
-    if (!cat.color) return { backgroundColor: '#3B82F6' };
-    if (cat.color.startsWith('#')) return { backgroundColor: cat.color }; 
-    return {};
-};
-
-// --------------------------------------------------------
-// ✅ Main Component
-// --------------------------------------------------------
 export default function LottoMarket() {
-  const [lottos, setLottos] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  // --- State Management ---
+  const [lottos, setLottos] = useState<LottoType[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [now, setNow] = useState(new Date());
   const [filter, setFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState<'connected' | 'disconnected' | 'error'>('disconnected');
+  
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchData = async () => {
-        try {
-            const [resLottos, resCats] = await Promise.all([
-                client.get('/play/lottos'),
-                client.get('/play/categories')
-            ]);
-            setLottos(resLottos.data);
-            setCategories(resCats.data);
-        } catch (err) {
-            console.error("Failed to load market data", err);
-        }
-    };
-    fetchData();
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
+  // --- Data Fetching ---
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const [resLottos, resCats] = await Promise.all([
+        client.get('/play/lottos'),
+        client.get('/play/categories')
+      ]);
+      
+      setLottos(resLottos.data);
+      setCategories(resCats.data);
+    } catch (err: any) {
+      console.error("Failed to load market data", err);
+      setError('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
+  // --- Initial Load ---
+  useEffect(() => {
+    fetchData();
+    
+    // ✅ อัปเดตเวลาทุก 30 วินาที (แทน 1 วินาที) เพื่อประหยัด CPU
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, TIME_CONSTANTS.UPDATE_INTERVAL);
+    
+    return () => clearInterval(timer);
+  }, [fetchData]);
+
+  // --- Realtime Subscription (with Error Handling) ---
   useEffect(() => {
     const channel = supabase
       .channel('realtime-lottos-market')
@@ -234,60 +78,61 @@ export default function LottoMarket() {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'lotto_types' },
         (payload) => {
-          const updatedLotto = payload.new;
-          // อัปเดตข้อมูลใน State ทันที
-          setLottos((prevLottos) => 
-            prevLottos.map((l) => 
-              l.id === updatedLotto.id ? { ...l, ...updatedLotto } : l
-            )
-          );
+          try {
+            const updatedLotto = payload.new as LottoType;
+            
+            setLottos((prevLottos) => 
+              prevLottos.map((l) => 
+                l.id === updatedLotto.id ? { ...l, ...updatedLotto } : l
+              )
+            );
+            
+            console.log('✅ Realtime update:', updatedLotto.name);
+          } catch (err) {
+            console.error('❌ Realtime update error:', err);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Realtime connected');
+          setRealtimeStatus('connected');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Realtime connection error');
+          setRealtimeStatus('error');
+        } else if (status === 'CLOSED') {
+          setRealtimeStatus('disconnected');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, []);
 
+  // --- Display Categories ---
   const displayCategories = useMemo(() => {
-      return [{ id: 'ALL', label: 'ทั้งหมด', color: 'bg-blue-600' }, ...categories];
+    return [
+      { id: 'ALL', label: 'ทั้งหมด', color: '#2563EB', order_index: 0 } as Category, 
+      ...categories
+    ];
   }, [categories]);
 
-  const getFilteredLottos = (categoryId: string) => {
+  // --- Filter & Sort Lottos ---
+  const getFilteredLottos = useCallback((categoryId: string) => {
     const filtered = lottos.filter(l => {
       const catMatch = categoryId === 'ALL' || l.category === categoryId;
       const searchMatch = l.name.toLowerCase().includes(searchTerm.toLowerCase());
-      
       return catMatch && searchMatch;
     });
 
-    return filtered.sort((a, b) => {
-      // 1. เรียงตาม category order_index ก่อน
-      const catA = categories.find(c => c.id === a.category);
-      const catB = categories.find(c => c.id === b.category);
-      const orderA = catA?.order_index ?? 999;
-      const orderB = catB?.order_index ?? 999;
-      if (orderA !== orderB) return orderA - orderB;
-      
-      // 2. เรียง Open ขึ้นก่อน Closed (ภายในหมวดเดียวกัน)
-      const openA = checkIsOpen(a, now);
-      const openB = checkIsOpen(b, now);
-      if (openA && !openB) return -1;
-      if (!openA && openB) return 1;
-      
-      // 3. ถ้าสถานะเหมือนกัน เรียงตามเวลาปิด
-      const dateA = getCloseDate(a, now);
-      const dateB = getCloseDate(b, now);
-      if (!dateA) return 1; 
-      if (!dateB) return -1;
-      return dateA.getTime() - dateB.getTime();
-    });
-  };
+    return sortLottos(filtered, categories, now);
+  }, [lottos, categories, now, searchTerm]);
 
-  // 🔥 คำนวณหวยด่วน (Urgent Lottos) < 1 ชั่วโมง
+  // --- Calculate Urgent Lottos (< 1 hour) ---
   const urgentLottos = useMemo(() => {
-    return lottos.filter(l => {
+    return lottos
+      .filter(l => {
         const isOpen = checkIsOpen(l, now);
         if (!isOpen) return false;
         
@@ -295,129 +140,82 @@ export default function LottoMarket() {
         if (!closeDate) return false;
         
         const diff = closeDate.getTime() - now.getTime();
-        // น้อยกว่า 1 ชม. (3600000 ms) และต้องยังไม่ปิด (diff > 0)
-        return diff > 0 && diff <= 60 * 60 * 1000; 
-    }).sort((a, b) => {
-        // เรียงตัวที่เวลาเหลือน้อยสุดขึ้นก่อน
+        return diff > 0 && diff <= TIME_CONSTANTS.ONE_HOUR;
+      })
+      .sort((a, b) => {
         const dateA = getCloseDate(a, now);
         const dateB = getCloseDate(b, now);
         return (dateA?.getTime() || 0) - (dateB?.getTime() || 0);
-    });
+      });
   }, [lottos, now]);
 
-  // --- LottoCard Component ---
-  const LottoCard = ({ lotto }: { lotto: any }) => {
-      // ใช้ checkIsOpen เป็นตัวหลักในการบอกว่า "เปิดหรือปิด"
-      const isOpen = checkIsOpen(lotto, now);
-      const closeDate = useMemo(() => getCloseDate(lotto, now), [lotto, now]);
-      
-      const diff = closeDate ? closeDate.getTime() - now.getTime() : 0;
-      const timeLeftStr = isOpen ? formatTimeRemaining(diff) : null;
-      const isCritical = isOpen && diff < 30 * 60 * 1000; 
+  // --- Navigation Handler ---
+  const handleNavigate = useCallback((lottoId: string) => {
+    navigate(`/play/${lottoId}`);
+  }, [navigate]);
 
-      return (
-        <div 
-          onClick={() => isOpen && navigate(`/play/${lotto.id}`)}
-          className={`
-            relative p-3 rounded-sm shadow-sm border transition-all duration-200 overflow-hidden cursor-pointer
-            ${isOpen 
-                ? 'bg-[#00B900] border-[#00A000] hover:scale-[1.02] hover:shadow-md text-white' 
-                : 'bg-gray-100 border-gray-200 opacity-90 text-gray-500 cursor-not-allowed grayscale'
-            }
-          `}
-        >
-            <div className="flex justify-between items-start mb-2">
-                <div className="w-14 h-9 bg-white/20 rounded-sm overflow-hidden shrink-0 border border-white/10 shadow-sm">
-                    {lotto.img_url ? (
-                        <img 
-                            src={lotto.img_url} 
-                            alt={lotto.name} 
-                            className="w-full h-full object-cover"
-                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/60x40?text=Lotto'; }}
-                        />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[10px] font-bold">LOGO</div>
-                    )}
-                </div>
-
-                <div className="text-right flex flex-col items-end flex-1 pl-2">
-                    <h3 className={`font-bold text-sm leading-tight line-clamp-1 ${isOpen ? 'text-white' : 'text-gray-700'}`}>
-                        {lotto.name}
-                    </h3>
-                    <span className={`text-xs font-bold mt-0.5 ${isOpen ? 'text-white/90' : 'text-red-500'}`}>
-                        {isOpen ? 'เปิดรับ' : 'ปิดรับ'}
-                    </span>
-                </div>
-            </div>
-
-            <div className={`text-[10px] space-y-0.5 font-medium ${isOpen ? 'text-white/90' : 'text-gray-500'}`}>
-                {/* แถว: ปิดรับเมื่อไหร่ */}
-                <div className="flex justify-between border-b border-white/10 pb-0.5 mb-0.5">
-                    {closeDate && closeDate.getDate() !== now.getDate() ? (
-                        <span className={`${isOpen ? 'text-yellow-200' : 'text-gray-600'} font-bold`}>
-                            ปิด {closeDate.getDate()}/{closeDate.getMonth()+1}
-                        </span>
-                    ) : (
-                        <span>ปิดรับวันนี้</span>
-                    )}
-                    <span className="font-bold">{lotto.close_time?.substring(0,5) || '-'}</span>
-                </div>
-                
-                {/* แถว: ออกผล */}
-                <div className="flex justify-between border-b border-white/10 pb-0.5 mb-0.5">
-                    <span>ออกผล</span>
-                    <span className="font-bold">{lotto.result_time?.substring(0,5) || '-'}</span>
-                </div>
-
-                {/* แถว: สถานะ/เวลานับถอยหลัง */}
-                <div className="flex justify-between items-center pt-0.5">
-                    <span>สถานะ</span>
-                    {!isOpen ? (
-                        <span className="font-bold text-red-500 flex items-center gap-1">
-                            <Lock size={10} /> ปิดชั่วคราว
-                        </span>
-                    ) : (
-                        <span className={`
-                            font-bold px-1.5 py-0 rounded text-[9px] whitespace-nowrap flex items-center gap-1
-                            ${isCritical 
-                                ? 'bg-red-600 text-white animate-pulse shadow-sm' 
-                                : 'bg-black/20' 
-                            }
-                        `}>
-                           {isCritical && <Clock size={10} strokeWidth={3} />} 
-                           ปิดใน {timeLeftStr}
-                        </span>
-                    )}
-                </div>
-            </div>
+  // --- Loading State ---
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#f1f5f9] flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="animate-spin text-blue-600 mx-auto mb-4" size={48} />
+          <p className="text-gray-600 font-medium">กำลังโหลดข้อมูล...</p>
         </div>
-      );
-  };
+      </div>
+    );
+  }
 
+  // --- Error State ---
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#f1f5f9] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 shadow-lg max-w-md text-center">
+          <AlertCircle className="text-red-500 mx-auto mb-4" size={48} />
+          <h2 className="text-xl font-bold text-gray-800 mb-2">เกิดข้อผิดพลาด</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button 
+            onClick={fetchData}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 mx-auto"
+          >
+            <Loader2 size={18} /> ลองอีกครั้ง
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Main Render ---
   return (
     <div className="min-h-screen bg-[#f1f5f9] pb-24 font-sans">
       
       {/* Header & Search */}
       <div className="bg-white text-gray-800 pt-4 pb-4 px-4 shadow-sm relative z-20">
-          <div className="flex justify-between items-center mb-4">
-            <h1 className="text-xl font-bold flex items-center gap-2 text-[#1e293b]">
-              <Sparkles className="text-blue-600" size={20} /> ตลาดหวย
-            </h1>
-            <div className="text-xs text-gray-500">
-               {now.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' })}
-            </div>
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-xl font-bold flex items-center gap-2 text-[#1e293b]">
+            <Sparkles className="text-blue-600" size={20} /> ตลาดหวย
+          </h1>
+          <div className="text-xs text-gray-500 flex items-center gap-2">
+            {/* Realtime Status Indicator */}
+            <div className={`w-2 h-2 rounded-full ${
+              realtimeStatus === 'connected' ? 'bg-green-500' : 
+              realtimeStatus === 'error' ? 'bg-red-500' : 
+              'bg-gray-400'
+            }`} title={`Realtime: ${realtimeStatus}`} />
+            {now.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' })}
           </div>
-          
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="ค้นหาชื่อหวย..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-gray-100 border border-gray-200 text-gray-700 placeholder-gray-400 pl-9 pr-4 py-2 rounded-lg focus:outline-none focus:bg-white focus:border-blue-500 text-sm transition-all"
-            />
-          </div>
+        </div>
+        
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <input 
+            type="text" 
+            placeholder="ค้นหาชื่อหวย..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-gray-100 border border-gray-200 text-gray-700 placeholder-gray-400 pl-9 pr-4 py-2 rounded-lg focus:outline-none focus:bg-white focus:border-blue-500 text-sm transition-all"
+          />
+        </div>
       </div>
 
       {/* Categories Bar */}
@@ -425,89 +223,120 @@ export default function LottoMarket() {
         <div className="flex gap-2 min-w-max">
           {displayCategories.map(cat => {
             const isSelected = filter === cat.id;
-            const style = isSelected ? (cat.id === 'ALL' ? { backgroundColor: '#2563EB' } : getCategoryColorStyle(cat)) : {};
+            const style = isSelected ? 
+              (cat.id === 'ALL' ? { backgroundColor: '#2563EB' } : getCategoryColorStyle(cat)) 
+              : {};
             
             return (
-            <button
-              key={cat.id}
-              onClick={() => setFilter(cat.id)}
-              style={style}
-              className={`
-                whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 transition-all border
-                ${isSelected 
-                  ? 'text-white border-transparent shadow-sm' 
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                }
-              `}
-            >
-              {cat.id !== 'ALL' && (
-                  getCategoryFlag(cat.label) || (
-                      !isSelected && (
-                         <span className="w-2 h-2 rounded-full" style={getCategoryColorStyle(cat)}></span>
-                      )
-                  )
-              )}
-              {cat.id === 'ALL' && <Layers size={14}/>}
-              {cat.label}
-            </button>
-          )})}
+              <button
+                key={cat.id}
+                onClick={() => setFilter(cat.id)}
+                style={style}
+                className={`
+                  whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 transition-all border
+                  ${isSelected 
+                    ? 'text-white border-transparent shadow-sm' 
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }
+                `}
+              >
+                {cat.id !== 'ALL' ? getCategoryIcon(cat.label) : null}
+                {cat.id === 'ALL' && <Layers size={14}/>}
+                {cat.label}
+              </button>
+            );
+          })}
+          
+          {/* Empty State for Categories */}
+          {displayCategories.length === 1 ? (
+            <div className="text-xs text-gray-400 italic px-2 py-1">
+              ยังไม่มีหมวดหมู่
+            </div>
+          ) : null}
         </div>
       </div>
 
       {/* Content Grid */}
       <div className="p-4">
         {filter === 'ALL' && searchTerm === '' ? (
-            <div className="space-y-6">
-                
-                {/* 🔥 โซนหวยด่วน (โค้งสุดท้าย) */}
-                {urgentLottos.length > 0 && (
-                    <div className="animate-in slide-in-from-top-4 fade-in duration-500">
-                        <h2 className="text-sm font-black text-red-600 mb-3 pl-2 border-l-4 border-red-500 flex items-center gap-2">
-                            <Clock size={18} className="animate-pulse" /> โค้งสุดท้าย (ปิดใน 1 ชม.)
-                        </h2>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 bg-red-50/50 p-3 rounded-xl border border-red-100 shadow-inner mb-6">
-                            {urgentLottos.map(lotto => (
-                                <LottoCard key={`urgent-${lotto.id}`} lotto={lotto} />
-                            ))}
-                        </div>
-                    </div>
-                )}
+          <div className="space-y-6">
+            
+            {/* 🔥 โซนหวยด่วน (ปิดใน 1 ชม.) */}
+            {urgentLottos.length > 0 && (
+              <div className="animate-in slide-in-from-top-4 fade-in duration-500">
+                <h2 className="text-sm font-black text-red-600 mb-3 pl-2 border-l-4 border-red-500 flex items-center gap-2">
+                  <Clock size={18} className="animate-pulse" /> โค้งสุดท้าย (ปิดใน 1 ชม.)
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 bg-red-50/50 p-3 rounded-xl border border-red-100 shadow-inner mb-6">
+                  {urgentLottos.map(lotto => (
+                    <LottoCard 
+                      key={`urgent-${lotto.id}`} 
+                      lotto={lotto} 
+                      now={now}
+                      onNavigate={handleNavigate}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
-                {displayCategories.slice(1).map(cat => {
-                    const catLottos = getFilteredLottos(cat.id);
-                    if (catLottos.length === 0) return null;
+            {/* Categories Section */}
+            {displayCategories.slice(1).map(cat => {
+              const catLottos = getFilteredLottos(cat.id);
+              if (catLottos.length === 0) return null;
 
-                    return (
-                        <div key={cat.id}>
-                            <h2 className="text-sm font-bold text-gray-700 mb-3 pl-2 border-l-4 flex items-center gap-2"
-                                style={{ borderColor: cat.color?.startsWith('#') ? cat.color : '#3B82F6' }}
-                            >
-                                {getCategoryFlag(cat.label) || (
-                                    <span className="w-2 h-2 rounded-full" style={getCategoryColorStyle(cat)}></span>
-                                )}
-                                {cat.label}
-                            </h2>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                                {catLottos.map(lotto => <LottoCard key={lotto.id} lotto={lotto} />)}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
+              return (
+                <div key={cat.id}>
+                  <h2 
+                    className="text-sm font-bold text-gray-700 mb-3 pl-2 border-l-4 flex items-center gap-2"
+                    style={{ borderColor: cat.color?.startsWith('#') ? cat.color : '#3B82F6' }}
+                  >
+                    <span>{getCategoryIcon(cat.label)}</span>
+                    {cat.label}
+                  </h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {catLottos.map(lotto => (
+                      <LottoCard 
+                        key={lotto.id} 
+                        lotto={lotto} 
+                        now={now}
+                        onNavigate={handleNavigate}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {getFilteredLottos(filter).map(lotto => <LottoCard key={lotto.id} lotto={lotto} />)}
-            </div>
+          // Filtered View
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {getFilteredLottos(filter).map(lotto => (
+              <LottoCard 
+                key={lotto.id} 
+                lotto={lotto} 
+                now={now}
+                onNavigate={handleNavigate}
+              />
+            ))}
+          </div>
         )}
 
+        {/* Empty State */}
         {getFilteredLottos(filter).length === 0 && (
-            <div className="text-center py-20 text-gray-400 text-sm flex flex-col items-center">
-                <Search className="mb-2 opacity-30" size={48} />
-                <p>ไม่พบรายการหวยที่เปิดรับ</p>
-                <button onClick={() => { setFilter('ALL'); setSearchTerm(''); }} className="mt-2 text-blue-500 underline text-xs">
-                    ดูทั้งหมด
-                </button>
-            </div>
+          <div className="text-center py-20 text-gray-400 text-sm flex flex-col items-center">
+            <Search className="mb-2 opacity-30" size={48} />
+            <p>ไม่พบรายการหวยที่เปิดรับ</p>
+            <button 
+              onClick={() => { 
+                setFilter('ALL'); 
+                setSearchTerm(''); 
+              }} 
+              className="mt-2 text-blue-500 underline text-xs hover:text-blue-700"
+            >
+              ดูทั้งหมด
+            </button>
+          </div>
         )}
       </div>
     </div>
