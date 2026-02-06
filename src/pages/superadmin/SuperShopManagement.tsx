@@ -101,15 +101,15 @@ export default function SuperShopManagement() {
 
   const handleCleanupShop = (shopId: string, shopName: string) => {
       // ✅ ใช้ confirmAction ชั้นแรก
-      confirmAction(`⚠️ ล้างข้อมูลประวัติทั้งหมดของ "${shopName}"?`, async () => {
+      confirmAction(`⚠️ ล้างข้อมูล (โพย, ตัวเลข, ผลรางวัล, เลขอั้น) ของร้าน "${shopName}"?`, async () => {
           // ยังคง prompt ไว้เพื่อความปลอดภัยสูงสุด (กันมือลั่นกด Confirm Toast ผิด)
           setTimeout(async () => {
-              const confirm2 = prompt(`พิมพ์ชื่อร้าน "${shopName}" เพื่อยืนยันการล้างข้อมูล (ข้อมูลจะหายถาวร!)`);
+              const confirm2 = prompt(`พิมพ์ชื่อร้าน "${shopName}" เพื่อยืนยันการล้างข้อมูล (ข้อมูลจะหายถาวร!)\nจะลบ: โพย, ตัวเลข, ผลรางวัล, เลขอั้น`);
               if (confirm2 !== shopName) return toast.error("ชื่อร้านไม่ถูกต้อง ยกเลิกรายการ");
 
               try {
                   await client.delete(`/system/cleanup/shop/${shopId}`);
-                  toast.success(`ล้างข้อมูลร้าน ${shopName} เสร็จสิ้น`);
+                  toast.success(`ล้างข้อมูลร้าน ${shopName} เรียบร้อย (โพย, ตัวเลข, ผลรางวัล, เลขอั้น)`);
               } catch (err: any) {
                   toast.error(err.response?.data?.detail || 'เกิดข้อผิดพลาด');
               }

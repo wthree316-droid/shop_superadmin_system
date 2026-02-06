@@ -80,7 +80,7 @@ export default function SuperDashboard() {
   };
 
   const handleGlobalCleanup = async () => {
-      confirmAction("⚠️ คำเตือน: คุณกำลังจะล้างข้อมูลประวัติการแทงทั้งหมดในระบบ!", async () => {
+      confirmAction("⚠️ คำเตือน: คุณกำลังจะล้างข้อมูล (โพย, ตัวเลข, ผลรางวัล, เลขอั้น) ทั้งหมดในระบบ!", async () => {
           // Delay นิดนึงเพื่อให้ Toast หายไปก่อน prompt ขึ้น
           setTimeout(async () => {
               const input = prompt("ยืนยันครั้งสุดท้าย: ข้อมูลจะไม่สามารถกู้คืนได้\nกรุณาพิมพ์คำว่า 'YES' เพื่อยืนยันการลบ");
@@ -88,7 +88,7 @@ export default function SuperDashboard() {
 
               try {
                   await client.delete('/system/cleanup/global');
-                  alertAction('ล้างข้อมูลเรียบร้อย ระบบสะอาดเอี่ยม!', 'สำเร็จ', 'success');
+                  alertAction('ล้างข้อมูลเรียบร้อย (โพย, ตัวเลข, ผลรางวัล, เลขอั้น)', 'สำเร็จ', 'success');
                   fetchSystemStats();
                   fetchFinancialStats();
                   fetchShopPerformance();
@@ -330,7 +330,10 @@ export default function SuperDashboard() {
               <div>
                   <h4 className="font-bold text-red-800">ล้างข้อมูลธุรกรรมทั้งหมด (Global Cleanup)</h4>
                   <p className="text-sm text-red-600 mt-1">
-                      ลบข้อมูล Tickets, Ticket Items, Audit Logs และ ผลรางวัล ทั้งหมดในระบบ (Users และ Shops จะยังอยู่)
+                      ลบข้อมูล: <span className="font-bold">โพย, ตัวเลขในโพย, ผลรางวัล, เลขอั้น</span> ทั้งหมดในระบบ
+                  </p>
+                  <p className="text-xs text-red-500 mt-1.5 bg-red-100 px-2 py-1 rounded inline-block">
+                      ✅ เก็บไว้: ร้านค้า, ผู้ใช้, หวย, หมวดหมู่หวย
                   </p>
               </div>
               <button 
