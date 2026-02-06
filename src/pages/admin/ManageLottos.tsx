@@ -27,7 +27,8 @@ const INITIAL_FORM_STATE = {
   rate_profile_id: '',
   open_days: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], 
   open_time: '00:00', close_time: '15:30', result_time: '16:00',
-  api_link: ''
+  api_link: '',
+  is_active: true // ✅ [FIX] เพิ่ม is_active
 };
 
 // --- Helper Functions ---
@@ -416,7 +417,8 @@ export default function ManageLottos() {
       open_time: formatTimeForInput(lotto.open_time || '00:00:00'),
       close_time: formatTimeForInput(lotto.close_time || '15:30:00'),
       result_time: formatTimeForInput(lotto.result_time || '16:00:00'),
-      api_link: lotto.api_link || ''
+      api_link: lotto.api_link || '',
+      is_active: lotto.is_active ?? true // ✅ [FIX] ดึง is_active มาด้วย
     });
 
     const rules = lotto.rules || {};
@@ -438,6 +440,7 @@ export default function ManageLottos() {
       const payload = { 
           ...formData,
           rate_profile_id: formData.rate_profile_id || null,
+          is_active: formData.is_active ?? true, // ✅ [FIX] ส่ง is_active ไปด้วย
           rules: {
             schedule_type: scheduleType,
             close_dates: scheduleType === 'monthly' ? monthlyDates : undefined
