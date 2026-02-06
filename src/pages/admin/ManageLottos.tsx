@@ -86,7 +86,7 @@ const CategoryBadgeSelect = memo(({ currentId, categories, onChange, lottoId }: 
 });
 
 // --- Sub-Components ---
-const LottoRow = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
+const LottoRow = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCategoryChange, isToggling }: any) => {
     return (
         <tr className="hover:bg-blue-50/30 transition-colors group">
             <td className="p-4 text-center">
@@ -114,8 +114,16 @@ const LottoRow = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCatego
                 </div>
             </td>
             <td className="p-4 text-center">
-                <button onClick={() => onToggle(lotto.id)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${lotto.is_active ? 'bg-green-500' : 'bg-slate-200'}`}>
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${lotto.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
+                <button 
+                    onClick={() => onToggle(lotto.id)} 
+                    disabled={isToggling}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isToggling ? 'opacity-50 cursor-not-allowed' : ''} ${lotto.is_active ? 'bg-green-500' : 'bg-slate-200'}`}
+                >
+                    {isToggling ? (
+                        <Loader2 className="absolute inset-0 m-auto animate-spin text-white" size={14} />
+                    ) : (
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${lotto.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
+                    )}
                 </button>
             </td>
             <td className="p-4 text-center font-mono font-bold text-red-500 bg-red-50/50 rounded-lg">{formatTimeForInput(lotto.close_time)}</td>
@@ -130,7 +138,7 @@ const LottoRow = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCatego
     );
 });
 
-const LottoCard = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
+const LottoCard = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCategoryChange, isToggling }: any) => {
     return (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative overflow-hidden">
             <div className="flex items-start gap-4 mb-3">
@@ -147,8 +155,16 @@ const LottoCard = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCateg
                 <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start">
                         <h3 className="font-bold text-slate-800 text-lg truncate pr-2">{lotto.name}</h3>
-                        <button onClick={() => onToggle(lotto.id)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 ${lotto.is_active ? 'bg-green-500' : 'bg-slate-200'}`}>
-                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${lotto.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                        <button 
+                            onClick={() => onToggle(lotto.id)} 
+                            disabled={isToggling}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 ${isToggling ? 'opacity-50 cursor-not-allowed' : ''} ${lotto.is_active ? 'bg-green-500' : 'bg-slate-200'}`}
+                        >
+                            {isToggling ? (
+                                <Loader2 className="absolute inset-0 m-auto animate-spin text-white" size={12} />
+                            ) : (
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${lotto.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                            )}
                         </button>
                     </div>
                     <div className="flex flex-col gap-2 mt-2">
@@ -188,7 +204,7 @@ const LottoCard = memo(({ lotto, categories, onToggle, onEdit, onDelete, onCateg
     );
 });
 
-const LottoTableContainer = memo(({ lottos, categories, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
+const LottoTableContainer = memo(({ lottos, categories, onToggle, onEdit, onDelete, onCategoryChange, togglingIds }: any) => {
     return (
         <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
@@ -213,6 +229,7 @@ const LottoTableContainer = memo(({ lottos, categories, onToggle, onEdit, onDele
                                 onEdit={onEdit}
                                 onDelete={onDelete}
                                 onCategoryChange={onCategoryChange}
+                                isToggling={togglingIds.has(lotto.id)}
                             />
                         ))}
                     </tbody>
@@ -222,7 +239,7 @@ const LottoTableContainer = memo(({ lottos, categories, onToggle, onEdit, onDele
     );
 });
 
-const LottoListContainer = memo(({ lottos, categories, isLoading, onToggle, onEdit, onDelete, onCategoryChange }: any) => {
+const LottoListContainer = memo(({ lottos, categories, isLoading, onToggle, onEdit, onDelete, onCategoryChange, togglingIds }: any) => {
     return (
         <div className="md:hidden grid grid-cols-1 gap-4">
             {isLoading && <div className="text-center py-10 text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" /> กำลังโหลด...</div>}
@@ -236,6 +253,7 @@ const LottoListContainer = memo(({ lottos, categories, isLoading, onToggle, onEd
                     onEdit={onEdit}
                     onDelete={onDelete}
                     onCategoryChange={onCategoryChange}
+                    isToggling={togglingIds.has(lotto.id)}
                 />
             ))}
             {!isLoading && lottos.length === 0 && (
@@ -321,6 +339,7 @@ export default function ManageLottos() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [isCatSubmitting, setIsCatSubmitting] = useState(false);
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set()); // ✅ [FIX] เก็บ ID ที่กำลัง toggle
   
   const [bulkRateId, setBulkRateId] = useState('');
   
@@ -370,22 +389,33 @@ export default function ManageLottos() {
   };
 
   const toggleStatus = useCallback(async (id: string) => {
-    // 1. Optimistic Update (เปลี่ยนหน้าจอทันที)
-    setLottos(prev => prev.map(l => l.id === id ? { ...l, is_active: !l.is_active } : l));
+    // ✅ [FIX] ป้องกันการกดซ้ำ
+    if (togglingIds.has(id)) return;
+    
+    // ✅ [FIX] เพิ่ม ID เข้า Set (แสดงว่ากำลัง toggle)
+    setTogglingIds(prev => new Set(prev).add(id));
     
     try { 
-        // 2. เรียก API
+        // 1. เรียก API และรอให้เสร็จ
         await client.patch(`/play/lottos/${id}/toggle`); 
-        // 3. ✅ [NEW] เรียก fetchData ซ้ำเพื่อความชัวร์ (เพราะ Backend ล้าง Cache แล้ว)
-        // เพื่อป้องกันกรณี Optimistic พลาด หรือมี logic อื่นแทรกซ้อน
-        // แต่ไม่ต้องรอก็ได้ ให้มันทำงาน background
-        fetchData();
+        
+        // 2. ✅ [FIX] รอ API เสร็จแล้วค่อยโหลดข้อมูลใหม่
+        await fetchData();
     } 
     catch (err) { 
+        console.error('Toggle error:', err);
+        toast.error('เปลี่ยนสถานะไม่สำเร็จ');
         // ถ้าพัง โหลดข้อมูลเดิมกลับมา
-        fetchData(); 
+        await fetchData(); 
+    } finally {
+        // ✅ [FIX] ลบ ID ออกจาก Set (toggle เสร็จแล้ว)
+        setTogglingIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(id);
+            return newSet;
+        });
     }
-  }, []);
+  }, [togglingIds]);
 
   const handleDelete = useCallback(async (id: string) => {
       confirmAction('ยืนยันการลบหวยนี้?', async () => {
@@ -617,7 +647,8 @@ export default function ManageLottos() {
             onToggle={toggleStatus}
             onEdit={openEditModal}
             onDelete={handleDelete}
-            onCategoryChange={handleQuickCategoryChange} 
+            onCategoryChange={handleQuickCategoryChange}
+            togglingIds={togglingIds}
         />
       )}
 
@@ -631,6 +662,7 @@ export default function ManageLottos() {
             onEdit={openEditModal}
             onDelete={handleDelete}
             onCategoryChange={handleQuickCategoryChange}
+            togglingIds={togglingIds}
         />
       )}
 
@@ -665,6 +697,30 @@ export default function ManageLottos() {
                     </div>
 
                     <div className="flex-1 space-y-4">
+                        {/* ✅ [NEW] Toggle สถานะเปิด/ปิดหวย */}
+                        <div className="bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${formData.is_active ? 'bg-green-500 text-white' : 'bg-slate-300 text-slate-500'}`}>
+                                        {formData.is_active ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-bold text-slate-800">สถานะหวย</div>
+                                        <div className={`text-xs font-bold ${formData.is_active ? 'text-green-600' : 'text-slate-400'}`}>
+                                            {formData.is_active ? 'เปิดรับแทง' : 'ปิดรับแทง'}
+                                        </div>
+                                    </div>
+                                </div>
+                                <button 
+                                    type="button"
+                                    onClick={() => setFormData({...formData, is_active: !formData.is_active})}
+                                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors shadow-inner ${formData.is_active ? 'bg-green-500' : 'bg-slate-300'}`}
+                                >
+                                    <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform shadow-md ${formData.is_active ? 'translate-x-7' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-3">
                             <div className="col-span-2">
                                 <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">ชื่อหวย</label>
