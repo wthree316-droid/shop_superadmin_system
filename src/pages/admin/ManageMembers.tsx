@@ -19,13 +19,15 @@ export default function ManageMembers() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   
   // Forms State
-  const [newMember, setNewMember] = useState({ username: '', password: '', full_name: '' });
+  const [newMember, setNewMember] = useState({ username: '', password: '', full_name: '', commission_percent: '' as string | number });
   const [creditForm, setCreditForm] = useState({ amount: '', note: '' });
-  const [resetForm, setResetForm] = useState({ username: '', password: '' });
+  const [resetForm, setResetForm] = useState({ username: '', password: '', commission_percent: '' as string | number });
 
   // Mode Control
   const [modalMode, setModalMode] = useState<'CREDIT' | 'RESET' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  
 
   useEffect(() => {
     fetchMembers();
@@ -56,7 +58,7 @@ export default function ManageMembers() {
       await client.post('/users/members', newMember);
       alertAction('สร้างสมาชิกใหม่เรียบร้อยแล้ว', 'สำเร็จ', 'success');
       setShowCreateModal(false);
-      setNewMember({ username: '', password: '', full_name: '' });
+      setNewMember({ username: '', password: '', full_name: '', commission_percent: '' });
       fetchMembers();
     } catch (err: any) {
       alertAction(err.response?.data?.detail || 'สร้างไม่สำเร็จ', 'ข้อผิดพลาด', 'error');
@@ -115,7 +117,7 @@ export default function ManageMembers() {
                 alertAction('อัปเดตข้อมูลเข้าสู่ระบบสำเร็จ', 'สำเร็จ', 'success');
                 setModalMode(null);
                 setSelectedUser(null);
-                setResetForm({ username: '', password: '' });
+                setResetForm({ username: '', password: '', commission_percent: '' });
                 fetchMembers(); 
             } catch(err: any) {
                 alertAction(err.response?.data?.detail || 'แก้ไขไม่สำเร็จ', 'ข้อผิดพลาด', 'error');
@@ -130,7 +132,7 @@ export default function ManageMembers() {
 
   const openResetModal = (user: any) => {
       setSelectedUser(user);
-      setResetForm({ username: user.username, password: '' });
+      setResetForm({ username: user.username, password: '', commission_percent: user.commission_percent || '' });
       setModalMode('RESET');
   };
 
@@ -253,7 +255,7 @@ export default function ManageMembers() {
                             <td className="p-5 text-center text-slate-300 font-mono font-bold">{index + 1}</td>
                             <td className="p-5">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600 flex items-center justify-center font-black text-lg shadow-inner border border-white">
+                                    <div className="w-10 h-10 rounded-xl bg-linear-to-br from-slate-100 to-slate-200 text-slate-600 flex items-center justify-center font-black text-lg shadow-inner border border-white">
                                         {m.username.charAt(0).toUpperCase()}
                                     </div>
                                     <div>
@@ -314,7 +316,7 @@ export default function ManageMembers() {
               <div key={m.id} className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 relative overflow-hidden active:scale-[0.99] transition-transform">
                   <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600 flex items-center justify-center font-black text-xl shadow-inner border border-white">
+                          <div className="w-12 h-12 rounded-2xl bg-linear-to-br from-slate-100 to-slate-200 text-slate-600 flex items-center justify-center font-black text-xl shadow-inner border border-white">
                               {m.username.charAt(0).toUpperCase()}
                           </div>
                           <div>
@@ -400,9 +402,19 @@ export default function ManageMembers() {
                         <input 
                             type="text"
                             className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl p-3.5 outline-none transition-all font-bold text-slate-800 placeholder:text-slate-300 placeholder:font-medium"
-                            placeholder="ชื่อเล่น หรือ ชื่อจริง (Optional)"
+                            placeholder="ชื่อเล่น หรือ ชื่อจริง"
                             value={newMember.full_name}
                             onChange={e => setNewMember({...newMember, full_name: e.target.value})}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 ml-1">ค่าคอมมิชชั่น (%)</label>
+                        <input 
+                            type="number" step="1" min="0" max="100"
+                            className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl p-3.5 outline-none transition-all font-bold text-slate-800 placeholder:text-slate-300"
+                            placeholder="เช่น 5"
+                            value={newMember.commission_percent}
+                            onChange={e => setNewMember({...newMember, commission_percent: e.target.value})}
                         />
                     </div>
                     <button type="submit" disabled={isSubmitting} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-black shadow-lg shadow-slate-300 transition-all active:scale-95 mt-4 flex justify-center items-center gap-2 text-lg">
@@ -539,6 +551,16 @@ export default function ManageMembers() {
                             placeholder="เว้นว่างถ้าไม่เปลี่ยน"
                             value={resetForm.password}
                             onChange={e => setResetForm({...resetForm, password: e.target.value})}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 ml-1">ค่าคอมมิชชั่น (%)</label>
+                        <input 
+                            type="number" step="0.01" min="0" max="100"
+                            className="w-full bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl p-3.5 outline-none transition-all font-bold text-slate-800 placeholder:text-slate-300"
+                            placeholder="เช่น 5"
+                            value={resetForm.commission_percent}
+                            onChange={e => setResetForm({...resetForm, commission_percent: e.target.value})}
                         />
                     </div>
 

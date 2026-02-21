@@ -183,7 +183,7 @@ export default function LottoResultLinks() {
         <div className="min-h-screen bg-[#0F172A] pb-24 text-white font-sans">
             
             {/* --- Header Section --- */}
-            <div className="bg-linear-to-b from-[#1E293B] to-[#0F172A] border-b border-white/5 sticky top-0 z-30 pt-6 pb-4 shadow-2xl">
+            <div className="bg-linear-to-b from-[#1E293B] to-[#0F172A] border-b border-white/5 top-0 pt-6 pb-4 shadow-2xl">
                 <div className="px-4 max-w-7xl mx-auto flex flex-col items-center">
                     
                     <h1 className="text-3xl font-black text-transparent bg-clip-text bg-linear-to-r from-[#FFD700] via-[#FDB931] to-[#FFD700] text-center mb-6 flex items-center justify-center gap-3 drop-shadow-lg">
@@ -203,7 +203,7 @@ export default function LottoResultLinks() {
                     </div>
 
                     <div className="w-full max-w-5xl">
-                        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar justify-start md:justify-center">
+                        <div className="flex gap-2 overflow-x-auto pb-3 no-scrollbar w-full scroll-smooth snap-x">
                             {CATEGORIES.map(cat => {
                                 const isActive = activeTab === cat.id;
                                 return (
@@ -211,7 +211,7 @@ export default function LottoResultLinks() {
                                         key={cat.id}
                                         onClick={() => setActiveTab(cat.id)}
                                         className={`
-                                            flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all duration-300
+                                            shrink-0 snap-start flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all duration-300
                                             ${isActive 
                                                 ? 'bg-linear-to-r from-[#d4af37] to-amber-600 text-white shadow-lg shadow-amber-900/40 scale-105 border border-amber-400/50' 
                                                 : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:bg-slate-700 hover:text-slate-200'

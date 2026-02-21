@@ -28,7 +28,54 @@ export default function ShopHistory() {
   };
   const [startDate, setStartDate] = useState(getToday());
   const [endDate, setEndDate] = useState(getToday());
-  
+  // ✅ 1. ฟังก์ชันจัดรูปแบบวันที่ให้อยู่ในฟอร์แมต YYYY-MM-DD
+  const formatDate = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+  };
+
+  // ✅ 2. ฟังก์ชันคำนวณช่วงวันที่เมื่อกดปุ่ม
+  const handleQuickDate = (preset: string) => {
+      const today = new Date();
+      let start = new Date();
+      let end = new Date();
+
+      switch (preset) {
+          case 'today':
+              break;
+          case 'yesterday':
+              start.setDate(today.getDate() - 1);
+              end.setDate(today.getDate() - 1);
+              break;
+          case 'last7':
+              start.setDate(today.getDate() - 6);
+              break;
+          case 'thisWeek':
+              const day = today.getDay();
+              const diff = today.getDate() - day + (day === 0 ? -6 : 1); // หาวันจันทร์
+              start.setDate(diff);
+              end.setDate(start.getDate() + 6); // วันอาทิตย์
+              break;
+          case 'lastWeek':
+              const prevWeekDay = today.getDay();
+              const prevDiff = today.getDate() - prevWeekDay + (prevWeekDay === 0 ? -6 : 1) - 7;
+              start.setDate(prevDiff);
+              end.setDate(start.getDate() + 6);
+              break;
+          case 'thisMonth':
+              start = new Date(today.getFullYear(), today.getMonth(), 1);
+              end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+              break;
+          case 'lastMonth':
+              start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+              end = new Date(today.getFullYear(), today.getMonth(), 0);
+              break;
+      }
+      setStartDate(formatDate(start));
+      setEndDate(formatDate(end));
+  };
   const [selectedUser, setSelectedUser] = useState<string>(''); 
   const [filterStatus, setFilterStatus] = useState('ALL'); 
 
@@ -182,12 +229,14 @@ export default function ShopHistory() {
           let totalWin = 0;
           let validCount = 0;
           let totalCancelled = 0; 
+          let totalCommission = 0;
 
           group.items.forEach((t: any) => {
               if (t.status === 'CANCELLED') {
                   totalCancelled += Number(t.total_amount);
               } else {
                   totalBet += Number(t.total_amount);
+                  totalCommission += Number(t.commission_amount || 0);
                   if (t.status === 'WIN') {
                       totalWin += calculateWinAmount(t);
                   }
@@ -195,7 +244,7 @@ export default function ShopHistory() {
               }
           });
 
-          const profit = totalBet - totalWin; 
+          const profit = totalBet - totalWin - totalCommission;
 
           return {
               ...group,
@@ -205,7 +254,8 @@ export default function ShopHistory() {
                   totalBet,
                   totalWin,
                   profit,
-                  totalCancelled
+                  totalCancelled,
+                  totalCommission
               }
           };
       }).sort((a: any, b: any) => {
@@ -237,24 +287,30 @@ export default function ShopHistory() {
                   {/* Date Range Input */}
                   <div>
                       <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">ช่วงวันที่</label>
-                      <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
-                          <div className="relative">
-                              <input 
-                                type="date" 
-                                value={startDate}
-                                onChange={e => setStartDate(e.target.value)}
-                                className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
-                              />
+                      <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200 w-fit">
+                              <div className="relative">
+                                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"/>
+                              </div>
+                              <span className="text-slate-400"><ArrowRight size={16}/></span>
+                              <div className="relative">
+                                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={startDate} className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"/>
+                              </div>
                           </div>
-                          <span className="text-slate-400"><ArrowRight size={16}/></span>
-                          <div className="relative">
-                              <input 
-                                type="date" 
-                                value={endDate}
-                                onChange={e => setEndDate(e.target.value)}
-                                min={startDate}
-                                className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
-                              />
+                          
+                          {/* ✅ แถบปุ่มเลือกวันที่ */}
+                          <div className="flex flex-wrap gap-1.5">
+                              {[
+                                  { label: 'วันนี้', value: 'today' }, { label: 'เมื่อวาน', value: 'yesterday' }, { label: '7 วันก่อน', value: 'last7' },
+                                  { label: 'สัปดาห์นี้', value: 'thisWeek' }, { label: 'สัปดาห์ที่แล้ว', value: 'lastWeek' },
+                                  { label: 'เดือนนี้', value: 'thisMonth' }, { label: 'เดือนที่แล้ว', value: 'lastMonth' }
+                              ].map(btn => (
+                                  <button key={btn.value} onClick={() => handleQuickDate(btn.value)}
+                                      className="px-2 py-1 text-[10px] font-bold rounded-md bg-white text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors border border-slate-200 shadow-sm whitespace-nowrap"
+                                  >
+                                      {btn.label}
+                                  </button>
+                              ))}
                           </div>
                       </div>
                   </div>
@@ -413,6 +469,11 @@ export default function ShopHistory() {
                           <div className="flex items-center gap-2">
                               <span className="text-slate-500 text-xs uppercase font-bold">จ่ายรางวัล:</span>
                               <span className="font-bold text-red-500">{group.summary.totalWin.toLocaleString()}</span>
+                          </div>
+                          <div className="w-px h-6 bg-gray-300 hidden sm:block"></div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-500 text-xs uppercase font-bold">จ่ายค่าคอม:</span>
+                            <span className="font-bold text-purple-600">{group.summary.totalCommission.toLocaleString()}</span>
                           </div>
                           <div className="w-px h-6 bg-gray-300 hidden sm:block"></div>
                           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${group.summary.profit >= 0 ? 'bg-green-100 border-green-200 text-green-700' : 'bg-red-100 border-red-200 text-red-700'}`}>

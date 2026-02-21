@@ -26,6 +26,54 @@ export default function History() {
   };
   const [startDate, setStartDate] = useState(getToday());
   const [endDate, setEndDate] = useState(getToday());
+  // ✅ 1. ฟังก์ชันจัดรูปแบบวันที่ให้อยู่ในฟอร์แมต YYYY-MM-DD
+  const formatDate = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+  };
+
+  // ✅ 2. ฟังก์ชันคำนวณช่วงวันที่เมื่อกดปุ่ม
+  const handleQuickDate = (preset: string) => {
+      const today = new Date();
+      let start = new Date();
+      let end = new Date();
+
+      switch (preset) {
+          case 'today':
+              break;
+          case 'yesterday':
+              start.setDate(today.getDate() - 1);
+              end.setDate(today.getDate() - 1);
+              break;
+          case 'last7':
+              start.setDate(today.getDate() - 6);
+              break;
+          case 'thisWeek':
+              const day = today.getDay();
+              const diff = today.getDate() - day + (day === 0 ? -6 : 1); // หาวันจันทร์
+              start.setDate(diff);
+              end.setDate(start.getDate() + 6); // วันอาทิตย์
+              break;
+          case 'lastWeek':
+              const prevWeekDay = today.getDay();
+              const prevDiff = today.getDate() - prevWeekDay + (prevWeekDay === 0 ? -6 : 1) - 7;
+              start.setDate(prevDiff);
+              end.setDate(start.getDate() + 6);
+              break;
+          case 'thisMonth':
+              start = new Date(today.getFullYear(), today.getMonth(), 1);
+              end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+              break;
+          case 'lastMonth':
+              start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+              end = new Date(today.getFullYear(), today.getMonth(), 0);
+              break;
+      }
+      setStartDate(formatDate(start));
+      setEndDate(formatDate(end));
+  };
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL'); // ✅ Filter หมวดหมู่
   
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
@@ -182,6 +230,7 @@ export default function History() {
               g.summary.totalCancelled += Number(ticket.total_amount);
           } else {
               g.summary.totalBet += Number(ticket.total_amount);
+              g.summary.totalCommission = (g.summary.totalCommission || 0) + Number(ticket.commission_amount || 0); 
               if (ticket.status === 'WIN') {
                   g.summary.totalWin += calculateWinAmount(ticket);
               }
@@ -236,28 +285,45 @@ export default function History() {
                   </h1>
                   
                   {/* Date Picker */}
-                  <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200 self-start md:self-auto">
-                      <div className="relative">
-                          <input 
-                            type="date" 
-                            value={startDate}
-                            onChange={e => setStartDate(e.target.value)}
-                            className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
-                          />
+                  <div className="flex flex-col gap-2 self-start md:self-auto w-full md:w-auto">
+                      <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200 w-fit">
+                          <div className="relative">
+                              <input 
+                                type="date" 
+                                value={startDate}
+                                onChange={e => setStartDate(e.target.value)}
+                                className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
+                              />
+                          </div>
+                          <span className="text-slate-400"><ArrowRight size={16}/></span>
+                          <div className="relative">
+                              <input 
+                                type="date" 
+                                value={endDate}
+                                onChange={e => setEndDate(e.target.value)}
+                                min={startDate}
+                                className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
+                              />
+                          </div>
+                          <button onClick={handleRefresh} className="ml-1 p-1.5 bg-white shadow-sm rounded-lg hover:bg-blue-50 transition-colors text-slate-600 border border-slate-100">
+                              <RefreshCw size={16} className={loading ? 'animate-spin' : ''}/>
+                          </button>
                       </div>
-                      <span className="text-slate-400"><ArrowRight size={16}/></span>
-                      <div className="relative">
-                          <input 
-                            type="date" 
-                            value={endDate}
-                            onChange={e => setEndDate(e.target.value)}
-                            min={startDate}
-                            className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
-                          />
+
+                      {/* ✅ แถบปุ่มเลือกวันที่ */}
+                      <div className="flex flex-wrap gap-1.5">
+                          {[
+                              { label: 'วันนี้', value: 'today' }, { label: 'เมื่อวาน', value: 'yesterday' }, { label: '7 วันก่อน', value: 'last7' },
+                              { label: 'สัปดาห์นี้', value: 'thisWeek' }, { label: 'สัปดาห์ที่แล้ว', value: 'lastWeek' },
+                              { label: 'เดือนนี้', value: 'thisMonth' }, { label: 'เดือนที่แล้ว', value: 'lastMonth' }
+                          ].map(btn => (
+                              <button key={btn.value} onClick={() => handleQuickDate(btn.value)}
+                                  className="px-2.5 py-1 text-[10px] md:text-xs font-bold rounded-md bg-white text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors border border-slate-200 shadow-sm whitespace-nowrap"
+                              >
+                                  {btn.label}
+                              </button>
+                          ))}
                       </div>
-                      <button onClick={handleRefresh} className="ml-1 p-1.5 bg-white shadow-sm rounded-lg hover:bg-blue-50 transition-colors text-slate-600 border border-slate-100">
-                          <RefreshCw size={16} className={loading ? 'animate-spin' : ''}/>
-                      </button>
                   </div>
               </div>
 
@@ -405,6 +471,11 @@ export default function History() {
                         <div className="flex items-center gap-2">
                             <span className="text-gray-500 text-xs uppercase font-bold">ยอดถูกรางวัล:</span>
                             <span className="font-bold text-green-600">{group.summary.totalWin.toLocaleString()}</span>
+                        </div>
+                        <div className="w-px h-4 bg-gray-300 mx-1 hidden sm:block"></div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-gray-500 text-xs uppercase font-bold">ค่าคอมสะสม:</span>
+                            <span className="font-bold text-purple-600">{group.summary.totalCommission?.toLocaleString() || 0}</span>
                         </div>
                         <div className="w-px h-4 bg-gray-300 mx-1 hidden sm:block"></div>
                         <div className={`flex items-center gap-2 px-3 py-1 rounded-lg border ${group.summary.netProfit >= 0 ? 'bg-green-100 border-green-200 text-green-700' : 'bg-red-100 border-red-200 text-red-700'}`}>

@@ -9,7 +9,8 @@ import {
   RefreshCw,
   ArrowRight,
   Clock,
-  RotateCcw // ✅ เพิ่มไอคอน
+  RotateCcw,
+  Percent
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -28,7 +29,8 @@ export default function Dashboard() {
     total_tickets: 0,
     total_payout: 0,
     total_pending: 0,
-    total_cancelled: 0, // ✅ เพิ่ม State รับค่าบิลยกเลิก
+    total_cancelled: 0,
+    total_commission: 0,
     profit: 0
   });
   
@@ -63,7 +65,7 @@ export default function Dashboard() {
 
   const fetchTopNumbers = async () => {
     try {
-        const res = await client.get(`/play/stats/top_numbers?start_date=${startDate}&end_date=${endDate}`);
+        const res = await client.get(`/play/stats/top_numbers?start_date=${startDate}&end_date=${endDate}&limit=200`);
         setTopNumbers(res.data);
     } catch(err) { console.error(err); }
   };
@@ -84,6 +86,9 @@ export default function Dashboard() {
         </div>
     </div>
   );
+  // ✅ แยกข้อมูลเป็นเลข 2 ตัว และ 3 ตัว (จำกัดอย่างละ 50 อันดับ)
+  const top2Numbers = topNumbers.filter(item => item.number.length === 2).slice(0, 50);
+  const top3Numbers = topNumbers.filter(item => item.number.length === 3).slice(0, 50);
 
   return (
     <div className="space-y-8 animate-fade-in pb-10">
@@ -140,12 +145,14 @@ export default function Dashboard() {
             icon={Banknote} 
             color="text-indigo-600" 
         />
+
         <StatCard 
-            title="กำไรสุทธิ" 
-            value={`${Number(stats.profit).toLocaleString()} ฿`} 
-            icon={TrendingUp} 
-            color={stats.profit >= 0 ? "text-emerald-600" : "text-red-600"} 
+            title="จ่ายค่าคอมมิชชั่น" 
+            value={`${Number(stats.total_commission).toLocaleString()} ฿`} 
+            icon={Percent} 
+            color="text-purple-600"
         />
+        
         <StatCard 
             title="ยอดจ่ายรางวัล" 
             value={`${Number(stats.total_payout).toLocaleString()} ฿`} 
@@ -174,50 +181,108 @@ export default function Dashboard() {
 
         />
       </div>
-
-      {/* --- Top Numbers Table --- */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
-                    <TrendingUp className="text-rose-500" size={20} /> 
-                    เลขขายดี 10 อันดับแรก 
-                    <span className="text-xs font-normal text-gray-400 ml-2">({startDate} ถึง {endDate})</span>
-                </h3>
-            </div>
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-xs">
-                        <tr>
-                            <th className="p-4 pl-6">อันดับ</th>
-                            <th className="p-4 text-center">เลข</th>
-                            <th className="p-4 text-right">ยอดขายรวม</th>
-                            <th className="p-4 text-center">จำนวนครั้ง</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {topNumbers.map((item, index) => (
-                            <tr key={item.number} className="hover:bg-indigo-50/50 transition-colors">
-                                <td className="p-4 pl-6 text-gray-400 font-mono">#{index + 1}</td>
-                                <td className="p-4 text-center">
-                                    <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-lg font-bold text-lg tracking-wider border border-indigo-200">
-                                        {item.number}
-                                    </span>
-                                </td>
-                                <td className="p-4 text-right font-bold text-gray-700">
-                                    {Number(item.total_amount).toLocaleString()}
-                                </td>
-                                <td className="p-4 text-center text-gray-500">
-                                    {item.frequency}
-                                </td>
-                            </tr>
-                        ))}
-                        {topNumbers.length === 0 && (
-                            <tr><td colSpan={4} className="p-10 text-center text-gray-400">ยังไม่มีข้อมูลการขายในช่วงเวลานี้</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-1 gap-6">
+        <StatCard 
+            title="กำไรสุทธิ" 
+            value={`${Number(stats.profit).toLocaleString()} ฿`} 
+            icon={TrendingUp} 
+            color={stats.profit >= 0 ? "text-emerald-600" : "text-red-600"} 
+        />
       </div>
+
+        {/* --- Top Numbers Tables (2 Columns) --- */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* คอลัมน์ที่ 1: เลข 2 ตัว */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                <div className="p-5 border-b border-gray-100 bg-white rounded-t-2xl flex justify-between items-center">
+                    <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
+                        <TrendingUp className="text-blue-500" size={20} /> 
+                        เลข 2 ตัว (ยอดฮิต)
+                    </h3>
+                    <span className="text-xs font-bold bg-blue-50 text-blue-600 px-2 py-1 rounded-lg">50 อันดับ</span>
+                </div>
+                <div className="flex-1">
+                    <table className="w-full text-sm text-left relative">
+                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs shadow-sm">
+                            <tr>
+                                <th className="p-3 pl-5">อันดับ</th>
+                                <th className="p-3 text-center">เลข 2 ตัว</th>
+                                <th className="p-3 text-right">ยอดขายรวม</th>
+                                <th className="p-3 text-center">จำนวนบิล</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {top2Numbers.map((item, index) => (
+                                <tr key={item.number} className="hover:bg-blue-50/50 transition-colors">
+                                    <td className="p-3 pl-5 text-slate-400 font-mono text-xs">#{index + 1}</td>
+                                    <td className="p-3 text-center">
+                                        <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg font-bold text-base tracking-widest border border-blue-200">
+                                            {item.number}
+                                        </span>
+                                    </td>
+                                    <td className="p-3 text-right font-black text-slate-700">
+                                        {Number(item.total_amount).toLocaleString()} <span className="text-[10px] text-slate-400 font-medium">฿</span>
+                                    </td>
+                                    <td className="p-3 text-center text-slate-500 font-medium">
+                                        {item.frequency}
+                                    </td>
+                                </tr>
+                            ))}
+                            {top2Numbers.length === 0 && !loading && (
+                                <tr><td colSpan={4} className="p-10 text-center text-slate-400">ยังไม่มีข้อมูลการขายเลข 2 ตัว</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* คอลัมน์ที่ 2: เลข 3 ตัว */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                <div className="p-5 border-b border-gray-100 bg-white rounded-t-2xl flex justify-between items-center">
+                    <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
+                        <TrendingUp className="text-rose-500" size={20} /> 
+                        เลข 3 ตัว (ยอดฮิต)
+                    </h3>
+                    <span className="text-xs font-bold bg-rose-50 text-rose-600 px-2 py-1 rounded-lg">50 อันดับ</span>
+                </div>
+                <div className="flex-1">
+                    <table className="w-full text-sm text-left relative">
+                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs shadow-sm">
+                            <tr>
+                                <th className="p-3 pl-5">อันดับ</th>
+                                <th className="p-3 text-center">เลข 3 ตัว</th>
+                                <th className="p-3 text-right">ยอดขายรวม</th>
+                                <th className="p-3 text-center">จำนวนบิล</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {top3Numbers.map((item, index) => (
+                                <tr key={item.number} className="hover:bg-rose-50/50 transition-colors">
+                                    <td className="p-3 pl-5 text-slate-400 font-mono text-xs">#{index + 1}</td>
+                                    <td className="p-3 text-center">
+                                        <span className="bg-rose-100 text-rose-700 px-3 py-1 rounded-lg font-bold text-base tracking-widest border border-rose-200">
+                                            {item.number}
+                                        </span>
+                                    </td>
+                                    <td className="p-3 text-right font-black text-slate-700">
+                                        {Number(item.total_amount).toLocaleString()} <span className="text-[10px] text-slate-400 font-medium">฿</span>
+                                    </td>
+                                    <td className="p-3 text-center text-slate-500 font-medium">
+                                        {item.frequency}
+                                    </td>
+                                </tr>
+                            ))}
+                            {top3Numbers.length === 0 && !loading && (
+                                <tr><td colSpan={4} className="p-10 text-center text-slate-400">ยังไม่มีข้อมูลการขายเลข 3 ตัว</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
     </div>
   );
 }
