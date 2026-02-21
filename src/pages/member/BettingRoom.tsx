@@ -814,9 +814,9 @@ export default function BettingRoom() {
                 }
                 if (currentSetItems.length === 0) break;
 
-                currentSetItems.sort((a, b) => sortTypes(a.bet_type, b.bet_type));
-                const sig = currentSetItems.map(i => `${i.bet_type}:${i.amount}`).join('|');
-                const labelStr = currentSetItems.map(i => getTypeLabel(i.bet_type)).join(' x ');
+                currentSetItems.sort((a, b) => sortTypes(a.bet_type || '', b.bet_type || ''));
+                const sig = currentSetItems.map(i => `${i.bet_type || ''}:${i.amount}`).join('|');
+                const labelStr = currentSetItems.map(i => getTypeLabel(i.bet_type || '')).join(' x ');
                 const priceStr = currentSetItems.map(i => i.amount).join(' x ');
 
                 if (!groups.has(sig)) {
