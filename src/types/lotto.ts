@@ -56,9 +56,14 @@ export interface RateProfile {
 
 export interface CartItem {
   id?: string;
+  temp_id?: string;     // เพิ่ม temp_id
   number: string;
-  type: string;     
-  amount: number;    
+  type?: string;        // เปลี่ยนเป็น Optional (ใส่เครื่องหมาย ?)
+  bet_type?: string;    // เพิ่ม bet_type
+  amount: number;       // จำนวนเงินที่แทง
   reward_rate?: number;
-  [key: string]: any; 
+  rate_pay?: number;    // เพิ่ม rate_pay
+  display_text?: string;// เพิ่ม display_text
+  batch_id?: string;    // เพิ่ม batch_id
+  [key: string]: any;   // อนุญาตให้มี properties อื่นๆ เพิ่มเติมได้
 }
