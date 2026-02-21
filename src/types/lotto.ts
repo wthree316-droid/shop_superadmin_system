@@ -21,6 +21,8 @@ export interface LottoType {
   open_days?: string[];
   rules?: LottoRules;
   created_at?: string;
+  rate_profile_id?: string | null;
+  api_link?: string | null;
 }
 
 export interface Category {
@@ -41,4 +43,22 @@ export interface TimeRemaining {
   minutes: number;
   seconds: number;
   formatted: string;
+}
+
+export interface RateProfile {
+  id: string;
+  name: string;
+  shop_id?: string;
+  is_active?: boolean;
+  created_at?: string;
+  [key: string]: any; 
+}
+
+export interface CartItem {
+  id?: string;
+  number: string;
+  type: string;     
+  amount: number;    
+  reward_rate?: number;
+  [key: string]: any; 
 }
