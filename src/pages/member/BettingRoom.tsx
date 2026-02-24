@@ -530,9 +530,14 @@ export default function BettingRoom() {
         e.preventDefault(); 
         const text = e.clipboardData.getData('text');
         if (!text) return;
-        const parts = text.split(/[^0-9]+/).filter(x => x); 
-        if (parts.length === 0) return;
+        // ✅ เพิ่มตัวกรอง (Regex) เพื่อลบแพทเทิร์นราคา เช่น 10*10, 10x10, 100X100X100 ออกไปก่อน
+        // โดยจะลบกลุ่มตัวเลขที่มีเครื่องหมาย *, x, X หรือ × คั่นอยู่ตรงกลางทิ้งเป็นช่องว่าง
+        const cleanText = text.replace(/\d+(?:\s*[*xX×]\s*\d+)+/g, ' ');
 
+        // ✅ ใช้ cleanText แทน text เดิมในการแยกตัวเลข
+        const parts = cleanText.split(/[^0-9]+/).filter(x => x); 
+        if (parts.length === 0) return;
+        
         if (tab === 'win') {
             const joined = parts.join('');
             const config = getInputConfig(); 
@@ -651,7 +656,20 @@ export default function BettingRoom() {
     }, [currentInput, tab]);
 
     const handleQuickOption = (type: string) => {
-        const list = generateSpecialNumbers(type as any);
+        let list: string[] = [];
+        
+        // ✅ เพิ่ม Logic สำหรับปุ่มประหาร (รวม 3 ชุด)
+        if (type === 'prahan') {
+            const front = generateSpecialNumbers('double_front' as any) || [];
+            const sandwich = generateSpecialNumbers('sandwich' as any) || [];
+            const back = generateSpecialNumbers('double_back' as any) || [];
+            
+            // รวม array และลบเลขซ้ำ (เผื่อมีเลขทับซ้อน)
+            list = Array.from(new Set([...front, ...sandwich, ...back]));
+        } else {
+            list = generateSpecialNumbers(type as any) || [];
+        }
+
         if (list.length > 0) {
             const newNumbers = list.filter(n => !bufferNumbers.includes(n));
             if (newNumbers.length > 0) {
@@ -1138,6 +1156,7 @@ export default function BettingRoom() {
                                             <button onClick={() => handleQuickOption('double_front')} className="bg-[#1E88E5] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ เบิ้ลหน้า</button>
                                             <button onClick={() => handleQuickOption('sandwich')} className="bg-[#8E24AA] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ หาม</button>
                                             <button onClick={() => handleQuickOption('double_back')} className="bg-[#00897B] text-white px-3 py-1.5 rounded-md text-xs font-bold">+ เบิ้ลหลัง</button>
+                                            <button onClick={() => handleQuickOption('prahan')} className="bg-red-600 text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-red-700 shadow-sm transition-colors">+ ประหาร</button>
                                         </>
                                     )}
                                     {tab === '19' && (
