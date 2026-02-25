@@ -13,6 +13,7 @@ import {
   ArrowRight, // ✅ เพิ่มไอคอนลูกศร
   RefreshCw   // ✅ เพิ่มไอคอนรีเฟรช
 } from 'lucide-react';
+import QuickDateFilters from '../../components/common/QuickDateFilters';
 
 export default function DailyReport() {
   // ฟังก์ชันหาวันปัจจุบัน (Local Timezone)
@@ -74,41 +75,48 @@ export default function DailyReport() {
             <p className="text-sm text-slate-500 mt-1 ml-1">วิเคราะห์ยอดขายและกำไรรายบุคคล</p>
             </div>
             
-            {/* ✅ Date Range Picker (ยกมาจาก Dashboard) */}
-            <div className="flex flex-col sm:flex-row items-center gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm w-full xl:w-auto">
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <div className="relative w-full sm:w-auto">
-                        <Calendar className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                        <input 
-                        type="date" 
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full sm:w-auto pl-10 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
+            {/* ✅ Date Range Picker + Quick Filters (ปรับชิดขวา) */}
+            <div className="flex flex-col items-end gap-2 w-full xl:w-auto">
+                <div className="flex flex-col sm:flex-row items-center gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm w-full sm:w-auto">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="relative w-full sm:w-auto">
+                            <Calendar className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                            <input 
+                            type="date" 
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="w-full sm:w-auto pl-10 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </div>
+                        <span className="text-slate-400"><ArrowRight size={16}/></span>
+                        <div className="relative w-full sm:w-auto">
+                            <Calendar className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                            <input 
+                            type="date" 
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            min={startDate}
+                            className="w-full sm:w-auto pl-10 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </div>
                     </div>
-                    <span className="text-slate-400"><ArrowRight size={16}/></span>
-                    <div className="relative w-full sm:w-auto">
-                        <Calendar className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                        <input 
-                        type="date" 
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
-                        className="w-full sm:w-auto pl-10 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
+                    
+                    <div className="flex gap-2 w-full sm:w-auto">
+                        <button 
+                            onClick={fetchStats} 
+                            className="flex-1 sm:flex-none p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors flex justify-center"
+                        >
+                            <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                        </button>
+                        <button className="flex-1 sm:flex-none bg-emerald-600 text-white p-2 rounded-lg hover:bg-emerald-700 shadow-md shadow-emerald-100 transition-transform active:scale-95 flex items-center justify-center gap-2" title="Export Excel">
+                            <Download size={20} /> <span className="sm:hidden text-xs font-bold">Export</span>
+                        </button>
                     </div>
                 </div>
                 
-                <div className="flex gap-2 w-full sm:w-auto">
-                    <button 
-                        onClick={fetchStats} 
-                        className="flex-1 sm:flex-none p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors"
-                    >
-                        <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-                    </button>
-                    <button className="flex-1 sm:flex-none bg-emerald-600 text-white p-2 rounded-lg hover:bg-emerald-700 shadow-md shadow-emerald-100 transition-transform active:scale-95 flex items-center justify-center gap-2" title="Export Excel">
-                        <Download size={20} /> <span className="sm:hidden text-xs font-bold">Export</span>
-                    </button>
+                {/* 🌟 ปุ่มกดเลือกวันที่ด่วน (ชิดขวา) */}
+                <div className="w-full flex justify-end">
+                    <QuickDateFilters setStartDate={setStartDate} setEndDate={setEndDate} />
                 </div>
             </div>
         </div>

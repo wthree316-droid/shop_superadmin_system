@@ -591,26 +591,35 @@ export default function BettingRoom() {
     const handleScreenshot = async () => {
         if (!billRef.current || cart.length === 0) return;
         const toastId = toast.loading('กำลังประมวลผล...');
+        
         try {
+           
+            await new Promise(resolve => setTimeout(resolve, 200));
+
             const blob = await htmlToImage.toBlob(billRef.current, {
                 backgroundColor: '#ffffff',
-                quality: 1.0,
-                pixelRatio: 2,
-                style: { minWidth: '1720px' },
+               
+                quality: 0.9,     
+                pixelRatio: 1.5,    
+                style: { minWidth: '1080px' }, 
                 filter: (node) => {
                     if (node instanceof HTMLElement && node.dataset.ignore) return false;
                     return true;
                 }
             });
+
             if (!blob) throw new Error('ไม่สามารถสร้างรูปภาพได้');
+            
             await navigator.clipboard.write([
                 new ClipboardItem({ 'image/png': blob })
             ]);
+            
             toast.dismiss(toastId);
             toast.success('คัดลอกรูปแล้ว!'); 
         } catch (error) {
+            console.error('Screenshot error:', error);
             toast.dismiss(toastId);
-            toast.error('คัดลอกไม่สำเร็จ');
+            toast.error('คัดลอกไม่สำเร็จ โปรดลองอีกครั้ง');
         }
     };
 

@@ -8,6 +8,7 @@ import {
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers'; 
 import { useAuth } from '../../contexts/AuthContext'; 
 import { alertAction, confirmAction } from '../../utils/toastUtils';
+import QuickDateFilters from '../../components/common/QuickDateFilters';
 
 export default function ShopHistory() {
   const { user } = useAuth(); 
@@ -28,54 +29,7 @@ export default function ShopHistory() {
   };
   const [startDate, setStartDate] = useState(getToday());
   const [endDate, setEndDate] = useState(getToday());
-  // ✅ 1. ฟังก์ชันจัดรูปแบบวันที่ให้อยู่ในฟอร์แมต YYYY-MM-DD
-  const formatDate = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-  };
-
-  // ✅ 2. ฟังก์ชันคำนวณช่วงวันที่เมื่อกดปุ่ม
-  const handleQuickDate = (preset: string) => {
-      const today = new Date();
-      let start = new Date();
-      let end = new Date();
-
-      switch (preset) {
-          case 'today':
-              break;
-          case 'yesterday':
-              start.setDate(today.getDate() - 1);
-              end.setDate(today.getDate() - 1);
-              break;
-          case 'last7':
-              start.setDate(today.getDate() - 6);
-              break;
-          case 'thisWeek':
-              const day = today.getDay();
-              const diff = today.getDate() - day + (day === 0 ? -6 : 1); // หาวันจันทร์
-              start.setDate(diff);
-              end.setDate(start.getDate() + 6); // วันอาทิตย์
-              break;
-          case 'lastWeek':
-              const prevWeekDay = today.getDay();
-              const prevDiff = today.getDate() - prevWeekDay + (prevWeekDay === 0 ? -6 : 1) - 7;
-              start.setDate(prevDiff);
-              end.setDate(start.getDate() + 6);
-              break;
-          case 'thisMonth':
-              start = new Date(today.getFullYear(), today.getMonth(), 1);
-              end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-              break;
-          case 'lastMonth':
-              start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-              end = new Date(today.getFullYear(), today.getMonth(), 0);
-              break;
-      }
-      setStartDate(formatDate(start));
-      setEndDate(formatDate(end));
-  };
+  
   const [selectedUser, setSelectedUser] = useState<string>(''); 
   const [filterStatus, setFilterStatus] = useState('ALL'); 
 
@@ -280,51 +234,21 @@ export default function ShopHistory() {
       
       {/* --- Filter Section --- */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4 sticky top-0 z-20">
-          <div className="flex flex-col xl:flex-row gap-4 justify-between items-end xl:items-center">
+          
+          {/* Top Row: Member Filter (Left) & Date Filters (Right) */}
+          <div className="flex flex-col xl:flex-row justify-between items-start gap-4">
               
-              <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto">
-                  
-                  {/* Date Range Input */}
-                  <div>
-                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">ช่วงวันที่</label>
-                      <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200 w-fit">
-                              <div className="relative">
-                                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"/>
-                              </div>
-                              <span className="text-slate-400"><ArrowRight size={16}/></span>
-                              <div className="relative">
-                                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={startDate} className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"/>
-                              </div>
-                          </div>
-                          
-                          {/* ✅ แถบปุ่มเลือกวันที่ */}
-                          <div className="flex flex-wrap gap-1.5">
-                              {[
-                                  { label: 'วันนี้', value: 'today' }, { label: 'เมื่อวาน', value: 'yesterday' }, { label: '7 วันก่อน', value: 'last7' },
-                                  { label: 'สัปดาห์นี้', value: 'thisWeek' }, { label: 'สัปดาห์ที่แล้ว', value: 'lastWeek' },
-                                  { label: 'เดือนนี้', value: 'thisMonth' }, { label: 'เดือนที่แล้ว', value: 'lastMonth' }
-                              ].map(btn => (
-                                  <button key={btn.value} onClick={() => handleQuickDate(btn.value)}
-                                      className="px-2 py-1 text-[10px] font-bold rounded-md bg-white text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors border border-slate-200 shadow-sm whitespace-nowrap"
-                                  >
-                                      {btn.label}
-                                  </button>
-                              ))}
-                          </div>
-                      </div>
-                  </div>
-
-                  {/* Member Select (Hidden for Member Role) */}
+              {/* ⬅️ ซ้าย: กรองตามสมาชิก (Hidden for Member Role) */}
+              <div className="w-full xl:w-72">
                   {user?.role !== 'member' && (
-                      <div className="flex-1 md:w-64">
+                      <div className="w-full">
                           <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">กรองตามสมาชิก</label>
                           <div className="relative">
                               <User className="absolute left-3 top-2.5 text-slate-400" size={16} />
                               <select 
-                                value={selectedUser}
-                                onChange={e => setSelectedUser(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200 appearance-none h-10.5"
+                                  value={selectedUser}
+                                  onChange={e => setSelectedUser(e.target.value)}
+                                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200 appearance-none h-10.5"
                               >
                                   <option value="">-- ดูรายการทุกคน --</option>
                                   {members.map(m => (
@@ -341,16 +265,54 @@ export default function ShopHistory() {
                   )}
               </div>
 
-              <button onClick={() => { setTickets([]); fetchHistory(1, true); }} className="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors text-slate-600">
-                  <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-              </button>
+              {/* ➡️ ขวา: กล่องวันที่ + ปุ่มรีเฟรช + ปุ่มวันที่ด่วน */}
+              <div className="flex flex-col items-end gap-2 w-full xl:w-auto">
+                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 w-full sm:w-auto">
+                      
+                      {/* กล่องเลือกวันที่ */}
+                      <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 w-full sm:w-auto h-10.5">
+                          <div className="relative w-full sm:w-auto">
+                              <input 
+                                  type="date" 
+                                  value={startDate} 
+                                  onChange={e => setStartDate(e.target.value)} 
+                                  className="w-full sm:w-auto pl-2 pr-1 bg-transparent text-sm font-bold text-slate-700 outline-none"
+                              />
+                          </div>
+                          <span className="text-slate-400"><ArrowRight size={16}/></span>
+                          <div className="relative w-full sm:w-auto">
+                              <input 
+                                  type="date" 
+                                  value={endDate} 
+                                  onChange={e => setEndDate(e.target.value)} 
+                                  min={startDate} 
+                                  className="w-full sm:w-auto pl-2 pr-1 bg-transparent text-sm font-bold text-slate-700 outline-none"
+                              />
+                          </div>
+                      </div>
+
+                      {/* ปุ่ม Refresh นำมาต่อท้ายกล่องวันที่ */}
+                      <button 
+                          onClick={() => { setTickets([]); fetchHistory(1, true); }} 
+                          className="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors text-slate-600 w-full sm:w-auto flex justify-center items-center h-10.5"
+                      >
+                          <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                      </button>
+                  </div>
+                  
+                  {/* 🌟 ปุ่มกดเลือกวันที่ด่วน (ชิดขวา) */}
+                  <div className="w-full flex justify-end">
+                      <QuickDateFilters setStartDate={setStartDate} setEndDate={setEndDate} />
+                  </div>
+              </div>
+
           </div>
 
-          {/* Status Filters */}
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {/* Status Filters (ด้านล่าง) */}
+          <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
             {['ALL', 'PENDING', 'WIN', 'LOSE', 'CANCELLED'].map(f => (
                 <button key={f} onClick={() => setFilterStatus(f)} 
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all ${filterStatus === f ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
+                    className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all ${filterStatus === f ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
                     {f === 'ALL' ? 'ทั้งหมด' : f === 'PENDING' ? 'รอผล' : f === 'WIN' ? 'ถูกรางวัล' : f === 'LOSE' ? 'ไม่ถูกรางวัล' : 'ยกเลิก'}
                 </button>
             ))}

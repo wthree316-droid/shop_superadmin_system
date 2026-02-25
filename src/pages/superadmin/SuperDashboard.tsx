@@ -8,6 +8,7 @@ import {
     RotateCcw
 } from 'lucide-react';
 import { confirmAction, alertAction } from '../../utils/toastUtils';
+import QuickDateFilters from '../../components/common/QuickDateFilters';
 
 export default function SuperDashboard() {
   const getToday = () => {
@@ -119,39 +120,49 @@ export default function SuperDashboard() {
     <div className="p-6 animate-fade-in text-slate-800 pb-24 space-y-8">
       
       {/* --- Header & Filter --- */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
           <div>
             <h1 className="text-2xl font-black text-slate-800 flex items-center gap-2">
                 <Server className="text-purple-600" /> Super Dashboard
             </h1>
-            <p className="text-sm text-slate-500">ภาพรวมระบบและยอดการเงินของทุกร้านค้า</p>
+            <p className="text-sm text-slate-500 mt-1">ภาพรวมระบบและยอดการเงินของทุกร้านค้า</p>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-                <div className="relative">
-                    <input 
-                        type="date" 
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="pl-2 pr-1 py-1 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
-                    />
-                </div>
-                <span className="text-slate-400"><ArrowRight size={16}/></span>
-                <div className="relative">
-                    <input 
-                        type="date" 
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
-                        className="pl-2 pr-1 py-1 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
-                    />
-                </div>
-                <button 
-                    onClick={() => { fetchFinancialStats(); fetchShopPerformance(); }} 
-                    className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
-                >
-                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                </button>
+          {/* ✅ ชุด Date Picker + Quick Filters (ปรับชิดขวา + กล่องขนาดพอดี) */}
+          <div className="flex flex-col items-end gap-2 w-full md:w-auto">
+              <div className="flex flex-col sm:flex-row items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 w-full sm:w-auto">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <div className="relative w-full sm:w-auto">
+                          <input 
+                              type="date" 
+                              value={startDate}
+                              onChange={(e) => setStartDate(e.target.value)}
+                              className="w-full sm:w-auto pl-2 pr-1 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-slate-700 outline-none"
+                          />
+                      </div>
+                      <span className="text-slate-400"><ArrowRight size={16}/></span>
+                      <div className="relative w-full sm:w-auto">
+                          <input 
+                              type="date" 
+                              value={endDate}
+                              onChange={(e) => setEndDate(e.target.value)}
+                              min={startDate}
+                              className="w-full sm:w-auto pl-2 pr-1 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-slate-700 outline-none"
+                          />
+                      </div>
+                  </div>
+                  <button 
+                      onClick={() => { fetchFinancialStats(); fetchShopPerformance(); }} 
+                      className="p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-sm w-full sm:w-auto flex justify-center"
+                  >
+                      <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                  </button>
+              </div>
+              
+              {/* 🌟 ปุ่มกดเลือกวันที่ด่วน (ชิดขวา) */}
+              <div className="w-full flex justify-end">
+                  <QuickDateFilters setStartDate={setStartDate} setEndDate={setEndDate} />
+              </div>
           </div>
       </div>
 

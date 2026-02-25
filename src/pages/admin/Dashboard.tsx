@@ -12,6 +12,8 @@ import {
   RotateCcw,
   Percent
 } from 'lucide-react';
+import QuickDateFilters from '../../components/common/QuickDateFilters';
+
 
 export default function Dashboard() {
   const getToday = () => {
@@ -100,36 +102,44 @@ export default function Dashboard() {
             <p className="text-slate-500 text-sm">สรุปยอดขายและกำไรตามช่วงเวลา</p>
           </div>
           
-          <div className="flex flex-col sm:flex-row items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <div className="relative w-full sm:w-auto">
-                      <CalendarIcon className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                      <input 
-                        type="date" 
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full sm:w-auto pl-10 pr-2 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+          {/* ✅ ชุด Date Picker + Quick Filters (ปรับชิดขวา) */}
+          <div className="flex flex-col items-end gap-2 w-full md:w-auto">
+              <div className="flex flex-col sm:flex-row items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 w-full sm:w-auto">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <div className="relative w-full sm:w-auto">
+                          <CalendarIcon className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                          <input 
+                            type="date" 
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="w-full sm:w-auto pl-10 pr-2 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                      </div>
+                      <span className="text-slate-400"><ArrowRight size={16}/></span>
+                      <div className="relative w-full sm:w-auto">
+                          <CalendarIcon className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                          <input 
+                            type="date" 
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            min={startDate}
+                            className="w-full sm:w-auto pl-10 pr-2 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                      </div>
                   </div>
-                  <span className="text-slate-400"><ArrowRight size={16}/></span>
-                  <div className="relative w-full sm:w-auto">
-                      <CalendarIcon className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                      <input 
-                        type="date" 
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
-                        className="w-full sm:w-auto pl-10 pr-2 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                  </div>
+                  
+                  <button 
+                    onClick={() => { fetchStats(); fetchTopNumbers(); }} 
+                    className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm w-full sm:w-auto flex justify-center"
+                  >
+                      <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                  </button>
               </div>
-              
-              <button 
-                onClick={() => { fetchStats(); fetchTopNumbers(); }} 
-                className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-              >
-                  <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-              </button>
+
+              {/* 🌟 ปุ่มกดเลือกวันที่ด่วน (ชิดขวา) */}
+              <div className="w-full flex justify-end">
+                  <QuickDateFilters setStartDate={setStartDate} setEndDate={setEndDate} />
+              </div>
           </div>
       </div>
 

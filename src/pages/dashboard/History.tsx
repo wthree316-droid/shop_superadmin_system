@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers';
 import { alertAction, confirmAction } from '../../utils/toastUtils';
+import QuickDateFilters from '../../components/common/QuickDateFilters';
 
 export default function History() {
   // --- Data States ---
@@ -26,56 +27,7 @@ export default function History() {
   };
   const [startDate, setStartDate] = useState(getToday());
   const [endDate, setEndDate] = useState(getToday());
-  // ✅ 1. ฟังก์ชันจัดรูปแบบวันที่ให้อยู่ในฟอร์แมต YYYY-MM-DD
-  const formatDate = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-  };
-
-  // ✅ 2. ฟังก์ชันคำนวณช่วงวันที่เมื่อกดปุ่ม
-  const handleQuickDate = (preset: string) => {
-      const today = new Date();
-      let start = new Date();
-      let end = new Date();
-
-      switch (preset) {
-          case 'today':
-              break;
-          case 'yesterday':
-              start.setDate(today.getDate() - 1);
-              end.setDate(today.getDate() - 1);
-              break;
-          case 'last7':
-              start.setDate(today.getDate() - 6);
-              break;
-          case 'thisWeek':
-              const day = today.getDay();
-              const diff = today.getDate() - day + (day === 0 ? -6 : 1); // หาวันจันทร์
-              start.setDate(diff);
-              end.setDate(start.getDate() + 6); // วันอาทิตย์
-              break;
-          case 'lastWeek':
-              const prevWeekDay = today.getDay();
-              const prevDiff = today.getDate() - prevWeekDay + (prevWeekDay === 0 ? -6 : 1) - 7;
-              start.setDate(prevDiff);
-              end.setDate(start.getDate() + 6);
-              break;
-          case 'thisMonth':
-              start = new Date(today.getFullYear(), today.getMonth(), 1);
-              end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-              break;
-          case 'lastMonth':
-              start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-              end = new Date(today.getFullYear(), today.getMonth(), 0);
-              break;
-      }
-      setStartDate(formatDate(start));
-      setEndDate(formatDate(end));
-  };
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL'); // ✅ Filter หมวดหมู่
-  
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL'); 
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
 
   // --- Infinite Scroll States ---
@@ -284,45 +236,38 @@ export default function History() {
                       <Layers className="text-blue-600" /> ประวัติ (แยกตามหวย)
                   </h1>
                   
-                  {/* Date Picker */}
-                  <div className="flex flex-col gap-2 self-start md:self-auto w-full md:w-auto">
-                      <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200 w-fit">
-                          <div className="relative">
+                  {/* ✅ Date Picker + Quick Filters (ปรับชิดขวา) */}
+                  <div className="flex flex-col items-end gap-2 w-full md:w-auto">
+                      <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 w-full sm:w-auto">
+                          <div className="relative w-full sm:w-auto">
                               <input 
                                 type="date" 
                                 value={startDate}
                                 onChange={e => setStartDate(e.target.value)}
-                                className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
+                                className="w-full sm:w-auto pl-2 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none"
                               />
                           </div>
                           <span className="text-slate-400"><ArrowRight size={16}/></span>
-                          <div className="relative">
+                          <div className="relative w-full sm:w-auto">
                               <input 
                                 type="date" 
                                 value={endDate}
                                 onChange={e => setEndDate(e.target.value)}
                                 min={startDate}
-                                className="pl-3 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none w-32"
+                                className="w-full sm:w-auto pl-2 pr-1 py-1.5 bg-transparent text-sm font-bold text-slate-700 outline-none"
                               />
                           </div>
-                          <button onClick={handleRefresh} className="ml-1 p-1.5 bg-white shadow-sm rounded-lg hover:bg-blue-50 transition-colors text-slate-600 border border-slate-100">
+                          <button 
+                              onClick={handleRefresh} 
+                              className="ml-1 p-1.5 bg-white shadow-sm rounded-lg hover:bg-blue-50 transition-colors text-slate-600 border border-slate-100 flex justify-center w-full sm:w-auto"
+                          >
                               <RefreshCw size={16} className={loading ? 'animate-spin' : ''}/>
                           </button>
                       </div>
 
-                      {/* ✅ แถบปุ่มเลือกวันที่ */}
-                      <div className="flex flex-wrap gap-1.5">
-                          {[
-                              { label: 'วันนี้', value: 'today' }, { label: 'เมื่อวาน', value: 'yesterday' }, { label: '7 วันก่อน', value: 'last7' },
-                              { label: 'สัปดาห์นี้', value: 'thisWeek' }, { label: 'สัปดาห์ที่แล้ว', value: 'lastWeek' },
-                              { label: 'เดือนนี้', value: 'thisMonth' }, { label: 'เดือนที่แล้ว', value: 'lastMonth' }
-                          ].map(btn => (
-                              <button key={btn.value} onClick={() => handleQuickDate(btn.value)}
-                                  className="px-2.5 py-1 text-[10px] md:text-xs font-bold rounded-md bg-white text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors border border-slate-200 shadow-sm whitespace-nowrap"
-                              >
-                                  {btn.label}
-                              </button>
-                          ))}
+                      {/* 🌟 ปุ่มกดเลือกวันที่ด่วน (ชิดขวา) */}
+                      <div className="w-full flex justify-end">
+                          <QuickDateFilters setStartDate={setStartDate} setEndDate={setEndDate} />
                       </div>
                   </div>
               </div>
