@@ -1178,7 +1178,7 @@ export default function BettingRoom() {
                             <div className={`${themeClasses.light} p-4 rounded-xl border ${themeClasses.border} flex flex-wrap gap-3 items-end transition-all duration-300`}>
                                 
                                 {/* 1. ช่องใส่เลข */}
-                                <div className="flex-1 min-w-[140px] w-full sm:w-auto">
+                                <div className="flex-1 min-w-35 w-full sm:w-auto">
                                     <label className="text-xs text-slate-500 font-bold mb-1.5 block">ใส่เลข</label>
                                     <input 
                                         ref={numberInputRef} 
@@ -1188,7 +1188,7 @@ export default function BettingRoom() {
                                         onKeyDown={(e) => handleInputKeyDown(e, 'number')}
                                         onPaste={handlePaste} 
                                         placeholder={tab === 'win' ? "เลือกเลขวิน..." : "ระบุตัวเลข"} 
-                                        className={`w-full bg-white border-b-2 text-center text-xl font-bold py-2 focus:outline-none text-slate-800 placeholder-blue-300 rounded-lg shadow-sm transition-all h-[44px] ${themeClasses.border} ${themeClasses.focus}`}
+                                        className={`w-full bg-white border-b-2 text-center text-xl font-bold py-2 focus:outline-none text-slate-800 placeholder-blue-300 rounded-lg shadow-sm transition-all h-11 ${themeClasses.border} ${themeClasses.focus}`}
                                         maxLength={getInputConfig().max}
                                     />
                                 </div>
@@ -1199,14 +1199,14 @@ export default function BettingRoom() {
                                         onClick={handleReverseBuffer}
                                         disabled={bufferNumbers.length === 0}
                                         title="กด Spacebar เพื่อกลับเลข"
-                                        className="bg-[#F39C12] hover:bg-[#E67E22] disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold px-4 py-2 rounded-lg shadow-sm transition-all flex items-center justify-center gap-1 w-full sm:w-auto shrink-0 h-[44px]"
+                                        className="bg-[#F39C12] hover:bg-[#E67E22] disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold px-4 py-2 rounded-lg shadow-sm transition-all flex items-center justify-center gap-1 w-full sm:w-auto shrink-0 h-11"
                                     >
                                         <Settings2 size={18} /> กลับเลข
                                     </button>
                                 )}
 
                                 {/* 3. ช่องราคาบน/ล่าง */}
-                                <div className="flex gap-2 w-full sm:w-auto shrink-0 min-w-[160px] flex-1 sm:flex-none">
+                                <div className="flex gap-2 w-full sm:w-auto shrink-0 min-w-40 flex-1 sm:flex-none">
                                     <div className="flex-1 sm:w-24">
                                         <label className="text-xs text-slate-500 font-bold mb-1.5 block text-center">{labels.top}</label>
                                         <input 
@@ -1216,7 +1216,7 @@ export default function BettingRoom() {
                                             onChange={e => setPriceTop(e.target.value)}
                                             onKeyDown={(e) => handleInputKeyDown(e, 'top')} 
                                             placeholder="ราคา"
-                                            className={`w-full bg-white border-b-2 text-center font-bold py-2 focus:outline-none text-slate-800 rounded-lg shadow-sm transition-all h-[44px] ${themeClasses.border} ${themeClasses.focus}`}
+                                            className={`w-full bg-white border-b-2 text-center font-bold py-2 focus:outline-none text-slate-800 rounded-lg shadow-sm transition-all h-11 ${themeClasses.border} ${themeClasses.focus}`}
                                         />
                                     </div>
                                     <div className="flex-1 sm:w-24">
@@ -1228,7 +1228,7 @@ export default function BettingRoom() {
                                             onChange={e => setPriceBottom(e.target.value)}
                                             onKeyDown={(e) => handleInputKeyDown(e, 'bottom')} 
                                             placeholder="ราคา"
-                                            className={`w-full bg-white border-b-2 text-center font-bold py-2 focus:outline-none text-slate-800 rounded-lg shadow-sm transition-all h-[44px] ${themeClasses.border} ${themeClasses.focus}`}
+                                            className={`w-full bg-white border-b-2 text-center font-bold py-2 focus:outline-none text-slate-800 rounded-lg shadow-sm transition-all h-11 ${themeClasses.border} ${themeClasses.focus}`}
                                         />
                                     </div>
                                 </div>
@@ -1240,7 +1240,7 @@ export default function BettingRoom() {
                                         handleAddBill();
                                         setTimeout(() => numberInputRef.current?.focus(), 50);
                                     }}
-                                    className={`font-bold px-6 py-2 rounded-lg shadow-md active:scale-95 transition-all flex items-center justify-center gap-1 w-full sm:w-auto shrink-0 h-[44px] whitespace-nowrap ${themeClasses.main} ${themeClasses.hover}`}
+                                    className={`font-bold px-6 py-2 rounded-lg shadow-md active:scale-95 transition-all flex items-center justify-center gap-1 w-full sm:w-auto shrink-0 h-11 whitespace-nowrap ${themeClasses.main} ${themeClasses.hover}`}
                                 >
                                     <span className="text-xl leading-none">+</span> เพิ่มบิล
                                 </button>

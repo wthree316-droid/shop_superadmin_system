@@ -4,7 +4,7 @@ import {
   User, Search, Plus, Wallet, SearchX, 
   CheckCircle, KeyRound, Save, Loader2,
   AlertTriangle, TrendingUp, Users, ShieldCheck,
-  ArrowRightLeft
+  ArrowRightLeft, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { confirmAction, alertAction } from '../../utils/toastUtils';
@@ -154,6 +154,40 @@ export default function ManageMembers() {
     }
   };
 
+  // ✅ ฟังก์ชันลบสมาชิก (แบบมีระบบป้องกันมือลั่น 2 ชั้น)
+  const handleDeleteMember = async (member: any) => {
+    confirmAction(
+        `⚠️ คำเตือน: คุณกำลังจะลบ "${member.username}"\nข้อมูลโพย เครดิต และประวัติทั้งหมดจะหายไปและกู้คืนไม่ได้!`,
+        () => {
+            // หน่วงเวลาเล็กน้อยให้หน้าต่างแรกปิดก่อน
+            setTimeout(async () => {
+                const input = prompt(`พิมพ์คำว่า "DELETE" เพื่อยืนยันการลบ ${member.username}`);
+                if (input !== 'DELETE') {
+                    if (input !== null) toast.error("พิมพ์คำยืนยันไม่ถูกต้อง ยกเลิกการลบ");
+                    return;
+                }
+
+                setIsLoading(true);
+                try {
+                    await client.delete(`/users/${member.id}`);
+                    alertAction('ลบสมาชิกและข้อมูลที่เกี่ยวข้องเรียบร้อย', 'สำเร็จ', 'success');
+                    fetchMembers();
+                } catch (err: any) {
+                    alertAction(
+                        err.response?.data?.detail || 'ลบไม่สำเร็จ (อาจมีข้อมูลโพยค้างอยู่และ Database ไม่รองรับการลบซ้อน)', 
+                        'ข้อผิดพลาด', 
+                        'error'
+                    );
+                } finally {
+                    setIsLoading(false);
+                }
+            }, 150);
+        },
+        'ลบทิ้งถาวร',
+        'ยกเลิก'
+    );
+  };
+
   const filteredMembers = members.filter(m => 
     m.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (m.full_name && m.full_name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -299,6 +333,14 @@ export default function ManageMembers() {
                                     >
                                         <KeyRound size={18} className="group-hover/btn:scale-110 transition-transform"/>
                                     </button>
+                                   
+                                    <button 
+                                        onClick={() => handleDeleteMember(m)}
+                                        className="bg-white text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-200 p-2.5 rounded-xl transition-all shadow-sm active:scale-95 group/btn"
+                                        title="ลบสมาชิก (อันตราย)"
+                                    >
+                                        <Trash2 size={18} className="group-hover/btn:scale-110 transition-transform"/>
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -360,6 +402,13 @@ export default function ManageMembers() {
                           className="py-3 bg-white text-slate-600 border border-slate-200 rounded-xl font-bold text-sm hover:bg-slate-50 active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
                           <KeyRound size={18} /> แก้ไขข้อมูล
+                      </button>
+                      {/* ✅ ปุ่มลบแบบเต็มบรรทัดแยกต่างหากเพื่อป้องกันการกดผิดในมือถือ */}
+                      <button 
+                        onClick={() => handleDeleteMember(m)}
+                        className="w-full py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-bold text-sm hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Trash2 size={16} /> ลบสมาชิกและข้อมูลทั้งหมด
                       </button>
                   </div>
               </div>
