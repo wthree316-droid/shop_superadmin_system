@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import client from '../../api/client';
 import FlagSelector from '../../components/admin/FlagSelector';
 import { 
-  Plus, X, ListFilter, Pencil, Loader2,
+  Plus, X, ListFilter, Pencil, Loader2, Search,
   Clock, CheckCircle, AlertCircle, ChevronDown, Database,
   Trash2, Coins, FolderCog, Palette, Save
 } from 'lucide-react';
@@ -333,6 +333,11 @@ export default function ManageLottos() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [showCatModal, setShowCatModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplates, setSelectedTemplates] = useState<string[]>([]);
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   
   const [isLoading, setIsLoading] = useState(true);
   
@@ -579,17 +584,55 @@ export default function ManageLottos() {
       }, 'ลบหมวดหมู่', 'ยกเลิก');
   };
 
-  const handleImportTemplates = async () => {
+// ✅ โหลดแม่แบบมาโชว์ตอนกดปุ่ม + เรียงเวลา
+  const openImportModal = async () => {
     if (rateProfiles.length === 0) return alertAction("สร้าง Rate Profile ก่อนครับ", "แจ้งเตือน", "info");
-    confirmAction("ดึงหวยมาตรฐานจากระบบกลาง?", async () => {
-        setIsLoading(true);
-        try {
-            const res = await client.post('/play/lottos/import_defaults');
-            alertAction(`✅ ${res.data.message}`, 'สำเร็จ', 'success');
-            fetchData();
-        } catch (err: any) { alertAction(`Error: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error'); } 
-        finally { setIsLoading(false); }
-    }, 'ดึงข้อมูล', 'ยกเลิก');
+    setIsLoading(true);
+    try {
+        const res = await client.get('/play/lottos/templates');
+        
+        // 🌟 สูตรเรียงลำดับเวลา (เหมือนหน้าหลัก)
+        const sortedTemplates = res.data.sort((a: any, b: any) => {
+            const getTimeScore = (timeStr: string | null) => {
+                if (!timeStr) return 9999;
+                const [h, m] = timeStr.split(':').map(Number);
+                if (h < 5) return (h + 24) * 60 + m; 
+                return h * 60 + m;
+            };
+            return getTimeScore(a.close_time) - getTimeScore(b.close_time);
+        });
+
+        setTemplates(sortedTemplates);
+        setSelectedTemplates([]);
+        setTemplateSearch(''); // เคลียร์ช่องค้นหา
+        setShowImportModal(true);
+    } catch (err: any) {
+        toast.error("ไม่สามารถโหลดข้อมูลแม่แบบได้");
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  // ✅ ระบบกรองคำค้นหา (คำนวณแบบ Realtime)
+  const filteredTemplates = templates.filter(tmpl => 
+      tmpl.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
+      tmpl.code.toLowerCase().includes(templateSearch.toLowerCase())
+  );
+
+  // ✅ ฟังก์ชันส่งข้อมูลตอนกดยืนยันการดึง
+  const submitImport = async () => {
+      if (selectedTemplates.length === 0) return toast.error("กรุณาเลือกอย่างน้อย 1 รายการ");
+      setIsImporting(true);
+      try {
+          const res = await client.post('/play/lottos/import_defaults', { template_ids: selectedTemplates });
+          alertAction(`✅ ${res.data.message}`, 'สำเร็จ', 'success');
+          setShowImportModal(false);
+          fetchData();
+      } catch (err: any) { 
+          alertAction(`Error: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error'); 
+      } finally { 
+          setIsImporting(false); 
+      }
   };
 
   const toggleDay = (dayId: string) => {
@@ -671,7 +714,7 @@ export default function ManageLottos() {
             <button onClick={() => setShowBulkModal(true)} className="flex-1 md:flex-none bg-indigo-50 text-indigo-600 border border-indigo-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-indigo-100 active:scale-95 transition-all">
               <Coins size={18} /> <span className="hidden sm:inline">ปรับเรททั้งหมด</span><span className="sm:hidden">Set Rates</span>
             </button>
-            <button onClick={handleImportTemplates} className="flex-1 md:flex-none bg-white text-purple-600 border border-purple-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-purple-50 active:scale-95 transition-all">
+            <button onClick={openImportModal} className="flex-1 md:flex-none bg-white text-purple-600 border border-purple-200 px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center text-sm shadow-sm hover:bg-purple-50 active:scale-95 transition-all">
               <Database size={18} /> <span className="hidden sm:inline">ดึงจากระบบกลาง</span><span className="sm:hidden">Import</span>
             </button>
             <button onClick={openCreateModal} className="flex-1 md:flex-none bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg hover:bg-black active:scale-95 transition-all">
@@ -951,6 +994,106 @@ export default function ManageLottos() {
                     </select>
                     <button onClick={handleBulkUpdate} disabled={isBulkUpdating || !bulkRateId} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                         {isBulkUpdating ? <Loader2 className="animate-spin" /> : <CheckCircle size={18} />} {isBulkUpdating ? 'กำลังประมวลผล...' : 'ยืนยันการเปลี่ยนเรท'}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+    
+      {/* --- Import Modal (ติ๊กเลือกหวยแม่แบบ) --- */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            {/* 🌟 ปรับขนาดเป็น max-w-4xl เพื่อให้กว้างขึ้นและแสดง 2 คอลัมน์ได้ */}
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95">
+                <div className="p-5 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
+                    <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                        <Database className="text-purple-600"/> เลือกดึงหวยจากระบบกลาง
+                    </h3>
+                    
+                    {/* 🌟 ช่องค้นหาหวย */}
+                    <div className="relative w-full sm:w-72">
+                        <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                        <input 
+                            type="text" 
+                            placeholder="ค้นหาชื่อหวย หรือ Code..." 
+                            value={templateSearch}
+                            onChange={(e) => setTemplateSearch(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all font-bold text-slate-700"
+                        />
+                    </div>
+                    
+                    <button onClick={() => setShowImportModal(false)} className="text-slate-400 hover:text-red-500 absolute top-5 right-5 sm:static"><X size={20}/></button>
+                </div>
+
+                <div className="overflow-y-auto p-4 md:p-6 flex-1 custom-scrollbar bg-slate-50/50">
+                    {templates.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 font-bold">ไม่พบข้อมูลแม่แบบในระบบ</div>
+                    ) : filteredTemplates.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 font-bold">ไม่พบหวยที่ค้นหา "{templateSearch}"</div>
+                    ) : (
+                        <div className="space-y-4">
+                            {/* ปุ่มเลือกทั้งหมด (ฉลาดขึ้น: เลือกเฉพาะที่แสดงผลจากการค้นหา) */}
+                            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm sticky top-0 z-10">
+                                <span className="font-bold text-slate-700 text-sm">
+                                    เลือกทั้งหมด {templateSearch ? `ที่ค้นพบ (${filteredTemplates.length})` : `(${templates.length} รายการ)`}
+                                </span>
+                                <input 
+                                    type="checkbox" 
+                                    className="w-5 h-5 accent-purple-600 rounded cursor-pointer"
+                                    checked={filteredTemplates.length > 0 && filteredTemplates.every(t => selectedTemplates.includes(t.id))}
+                                    onChange={(e) => {
+                                        if (e.target.checked) {
+                                            const newSelected = new Set([...selectedTemplates, ...filteredTemplates.map(t => t.id)]);
+                                            setSelectedTemplates(Array.from(newSelected));
+                                        } else {
+                                            const filteredIds = new Set(filteredTemplates.map(t => t.id));
+                                            setSelectedTemplates(selectedTemplates.filter(id => !filteredIds.has(id)));
+                                        }
+                                    }}
+                                />
+                            </div>
+
+                            {/* 🌟 แสดงรายการเป็น 2 คอลัมน์ (Desktop) เพื่อใช้พื้นที่ให้คุ้มค่า */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {filteredTemplates.map(tmpl => (
+                                    <label key={tmpl.id} className={`flex items-center justify-between p-3 bg-white border rounded-xl cursor-pointer transition-all shadow-sm ${selectedTemplates.includes(tmpl.id) ? 'border-purple-500 ring-1 ring-purple-100' : 'border-slate-200 hover:border-purple-300'}`}>
+                                        <div className="flex items-center gap-3 w-full min-w-0">
+                                            <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                                                {tmpl.img_url ? <img src={tmpl.img_url} className="w-full h-full object-cover" /> : <div className="text-[8px] text-gray-400 font-bold">NO IMG</div>}
+                                            </div>
+                                            <div className="truncate">
+                                                <div className="font-bold text-slate-700 text-sm truncate">{tmpl.name}</div>
+                                                <div className="text-xs text-slate-500 font-mono mt-0.5 truncate flex items-center gap-1">
+                                                    <span className="bg-slate-100 px-1 rounded">{tmpl.code}</span>
+                                                    <span>ปิด: <span className="text-red-500 font-bold">{tmpl.close_time ? tmpl.close_time.substring(0,5) : '-'}</span></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-5 h-5 accent-purple-600 rounded cursor-pointer shrink-0 ml-3"
+                                            checked={selectedTemplates.includes(tmpl.id)}
+                                            onChange={(e) => {
+                                                if (e.target.checked) setSelectedTemplates([...selectedTemplates, tmpl.id]);
+                                                else setSelectedTemplates(selectedTemplates.filter(id => id !== tmpl.id));
+                                            }}
+                                        />
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-5 border-t border-slate-100 bg-white flex gap-3 justify-end shrink-0">
+                    <button onClick={() => setShowImportModal(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">ยกเลิก</button>
+                    <button 
+                        onClick={submitImport} 
+                        disabled={isImporting || selectedTemplates.length === 0} 
+                        className="px-6 py-2.5 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 shadow-lg active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isImporting ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />} 
+                        ดึงข้อมูล ({selectedTemplates.length})
                     </button>
                 </div>
             </div>
