@@ -15,7 +15,7 @@ export default function HistoryMain() {
   ];
 
   return (
-    <div className="space-y-4 md:space-y-6 pb-10 animate-fade-in font-sans">
+    <div className="max-w-7xl mx-auto w-full space-y-4 md:space-y-6 pb-10 animate-fade-in font-sans">
       
       {/* --- Header Card --- */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

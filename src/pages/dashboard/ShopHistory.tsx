@@ -233,7 +233,7 @@ export default function ShopHistory() {
     <div className="animate-fade-in space-y-6 pb-20">
       
       {/* --- Filter Section --- */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4 sticky top-0 z-20">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4 top-0">
           
           {/* Top Row: Member Filter (Left) & Date Filters (Right) */}
           <div className="flex flex-col xl:flex-row justify-between items-start gap-4">

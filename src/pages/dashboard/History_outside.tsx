@@ -145,7 +145,7 @@ export default function HistoryOutside() {
     <div className="animate-fade-in pb-20 bg-gray-50 min-h-screen flex flex-col font-sans">
       
       {/* Header & Filter */}
-      <div className="bg-white px-4 py-4 shadow-sm sticky top-0 z-20 border-b border-gray-200">
+      <div className="bg-white px-4 py-4 shadow-sm top-0 border-b border-gray-200">
           <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 max-w-7xl mx-auto mb-4">
               <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
                   <Receipt className="text-blue-600" /> ประวัติการแทง (รวม)
