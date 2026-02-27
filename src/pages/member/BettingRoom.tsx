@@ -1174,10 +1174,12 @@ export default function BettingRoom() {
                                 </div>
                             )}
                             
-                            <div className={`${themeClasses.light} p-3 rounded-lg border ${themeClasses.border} flex flex-col lg:flex-row gap-2 items-stretch lg:items-center transition-all duration-300`}>
-                                <div className="w-full lg:flex-1 min-w-0">
-                                    <label className="text-xs text-gray-500 font-bold mb-1 block lg:hidden">ใส่เลข</label>
-                                    
+                            {/* --- แถบกรอกเลขและราคา (Responsive ปรับตามจอ) --- */}
+                            <div className={`${themeClasses.light} p-4 rounded-xl border ${themeClasses.border} flex flex-wrap gap-3 items-end transition-all duration-300`}>
+                                
+                                {/* 1. ช่องใส่เลข */}
+                                <div className="flex-1 min-w-[140px] w-full sm:w-auto">
+                                    <label className="text-xs text-slate-500 font-bold mb-1.5 block">ใส่เลข</label>
                                     <input 
                                         ref={numberInputRef} 
                                         type="tel" 
@@ -1185,62 +1187,62 @@ export default function BettingRoom() {
                                         onChange={e => setCurrentInput(e.target.value.replace(/[^0-9]/g, ''))}
                                         onKeyDown={(e) => handleInputKeyDown(e, 'number')}
                                         onPaste={handlePaste} 
-                                        placeholder={tab === 'win' ? "เลือกเลขวิน..." : "ใส่เลข"} 
-                                        className={`w-full bg-white/90 border-b-2 text-center text-xl font-bold py-1 focus:outline-none text-gray-700 placeholder-blue-300 rounded-sm ${themeClasses.border} ${themeClasses.focus}`}
+                                        placeholder={tab === 'win' ? "เลือกเลขวิน..." : "ระบุตัวเลข"} 
+                                        className={`w-full bg-white border-b-2 text-center text-xl font-bold py-2 focus:outline-none text-slate-800 placeholder-blue-300 rounded-lg shadow-sm transition-all h-[44px] ${themeClasses.border} ${themeClasses.focus}`}
                                         maxLength={getInputConfig().max}
                                     />
                                 </div>
 
+                                {/* 2. ปุ่มกลับเลข */}
                                 {(tab === '2' || tab === '3' || tab === 'win') && (
                                     <button 
                                         onClick={handleReverseBuffer}
                                         disabled={bufferNumbers.length === 0}
                                         title="กด Spacebar เพื่อกลับเลข"
-                                        className="bg-[#F39C12] hover:bg-[#E67E22] disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold px-4 py-2 rounded-md shadow-md transition-all flex items-center justify-center gap-1 w-full lg:w-auto lg:shrink-0 whitespace-nowrap h-11"
+                                        className="bg-[#F39C12] hover:bg-[#E67E22] disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold px-4 py-2 rounded-lg shadow-sm transition-all flex items-center justify-center gap-1 w-full sm:w-auto shrink-0 h-[44px]"
                                     >
                                         <Settings2 size={18} /> กลับเลข
                                     </button>
                                 )}
 
-                                <div className="flex gap-2 w-full lg:w-auto lg:shrink-0">
-                                    <div className="flex-1 lg:flex-none">
-                                        <label className="text-xs text-gray-500 font-bold mb-1 block lg:hidden text-center">{labels.top}</label>
-                                        
+                                {/* 3. ช่องราคาบน/ล่าง */}
+                                <div className="flex gap-2 w-full sm:w-auto shrink-0 min-w-[160px] flex-1 sm:flex-none">
+                                    <div className="flex-1 sm:w-24">
+                                        <label className="text-xs text-slate-500 font-bold mb-1.5 block text-center">{labels.top}</label>
                                         <input 
                                             ref={priceTopRef} 
                                             type="tel" 
                                             value={priceTop}
                                             onChange={e => setPriceTop(e.target.value)}
                                             onKeyDown={(e) => handleInputKeyDown(e, 'top')} 
-                                            placeholder={labels.top}
-                                            className={`w-full lg:w-24 bg-white/90 border-b-2 text-center font-bold py-1 focus:outline-none text-gray-700 rounded-sm ${themeClasses.border} ${themeClasses.focus}`}
+                                            placeholder="ราคา"
+                                            className={`w-full bg-white border-b-2 text-center font-bold py-2 focus:outline-none text-slate-800 rounded-lg shadow-sm transition-all h-[44px] ${themeClasses.border} ${themeClasses.focus}`}
                                         />
                                     </div>
-                                    <div className="flex-1 lg:flex-none">
-                                        <label className="text-xs text-gray-500 font-bold mb-1 block lg:hidden text-center">{labels.bottom}</label>
-                                        
+                                    <div className="flex-1 sm:w-24">
+                                        <label className="text-xs text-slate-500 font-bold mb-1.5 block text-center">{labels.bottom}</label>
                                         <input 
                                             ref={priceBottomRef} 
                                             type="tel" 
                                             value={priceBottom}
                                             onChange={e => setPriceBottom(e.target.value)}
                                             onKeyDown={(e) => handleInputKeyDown(e, 'bottom')} 
-                                            placeholder={labels.bottom}
-                                            className={`w-full lg:w-24 bg-white/90 border-b-2 text-center font-bold py-1 focus:outline-none text-gray-700 rounded-sm ${themeClasses.border} ${themeClasses.focus}`}
+                                            placeholder="ราคา"
+                                            className={`w-full bg-white border-b-2 text-center font-bold py-2 focus:outline-none text-slate-800 rounded-lg shadow-sm transition-all h-[44px] ${themeClasses.border} ${themeClasses.focus}`}
                                         />
                                     </div>
                                 </div>
 
+                                {/* 4. ปุ่มเพิ่มบิล */}
                                 <button 
                                     ref={addButtonRef}
                                     onClick={() => {
                                         handleAddBill();
                                         setTimeout(() => numberInputRef.current?.focus(), 50);
                                     }}
-                                    
-                                    className={`font-bold px-6 py-2 rounded-md shadow-md active:scale-95 transition-all flex items-center justify-center gap-1 w-full lg:w-auto lg:shrink-0 h-11 whitespace-nowrap ${themeClasses.main} ${themeClasses.hover}`}
+                                    className={`font-bold px-6 py-2 rounded-lg shadow-md active:scale-95 transition-all flex items-center justify-center gap-1 w-full sm:w-auto shrink-0 h-[44px] whitespace-nowrap ${themeClasses.main} ${themeClasses.hover}`}
                                 >
-                                    <span className="text-lg">+</span> เพิ่มบิล
+                                    <span className="text-xl leading-none">+</span> เพิ่มบิล
                                 </button>
                             </div>
 
