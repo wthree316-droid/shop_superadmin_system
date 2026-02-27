@@ -435,14 +435,37 @@ export default function ManageLottos() {
     // ไม่ต้อง return เพราะ Queue จัดการให้แล้ว
   }, [togglingIds, fetchData]);
 
+// ✅ อัปเดตฟังก์ชันลบหวย พร้อมระบบกันมือลั่น
   const handleDelete = useCallback(async (id: string) => {
-      confirmAction('ยืนยันการลบหวยนี้?', async () => {
-          try {
-              await client.delete(`/play/lottos/${id}`);
-              setLottos(prev => prev.filter(l => l.id !== id));
-          } catch(err:any) { alertAction(`ลบไม่สำเร็จ: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error'); }
-      }, 'ลบหวย', 'ยกเลิก');
-  }, []);
+      // 1. หาชื่อหวยมาแสดงใน Alert
+      const lottoToDelete = lottos.find(l => l.id === id);
+      const lottoName = lottoToDelete ? lottoToDelete.name : 'หวยนี้';
+
+      confirmAction(`⚠️ คำเตือนอันตราย: คุณกำลังจะลบ "${lottoName}"\nข้อมูลโพยที่ลูกค้าแทง, ยอดเงิน, และเลขอั้นทั้งหมดจะถูกลบทิ้งถาวร!`, () => {
+          
+          // 2. หน่วงเวลาเปิดกล่องให้พิมพ์ยืนยัน
+          setTimeout(async () => {
+              const input = prompt(`พิมพ์คำว่า "DELETE" เพื่อยืนยันการลบ ${lottoName} และข้อมูลทั้งหมด`);
+              if (input !== 'DELETE') {
+                  if (input !== null) toast.error("พิมพ์คำยืนยันไม่ถูกต้อง ยกเลิกการลบ");
+                  return;
+              }
+
+              // 3. เริ่มลบจริง
+              setIsLoading(true); // ใช้ State Loading เดิมเพื่อบล็อกหน้าจอ
+              try {
+                  await client.delete(`/play/lottos/${id}`);
+                  setLottos(prev => prev.filter(l => l.id !== id));
+                  alertAction('ลบหวยและข้อมูลโพยทั้งหมดเรียบร้อยแล้ว', 'สำเร็จ', 'success');
+              } catch(err:any) { 
+                  alertAction(`ลบไม่สำเร็จ: ${err.response?.data?.detail}`, 'ข้อผิดพลาด', 'error'); 
+              } finally {
+                  setIsLoading(false);
+              }
+          }, 150);
+
+      }, 'ลบทิ้งถาวร', 'ยกเลิก');
+  }, [lottos]); // อย่าลืมใส่ dependency lottos
 
   const openCreateModal = useCallback(() => {
     setEditingId(null);
@@ -716,7 +739,7 @@ export default function ManageLottos() {
 
                     <div className="flex-1 space-y-4">
                         {/* ✅ [NEW] Toggle สถานะเปิด/ปิดหวย */}
-                        <div className="bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-4">
+                        <div className="bg-linear-to-r from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-4">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${formData.is_active ? 'bg-green-500 text-white' : 'bg-slate-300 text-slate-500'}`}>
