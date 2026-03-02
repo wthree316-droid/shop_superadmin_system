@@ -23,27 +23,51 @@ export const TIME_CONSTANTS = {
 /**
  * เช็คว่าหวยเปิดรับแทงอยู่หรือไม่ (Real-time Check)
  */
-export const checkIsOpen = (lotto: LottoType, now: Date): boolean => {
+export const checkIsOpen = (lotto: any, now: Date): boolean => {
   if (lotto.is_active === false) return false;
   if (!lotto.close_time) return false;
 
-  // --- หวยรายเดือน (Monthly) เช่น หวยรัฐบาล ---
+  const currentStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const closeStr = lotto.close_time.substring(0, 5);
+  const openStr = lotto.open_time ? lotto.open_time.substring(0, 5) : null;
+
+  // --- 🌟 หวยรายเดือน (กำหนดเป็นช่วงวัน เช่น 2, 3, 4, 5) ---
   if (lotto.rules?.schedule_type === 'monthly') {
-    const closeDates = (lotto.rules.close_dates || [1, 16]).map(Number);
+    const activeDates = (lotto.rules.close_dates || [1, 16]).map(Number);
     const todayDate = now.getDate();
-    
-    if (closeDates.includes(todayDate)) {
-      const [cH, cM] = lotto.close_time.split(':').map(Number);
-      const closeToday = new Date(now);
-      closeToday.setHours(cH, cM, 0, 0);
-      return now <= closeToday;
+
+    // 1. ถ้าวันนี้ไม่อยู่ในวันที่เลือกไว้เลย = ปิดรับแทง
+    if (!activeDates.includes(todayDate)) return false;
+
+    // 2. ตรวจสอบว่าวันนี้เป็น "วันแรก" หรือ "วันสุดท้าย" ของรอบที่เลือกติดกันหรือไม่
+    const prevDate = new Date(now); prevDate.setDate(now.getDate() - 1);
+    const isFirstDay = !activeDates.includes(prevDate.getDate());
+
+    const nextDate = new Date(now); nextDate.setDate(now.getDate() + 1);
+    const isLastDay = !activeDates.includes(nextDate.getDate());
+
+    // 3. กำหนดเงื่อนไขเวลา
+    if (isFirstDay && isLastDay) {
+        // กรณีเลือกแค่วันเดียวโดดๆ
+        if (!openStr) return currentStr <= closeStr;
+        if (closeStr < openStr) {
+            return currentStr >= openStr || currentStr <= closeStr;
+        } else {
+            return currentStr >= openStr && currentStr <= closeStr;
+        }
+    } else if (isFirstDay) {
+        // วันแรก (เช่น วันที่ 2) -> ต้องรอให้ถึงเวลาเปิดก่อนค่อยแทงได้
+        return openStr ? currentStr >= openStr : true;
+    } else if (isLastDay) {
+        // วันสุดท้าย (เช่น วันที่ 5) -> แทงได้เรื่อยๆ จนกว่าจะถึงเวลาปิด
+        return currentStr <= closeStr;
+    } else {
+        // วันตรงกลาง (เช่น 3, 4) -> แทงได้ตลอด 24 ชั่วโมง
+        return true;
     }
-    
-    // วันอื่นๆ เปิดรับแทงล่วงหน้า
-    return true;
   }
 
-  // --- หวยรายวัน/หุ้น (เช็ควัน จันทร์-อาทิตย์) ---
+  // --- 🌟 หวยรายวัน/หุ้น (Daily/Weekly) ---
   if (lotto.open_days && Array.isArray(lotto.open_days) && lotto.open_days.length > 0) {
     const daysMap = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     const currentDayStr = daysMap[now.getDay()];
@@ -53,19 +77,11 @@ export const checkIsOpen = (lotto: LottoType, now: Date): boolean => {
     }
   }
 
-  // --- เช็คเวลา (รองรับข้ามวัน) ---
-  if (!lotto.open_time) {
-    const [cH, cM] = lotto.close_time.split(':').map(Number);
-    const closeToday = new Date(now);
-    closeToday.setHours(cH, cM, 0, 0);
-    return now <= closeToday;
+  // --- เช็คเวลาหวยรายวัน (รองรับข้ามวัน) ---
+  if (!openStr) {
+    return currentStr <= closeStr;
   }
 
-  const currentStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  const openStr = lotto.open_time.substring(0, 5);
-  const closeStr = lotto.close_time.substring(0, 5);
-
-  // ข้ามวัน (เช่น 08:00 - 00:10)
   if (closeStr < openStr) {
     return currentStr >= openStr || currentStr <= closeStr;
   } else {
@@ -76,69 +92,53 @@ export const checkIsOpen = (lotto: LottoType, now: Date): boolean => {
 /**
  * คำนวณวันปิดรอบถัดไป (Target Close Date)
  */
-export const getCloseDate = (lotto: LottoType, now: Date): Date | null => {
-  if (!lotto.close_time) return null;
-  
-  const [cH, cM] = lotto.close_time.split(':').map(Number);
-  const rules = lotto.rules || {};
-
-  // --- หวยรายเดือน ---
-  if (rules.schedule_type === 'monthly') {
-    const targetDates = (rules.close_dates || [1, 16]).map(Number).sort((a, b) => a - b);
-    const currentDay = now.getDate();
-    let targetDay = -1;
-    let targetMonth = now.getMonth();
-    let targetYear = now.getFullYear();
-
-    for (const d of targetDates) {
-      if (d > currentDay) { 
-        targetDay = d; 
-        break; 
-      }
-      if (d === currentDay) {
-        const closeToday = new Date(now);
-        closeToday.setHours(cH, cM, 0, 0);
-        if (now <= closeToday) { 
-          targetDay = d; 
-          break; 
-        }
-      }
-    }
-
-    if (targetDay === -1) {
-      targetDay = targetDates[0];
-      targetMonth++;
-      if (targetMonth > 11) { 
-        targetMonth = 0; 
-        targetYear++; 
-      }
-    }
-    return new Date(targetYear, targetMonth, targetDay, cH, cM, 0, 0);
-  }
-
-  // --- หวยรายวัน ---
-  const closeDate = new Date(now);
-  closeDate.setHours(cH, cM, 0, 0);
-
-  const isOvernight = lotto.open_time && lotto.close_time && 
-                      lotto.close_time.substring(0, 5) < lotto.open_time.substring(0, 5);
-
-  if (isOvernight) {
-    const currentTimeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    const closeTimeStr = lotto.close_time.substring(0, 5);
+export const getCloseDate = (lotto: any, now: Date): Date | null => {
+    if (!lotto.close_time) return null;
     
-    if (currentTimeStr > closeTimeStr) {
-      closeDate.setDate(closeDate.getDate() + 1);
-    }
-  } else {
-    if (now >= closeDate) {
-      closeDate.setDate(closeDate.getDate() + 1);
-    }
-  }
-  
-  return closeDate;
-};
+    const [cH, cM] = lotto.close_time.split(':').map(Number);
+    const rules = lotto.rules || {}; 
 
+    // --- A. หวยรายเดือน (ระบบกำหนดเป็นช่วงวัน) ---
+    if (rules.schedule_type === 'monthly') {
+        const activeDates = (rules.close_dates || [1, 16]).map(Number).sort((a: number, b: number) => a - b);
+        
+        for (let i = 0; i < 60; i++) {
+            const checkDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+            const checkDay = checkDate.getDate();
+            
+            if (activeDates.includes(checkDay)) {
+                const nextDate = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate() + 1);
+                if (!activeDates.includes(nextDate.getDate())) {
+                    const closeTimeOfLastDay = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate(), cH, cM, 0, 0);
+                    if (i === 0 && now >= closeTimeOfLastDay) continue;
+                    return closeTimeOfLastDay;
+                }
+            }
+        }
+        return null;
+    }
+
+    // --- B. หวยรายวัน ---
+    const closeDate = new Date(now);
+    closeDate.setHours(cH, cM, 0, 0);
+
+    const isOvernight = lotto.open_time && lotto.close_time && 
+                        lotto.close_time.substring(0, 5) < lotto.open_time.substring(0, 5);
+
+    if (isOvernight) {
+        const currentTimeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const closeTimeStr = lotto.close_time.substring(0, 5);
+        if (currentTimeStr > closeTimeStr) {
+            closeDate.setDate(closeDate.getDate() + 1);
+        }
+    } else {
+        if (now > closeDate) {
+            closeDate.setDate(closeDate.getDate() + 1);
+        }
+    }
+    
+    return closeDate;
+};
 /**
  * Format เวลาที่เหลือเป็น HH:MM:SS
  */

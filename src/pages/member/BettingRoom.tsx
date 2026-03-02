@@ -65,62 +65,64 @@ const CountDownTimer = ({ targetDate, onTimeout }: { targetDate: Date | null; on
 };
 
 const getCloseDate = (lotto: any, now: Date) => {
-  if (!lotto.close_time) return null;
-  
-  const [cH, cM] = lotto.close_time.split(':').map(Number);
-  const rules = lotto.rules || {}; 
+    if (!lotto.close_time) return null;
+    
+    const [cH, cM] = lotto.close_time.split(':').map(Number);
+    const rules = lotto.rules || {}; 
 
-  // --- A. หวยรายเดือน ---
-  if (rules.schedule_type === 'monthly') {
-      const targetDates = (rules.close_dates || [1, 16]).map(Number).sort((a: number, b: number) => a - b);
-      const currentDay = now.getDate();
-      let targetDay = -1;
-      let targetMonth = now.getMonth();
-      let targetYear = now.getFullYear();
+    // --- A. หวยรายเดือน (ระบบกำหนดเป็นช่วงวัน) ---
+    if (rules.schedule_type === 'monthly') {
+        const activeDates = (rules.close_dates || [1, 16]).map(Number).sort((a: number, b: number) => a - b);
+        
+        // สแกนไปข้างหน้าทีละวัน เพื่อหาวันสุดท้ายของรอบ
+        for (let i = 0; i < 60; i++) {
+            const checkDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+            const checkDay = checkDate.getDate();
+            
+            // ถ้าวันที่เช็คอยู่ อยู่ในลิสต์ที่แอดมินติ๊กเลือกไว้
+            if (activeDates.includes(checkDay)) {
+                
+                // ให้เช็คว่า "วันพรุ่งนี้" ยังอยู่ในลิสต์ไหม?
+                const nextDate = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate() + 1);
+                const nextDay = nextDate.getDate();
+                
+                // ถ้าพรุ่งนี้ไม่อยู่ในลิสต์ แสดงว่าวันนี้แหละคือ "วันสุดท้ายของรอบ" (เช่น วันที่ 5)
+                if (!activeDates.includes(nextDay)) {
+                    const closeTimeOfLastDay = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate(), cH, cM, 0, 0);
+                    
+                    // ถ้าระบบบอกว่าวันสุดท้ายคือ "วันนี้" และมัน "เลยเวลาปิดไปแล้ว" ให้วนลูปหาช่วงรอบถัดไป
+                    if (i === 0 && now >= closeTimeOfLastDay) {
+                        continue;
+                    }
+                    
+                    // คืนค่าวันสุดท้าย พร้อมเวลาปิดกลับไปให้เลข Countdown นับถอยหลัง
+                    return closeTimeOfLastDay;
+                }
+            }
+        }
+        return null;
+    }
 
-      for (const d of targetDates) {
-          if (d > currentDay) { targetDay = d; break; }
-          if (d === currentDay) {
-              const closeToday = new Date(now);
-              closeToday.setHours(cH, cM, 0, 0);
-              // ถ้ายังไม่เลยเวลาปิด ก็เอาวันนี้
-              if (now <= closeToday) { targetDay = d; break; }
-          }
-      }
+    // --- B. หวยรายวัน ---
+    const closeDate = new Date(now);
+    closeDate.setHours(cH, cM, 0, 0);
 
-      if (targetDay === -1) {
-          targetDay = targetDates[0]; 
-          targetMonth++; 
-          if (targetMonth > 11) { targetMonth = 0; targetYear++; }
-      }
-      return new Date(targetYear, targetMonth, targetDay, cH, cM, 0, 0);
-  }
+    const isOvernight = lotto.open_time && lotto.close_time && 
+                        lotto.close_time.substring(0, 5) < lotto.open_time.substring(0, 5);
 
-  // --- B. หวยรายวัน ---
-  const closeDate = new Date(now);
-  closeDate.setHours(cH, cM, 0, 0);
-
-  // เช็คว่าข้ามวันหรือไม่
-  const isOvernight = lotto.open_time && lotto.close_time && 
-                      lotto.close_time.substring(0, 5) < lotto.open_time.substring(0, 5);
-
-  if (isOvernight) {
-      // กรณีข้ามวัน
-      const currentTimeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-      const closeTimeStr = lotto.close_time.substring(0, 5);
-      
-      if (currentTimeStr > closeTimeStr) {
-          // เลยเวลาปิดแล้ว ให้เป้าหมายเป็นพรุ่งนี้
-          closeDate.setDate(closeDate.getDate() + 1);
-      }
-  } else {
-      // กรณีปกติ (ไม่ข้ามวัน)
-      if (now > closeDate) {
-          closeDate.setDate(closeDate.getDate() + 1);
-      }
-  }
-  
-  return closeDate;
+    if (isOvernight) {
+        const currentTimeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const closeTimeStr = lotto.close_time.substring(0, 5);
+        if (currentTimeStr > closeTimeStr) {
+            closeDate.setDate(closeDate.getDate() + 1);
+        }
+    } else {
+        if (now > closeDate) {
+            closeDate.setDate(closeDate.getDate() + 1);
+        }
+    }
+    
+    return closeDate;
 };
 
 const getRateVal = (rateObj: any, field: 'pay' | 'min' | 'max') => {

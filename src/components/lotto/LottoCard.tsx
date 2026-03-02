@@ -33,6 +33,23 @@ const LottoCard: React.FC<LottoCardProps> = ({ lotto, now, onNavigate }) => {
     }
   };
 
+  // สร้างข้อความเวลาปิดที่ฉลาดขึ้น
+    const getCloseText = () => {
+        if (!lotto.close_time) return "ไม่ระบุเวลา";
+        
+        const closeDate = getCloseDate(lotto, now);
+        
+        if (lotto.rules?.schedule_type === 'monthly' && closeDate) {
+            // ถ้าเป็นหวยรายเดือน ให้โชว์วันที่และเดือนแบบย่อด้วย เช่น "ปิด 16 ก.พ. 15:30 น."
+            const day = closeDate.getDate();
+            const month = closeDate.toLocaleDateString('th-TH', { month: 'short' });
+            return `ปิด ${day} ${month} ${lotto.close_time.substring(0, 5)} น.`;
+        } else {
+            // ถ้าเป็นหวยรายวัน โชว์แค่เวลาปกติ
+            return `ปิด ${lotto.close_time.substring(0, 5)} น.`;
+        }
+    };
+
   return (
     <div 
       role="button"
@@ -81,14 +98,11 @@ const LottoCard: React.FC<LottoCardProps> = ({ lotto, now, onNavigate }) => {
       <div className={`text-[10px] space-y-0.5 font-medium ${isOpen ? 'text-white/90' : 'text-gray-500'}`}>
         {/* แถว: ปิดรับเมื่อไหร่ */}
         <div className="flex justify-between border-b border-white/10 pb-0.5 mb-0.5">
-          {closeDate && closeDate.getDate() !== now.getDate() ? (
-            <span className={`${isOpen ? 'text-yellow-200' : 'text-gray-600'} font-bold`}>
-              ปิด {closeDate.getDate()}/{closeDate.getMonth() + 1}
-            </span>
-          ) : (
-            <span>ปิดรับวันนี้</span>
-          )}
-          <span className="font-bold">{lotto.close_time?.substring(0, 5) || '-'}</span>
+          <span>ปิดรับ</span>
+          <span className={`${isOpen ? 'text-yellow-200' : 'text-gray-600'} font-bold`}>
+            {/* เรียกใช้ฟังก์ชัน และตัดคำว่า "ปิด " ข้างหน้าออก เพื่อให้ข้อความเรียงสวยงาม */}
+            {getCloseText().replace('ปิด ', '')}
+          </span>
         </div>
         
         {/* แถว: ออกผล */}
