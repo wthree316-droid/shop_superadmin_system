@@ -1,8 +1,7 @@
 // ============================================
 // LottoCard Component - Optimized & Accessible
 // ============================================
-
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Clock, Lock } from 'lucide-react';
 import type { LottoCardProps } from '../../types/lotto';
 import { 
@@ -12,14 +11,35 @@ import {
   TIME_CONSTANTS 
 } from '../../utils/lottoHelpers';
 
+// 🌟 Component จิ๋ว: ทำหน้าที่นับเวลาถอยหลังอย่างเดียว (ลดภาระการเรนเดอร์ของการ์ดหลัก)
+const LiveTimer = ({ closeDate }: { closeDate: Date }) => {
+    const [tick, setTick] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => setTick(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const diff = closeDate.getTime() - tick.getTime();
+    const timeLeftStr = formatTimeRemaining(diff);
+    const isCritical = diff < TIME_CONSTANTS.THIRTY_MINUTES;
+
+    if (diff <= 0) return <span className="font-bold text-red-500 flex items-center gap-1"><Lock size={10} /> ปิดแล้ว</span>;
+
+    return (
+        <span className={`
+          font-bold px-1.5 py-0 rounded text-[9px] whitespace-nowrap flex items-center gap-1
+          ${isCritical ? 'bg-red-600 text-white animate-pulse shadow-sm' : 'bg-black/20'}
+        `}>
+          {isCritical && <Clock size={10} strokeWidth={3} />} 
+          ปิดใน {timeLeftStr}
+        </span>
+    );
+};
 const LottoCard: React.FC<LottoCardProps> = ({ lotto, now, onNavigate }) => {
   const isOpen = useMemo(() => checkIsOpen(lotto, now), [lotto, now]);
   const closeDate = useMemo(() => getCloseDate(lotto, now), [lotto, now]);
   
-  const diff = closeDate ? closeDate.getTime() - now.getTime() : 0;
-  const timeLeftStr = isOpen ? formatTimeRemaining(diff) : null;
-  const isCritical = isOpen && diff < TIME_CONSTANTS.THIRTY_MINUTES;
-
   const handleClick = () => {
     if (isOpen) {
       onNavigate(lotto.id);
@@ -33,21 +53,45 @@ const LottoCard: React.FC<LottoCardProps> = ({ lotto, now, onNavigate }) => {
     }
   };
 
-  // สร้างข้อความเวลาปิดที่ฉลาดขึ้น
-    const getCloseText = () => {
-        if (!lotto.close_time) return "ไม่ระบุเวลา";
+  // สร้างข้อความบอกช่วงเวลา เปิด-ปิด ที่กระชับและดูโปรที่สุด
+    const getScheduleText = () => {
+        const oTime = lotto.open_time?.substring(0, 5) || 'รอประกาศ';
+        const cTime = lotto.close_time?.substring(0, 5) || 'รอประกาศ';
         
-        const closeDate = getCloseDate(lotto, now);
-        
-        if (lotto.rules?.schedule_type === 'monthly' && closeDate) {
-            // ถ้าเป็นหวยรายเดือน ให้โชว์วันที่และเดือนแบบย่อด้วย เช่น "ปิด 16 ก.พ. 15:30 น."
-            const day = closeDate.getDate();
-            const month = closeDate.toLocaleDateString('th-TH', { month: 'short' });
-            return `ปิด ${day} ${month} ${lotto.close_time.substring(0, 5)} น.`;
-        } else {
-            // ถ้าเป็นหวยรายวัน โชว์แค่เวลาปกติ
-            return `ปิด ${lotto.close_time.substring(0, 5)} น.`;
+        // 🌟 กรณีเป็นหวยรายเดือน (เช่น หวยรัฐบาล)
+        if (lotto.rules?.schedule_type === 'monthly' && lotto.rules.close_dates) {
+            const closeDateToUse = getCloseDate(lotto, now);
+            if (closeDateToUse) {
+                const activeDates = lotto.rules.close_dates.map(Number);
+                let startDate = new Date(closeDateToUse);
+                
+                // ถอยหลังหาวันแรกของรอบ
+                for (let i = 0; i < 31; i++) {
+                    const checkDate = new Date(closeDateToUse.getFullYear(), closeDateToUse.getMonth(), closeDateToUse.getDate() - i);
+                    const prevDate = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate() - 1);
+                    if (activeDates.includes(checkDate.getDate()) && !activeDates.includes(prevDate.getDate())) {
+                        startDate = checkDate;
+                        break;
+                    }
+                }
+                
+                const sDay = startDate.getDate();
+                const sMonth = startDate.toLocaleDateString('th-TH', { month: 'short' });
+                const cDay = closeDateToUse.getDate();
+                const cMonth = closeDateToUse.toLocaleDateString('th-TH', { month: 'short' });
+
+                // จัดรูปแบบให้สวยงามและอ่านง่ายที่สุด
+                if (sMonth === cMonth) {
+                    if (sDay === cDay) return `${sDay} ${sMonth} (${oTime}-${cTime} น.)`; // เปิดวันเดียว: 16 ก.พ. (06:00-15:30น.)
+                    return `วันที่ ${sDay}-${cDay} ${sMonth} (${cTime} น.)`; // เปิดหลายวัน: 13-16 ก.พ. (15:30น.)
+                }
+                // ข้ามเดือน: 30 ม.ค. - 1 ก.พ. (15:30น.)
+                return `${sDay} ${sMonth} - ${cDay} ${cMonth} (${cTime} น.)`; 
+            }
         }
+        
+        // 🌟 กรณีเป็นหวยรายวัน (แสดงแค่เวลา)
+        return `${oTime} - ${cTime} น.`;
     };
 
   return (
@@ -96,39 +140,30 @@ const LottoCard: React.FC<LottoCardProps> = ({ lotto, now, onNavigate }) => {
       </div>
 
       <div className={`text-[10px] space-y-0.5 font-medium ${isOpen ? 'text-white/90' : 'text-gray-500'}`}>
-        {/* แถว: ปิดรับเมื่อไหร่ */}
-        <div className="flex justify-between border-b border-white/10 pb-0.5 mb-0.5">
-          <span>ปิดรับ</span>
-          <span className={`${isOpen ? 'text-yellow-200' : 'text-gray-600'} font-bold`}>
-            {/* เรียกใช้ฟังก์ชัน และตัดคำว่า "ปิด " ข้างหน้าออก เพื่อให้ข้อความเรียงสวยงาม */}
-            {getCloseText().replace('ปิด ', '')}
+        {/* แถว: ช่วงเวลา เปิด-ปิด */}
+        <div className="flex justify-between items-center border-b border-white/10 pb-0.5 mb-0.5">
+          <span>เวลา</span>
+          <span className={`${isOpen ? 'text-yellow-200' : 'text-gray-400'} font-bold tracking-tight`}>
+            {getScheduleText()}
           </span>
         </div>
         
         {/* แถว: ออกผล */}
         <div className="flex justify-between border-b border-white/10 pb-0.5 mb-0.5">
           <span>ออกผล</span>
-          <span className="font-bold">{lotto.result_time?.substring(0, 5) || '-'}</span>
+          <span className="font-bold">{lotto.result_time?.substring(0, 5) || '-'} น.</span>
         </div>
 
         {/* แถว: สถานะ/เวลานับถอยหลัง */}
         <div className="flex justify-between items-center pt-0.5">
           <span>สถานะ</span>
-          {!isOpen ? (
+          {!isOpen || !closeDate ? (
             <span className="font-bold text-red-500 flex items-center gap-1">
-              <Lock size={10} /> ปิดชั่วคราว
+              <Lock size={10} /> ปิดแล้ว
             </span>
           ) : (
-            <span className={`
-              font-bold px-1.5 py-0 rounded text-[9px] whitespace-nowrap flex items-center gap-1
-              ${isCritical 
-                ? 'bg-red-600 text-white animate-pulse shadow-sm' 
-                : 'bg-black/20' 
-              }
-            `}>
-              {isCritical && <Clock size={10} strokeWidth={3} />} 
-              ปิดใน {timeLeftStr}
-            </span>
+            // ✅ นำ Component จิ๋วมาวางแทนที่ตรงนี้
+            <LiveTimer closeDate={closeDate} /> 
           )}
         </div>
       </div>

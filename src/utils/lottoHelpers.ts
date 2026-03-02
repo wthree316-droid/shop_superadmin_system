@@ -147,7 +147,7 @@ export const formatTimeRemaining = (diff: number): string | null => {
   const h = Math.floor(diff / TIME_CONSTANTS.ONE_HOUR);
   const m = Math.floor((diff % TIME_CONSTANTS.ONE_HOUR) / TIME_CONSTANTS.ONE_MINUTE);
   const s = Math.floor((diff % TIME_CONSTANTS.ONE_MINUTE) / TIME_CONSTANTS.ONE_SECOND);
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')} น.`;
 };
 
 // ============================================
