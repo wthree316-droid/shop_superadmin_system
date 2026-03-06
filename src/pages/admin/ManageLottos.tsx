@@ -395,38 +395,33 @@ export default function ManageLottos() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const toggleStatus = useCallback(async (id: string) => {
-    // ✅ [FIX] ป้องกันการกดซ้ำ ID เดียวกัน
+    // ป้องกันการกดซ้ำ ID เดียวกัน
     if (togglingIds.has(id)) {
         console.log(`⏭️ Toggle ${id} already in progress, skipping...`);
         return;
     }
     
-    // ✅ [FIX] เพิ่มเข้า Queue (Serialize toggles) เพื่อป้องกัน Race Condition
     toggleQueueRef.current = toggleQueueRef.current.then(async () => {
-      // เพิ่ม ID เข้า Set (แสดงว่ากำลัง toggle)
       setTogglingIds(prev => new Set(prev).add(id));
       
       try { 
-          // 1. เรียก API และรอให้เสร็จ
+          // 1. เรียก API เพื่อสลับสถานะใน Database
           const response = await client.patch(`/play/lottos/${id}/toggle`); 
-          console.log(`✅ Toggle API success:`, response.data);
+          const newState = response.data.new_state; // รับสถานะใหม่ที่ตอบกลับมาจากเซิร์ฟเวอร์
           
-          // 2. ✅ [OPTIMIZED] รอให้ Backend commit (ลดจาก 150ms → 100ms)
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // 🌟 2. อัปเดตหน้าจอทันที (ไม่ต้องเรียก fetchData() ทั้งดุ้น)
+          setLottos(prevLottos => prevLottos.map(lotto => 
+              lotto.id === id ? { ...lotto, is_active: newState } : lotto
+          ));
           
-          // 3. โหลดข้อมูลใหม่จาก Backend
-          await fetchData();
-          
-          // 4. ✅ [OPTIMIZED] รอให้ React render (ลดจาก 100ms → 50ms)
-          await new Promise(resolve => setTimeout(resolve, 50));
+          toast.success(`เปลี่ยนสถานะเป็น ${newState ? 'เปิด' : 'ปิด'} เรียบร้อย`);
       } 
       catch (err: any) { 
           console.error(`❌ Toggle ${id} error:`, err);
           toast.error('เปลี่ยนสถานะไม่สำเร็จ');
-          // ถ้าพัง โหลดข้อมูลเดิมกลับมาเพื่อ sync
+          // ถ้าพังจริงๆ ค่อยโหลดข้อมูลใหม่เพื่อซิงค์ให้ตรงกับ DB
           await fetchData(); 
       } finally {
-          // ลบ ID ออกจาก Set (toggle เสร็จแล้ว)
           setTogglingIds(prev => {
               const newSet = new Set(prev);
               newSet.delete(id);
@@ -436,10 +431,9 @@ export default function ManageLottos() {
     }).catch(err => {
         console.error('❌ Queue error:', err);
     });
-    
-    // ไม่ต้อง return เพราะ Queue จัดการให้แล้ว
   }, [togglingIds, fetchData]);
 
+  
 // ✅ อัปเดตฟังก์ชันลบหวย พร้อมระบบกันมือลั่น
   const handleDelete = useCallback(async (id: string) => {
       // 1. หาชื่อหวยมาแสดงใน Alert
