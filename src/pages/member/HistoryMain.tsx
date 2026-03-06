@@ -1,17 +1,20 @@
-import { useState } from 'react';
 import { FileSpreadsheet, ClipboardList, Users } from 'lucide-react';
+// ✅ 1. นำเข้า useSearchParams แทน useState
+import { useSearchParams } from 'react-router-dom'; 
 
 import History_outside from '../dashboard/History_outside';
 import History from '../dashboard/History';
 import ShopHistory from '../dashboard/ShopHistory'; 
 
 export default function HistoryMain() {
-  const [activeTab, setActiveTab] = useState('outside');
+  // ✅ 2. ใช้ URL Params เก็บสถานะแท็บแทน (ถ้าไม่มีค่าใน URL ให้ค่าเริ่มต้นเป็น 'outside')
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'outside';
 
   const tabs = [
     { id: 'outside', label: 'โพยไม่แยกประเภท', icon: FileSpreadsheet },
     { id: 'inside', label: 'โพยแยกประเภท', icon: ClipboardList },
-    { id: 'shop', label: 'โพยลูกค้า (ทุกคน)', icon: Users },
+    { id: 'shop', label: 'โพยทุกคน', icon: Users },
   ];
 
   return (
@@ -38,7 +41,8 @@ export default function HistoryMain() {
                     return (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
+                            // ✅ 3. เวลากดเปลี่ยนแท็บ ให้เปลี่ยนค่าบน URL แทน
+                            onClick={() => setSearchParams({ tab: tab.id })}
                             className={`
                                 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all duration-200
                                 ${isActive 
