@@ -362,36 +362,44 @@ export default function BettingRoom() {
         if (errorCount > 0) toast.error(`ข้าม ${errorCount} ตัวที่หลักไม่ครบ/เกิน`);
     };
 
-    // 🌟 ฟังก์ชันแคปจอแบบอัปเกรด (พร้อมระบบ Fallback Download)
+    // 🌟 ฟังก์ชันแคปจอแบบอัปเกรด (ใช้เทคนิค Promise รอรูป)
     const handleScreenshot = async () => {
         if (!billRef.current || cart.length === 0) return;
-        const toastId = toast.loading('กำลังประมวลผลรูปภาพ...');
+        const toastId = toast.loading('กำลังประมวลผลรูปภาพบิล...');
         
         try {
             await new Promise(resolve => setTimeout(resolve, 200));
 
-            const blob = await htmlToImage.toBlob(billRef.current, {
+            // 1. สร้างฟังก์ชันสำหรับวาดรูป (ยังไม่สั่งทำงานทันที)
+            // 💡 ทริค: ลด pixelRatio จาก 2 เป็น 1.5 ภาพยังสวยคมชัด แต่ประมวลผลไวขึ้นและกิน RAM น้อยลงครึ่งนึง!
+            const getBlobData = () => htmlToImage.toBlob(billRef.current!, {
                 backgroundColor: '#ffffff',
                 quality: 0.9,     
-                pixelRatio: 2, 
+                pixelRatio: 1.5, 
                 cacheBust: true, 
                 filter: (node) => {
                     if (node instanceof HTMLElement && node.dataset.ignore) return false;
                     return true;
                 }
+            }).then(blob => {
+                if (!blob) throw new Error('ไม่สามารถสร้างรูปภาพได้');
+                return blob;
             });
 
-            if (!blob) throw new Error('ไม่สามารถสร้างรูปภาพได้');
-            
             try {
-                // แผน A: พยายามคัดลอกลง Clipboard
+                // 2. แผน A: สั่งคัดลอกทันที! โดยส่ง Promise (getBlobData) ไปให้เบราว์เซอร์รอ
                 await navigator.clipboard.write([
-                    new ClipboardItem({ 'image/png': blob })
+                    new ClipboardItem({
+                        'image/png': getBlobData() 
+                    })
                 ]);
                 toast.success('คัดลอกรูปภาพแล้ว! นำไปวางส่งได้เลย', { id: toastId }); 
+                
             } catch (clipboardError) {
-                // แผน B: กรณีคัดลอกลง Clipboard ไม่ได้ (มือถือบางรุ่น) ให้ดาวน์โหลดภาพแทน
-                console.warn('Fallback to download', clipboardError);
+                // 3. แผน B: ถ้าเบราว์เซอร์เก่าเกินไปหรือไม่ยอมรับ Promise ค่อยใช้วิธีดาวน์โหลด
+                console.warn('Clipboard write failed, falling back to download', clipboardError);
+                
+                const blob = await getBlobData();
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -402,6 +410,7 @@ export default function BettingRoom() {
                 URL.revokeObjectURL(url);
                 toast.success('บันทึกรูปบิลลงเครื่องแล้ว!', { id: toastId });
             }
+            
         } catch (error) {
             console.error('Screenshot error:', error);
             toast.error('แคปหน้าจอไม่สำเร็จ โปรดลองอีกครั้ง', { id: toastId });
