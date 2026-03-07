@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import client from '../../api/client';
 import { 
-  X, RefreshCw, Receipt, Eye, Ban,
+  RefreshCw, Receipt, Eye, Ban,
   Loader2, ArrowDown, ArrowRight // ✅ เพิ่มไอคอน
 } from 'lucide-react';
 import { calculateWinAmount, calculateNet } from '../../utils/lottoHelpers';
 import { alertAction, confirmAction } from '../../utils/toastUtils';
 import QuickDateFilters from '../../components/common/QuickDateFilters';
+import TicketDetailModal from '../../components/common/TicketDetailModal'; 
 
 export default function HistoryOutside() {
   // --- Data States ---
@@ -29,7 +30,7 @@ export default function HistoryOutside() {
   // --- Infinite Scroll States (✅ 2. Logic เลื่อนดูเรื่อยๆ) ---
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [itemsPerPage] = useState(100); // โหลดทีละ 20 รายการ
+  const [itemsPerPage] = useState(200);
 
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
 
@@ -277,114 +278,12 @@ export default function HistoryOutside() {
           )}
       </div>
 
-      {/* Modal Detail */}
-      {selectedTicket && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-              <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95">
-                  <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                      <div>
-                          <h3 className="font-bold text-lg text-slate-800">รายละเอียดบิล</h3>
-                          <div className="text-xs text-slate-500">#{selectedTicket.id.substring(0, 8)}...</div>
-                      </div>
-                      <button onClick={() => setSelectedTicket(null)} className="p-1 hover:bg-gray-200 rounded-full"><X size={20} /></button>
-                  </div>
-                  <div className="p-4 overflow-y-auto bg-white flex-1 custom-scrollbar">
-                        <table className="w-full text-sm">
-                            <thead className="bg-gray-100 font-bold text-xs uppercase text-slate-500">
-                                <tr>
-                                      <th className="p-3 text-left">เลข</th>
-                                      <th className="p-3 text-left">ประเภท</th>
-                                      <th className="p-3 text-right">เรท</th>
-                                      <th className="p-3 text-right">ราคา</th>
-                                      <th className="p-3 text-right">รวม</th>
-                                      <th className="p-3 text-center">ผล</th>
-                                  </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                {selectedTicket.items?.map((item: any, i: number) => {
-                                    // ✅ 1. เช็คว่าเป็นเลขปิดหรือไม่ (เรท 0)
-                                    const isClosed = Number(item.reward_rate) === 0;
-                                    
-                                    const potentialReward = Number(item.amount) * Number(item.reward_rate);
-                                    const translateType = (type: string) => {
-                                        const map: Record<string, string> = {
-                                            '2up': '2ตัวบน', '2down': '2ตัวล่าง',
-                                            '3top': '3ตัวตรง', '3tod': '3ตัวโต๊ด',
-                                            'run_up': 'วิ่งบน', 'run_down': 'วิ่งล่าง'
-                                        };
-                                        return map[type] || type;
-                                    };
-                                    return (
-                                        // ✅ 2. ถ้าปิด ให้พื้นหลังเป็นสีแดงอ่อนๆ
-                                        <tr key={i} className={isClosed ? 'bg-red-50/50' : (item.status === 'WIN' ? 'bg-green-50' : '')}>
-                                            <td className="p-3 font-bold text-slate-700">
-                                                {/* ✅ 3. ถ้าปิด ให้ขีดฆ่าเลข */}
-                                                <span className={isClosed ? 'line-through text-red-400' : ''}>{item.number}</span>
-                                            </td>
-                                            <td className="p-3 text-xs text-slate-500">{translateType(item.bet_type)}</td>
-                                            
-                                            {/* ✅ 4. จัดการแสดงผล เรท/ราคา/ผล */}
-                                            {isClosed ? (
-                                                <>
-                                                    <td colSpan={3} className="p-3 text-center">
-                                                        <span className="text-[10px] font-bold text-red-500 border border-red-200 bg-white px-2 py-1 rounded-lg">
-                                                            ปิดรับ (คืนทุน)
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-3 text-right">
-                                                        <span className="text-slate-400 text-xs">-</span>
-                                                    </td>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <td className="p-3 text-right text-gray-500 text-xs">{Number(item.reward_rate).toLocaleString()}</td>
-                                                    <td className="p-3 text-right font-mono">{Number(item.amount).toLocaleString()}</td>
-                                                    <td className="p-3 text-right font-bold text-blue-600 text-xs">{potentialReward.toLocaleString()}</td>
-                                                    <td className="p-3 text-right">
-                                                        {item.status === 'WIN' ? <span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-full">ถูกรางวัล</span> : 
-                                                        item.status === 'LOSE' ? <span className="text-red-400 text-xs">ไม่ถูก</span> : 
-                                                        <span className="text-orange-400 text-xs font-medium">รอผล</span>}
-                                                    </td>
-                                                </>
-                                            )}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                  </div>
-                  <div className="p-4 border-t bg-gray-50 space-y-3">
-                      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm space-y-2">
-                          <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-500">ยอดซื้อรวม:</span>
-                              <span className="font-bold text-slate-800">{Number(selectedTicket.total_amount).toLocaleString()} บาท</span>
-                          </div>
-                          <div className="flex justify-between items-center text-sm border-t border-dashed pt-2">
-                              <span className="text-slate-500">ผลรางวัลรวม:</span>
-                              {(() => {
-                                  const winAmount = calculateWinAmount(selectedTicket);
-                                  return winAmount > 0 ? (
-                                      <span className="font-bold text-green-600">+{Number(winAmount).toLocaleString()} บาท</span>
-                                  ) : selectedTicket.status === 'PENDING' ? (
-                                      <span className="font-bold text-orange-400">รอผลรางวัล</span>
-                                  ) : (
-                                      <span className="font-bold text-red-500">ไม่ถูกรางวัล</span>
-                                  );
-                              })()}
-                          </div>
-                      </div>
-                      {selectedTicket.status === 'PENDING' && (
-                          <button 
-                            onClick={() => handleCancel(selectedTicket.id)} 
-                            className="w-full py-3 bg-white text-red-600 font-bold rounded-xl border-2 border-red-100 hover:bg-red-50 hover:border-red-200 transition-all shadow-sm"
-                          >
-                              ยกเลิกบิลคืนเงิน
-                          </button>
-                      )}
-                  </div>
-              </div>
-          </div>
-      )}
+      {/* 🌟 เรียกใช้ Modal จากส่วนกลาง */}
+      <TicketDetailModal 
+          ticket={selectedTicket} 
+          onClose={() => setSelectedTicket(null)} 
+          onCancelTicket={handleCancel} 
+      />
     </div>
   );
 }
