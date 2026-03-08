@@ -153,24 +153,16 @@ export const formatTimeRemaining = (diff: number): string | null => {
 // ============================================
 // Ticket Calculation Functions
 // ============================================
-
-/**
- * คำนวณยอดเงินรางวัลรวมของบิล (Winning Amount)
- */
-export const calculateWinAmount = (ticket: any): number => {
-  if (ticket.status !== 'WIN') return 0;
-  // ป้องกัน item.winning_amount เป็น null/undefined
-  return ticket.items.reduce((sum: number, item: any) => sum + Number(item.winning_amount || 0), 0);
+export const calculateWinAmount = (ticket: any) => {
+    // 🌟 ดึงยอดรางวัลที่เซฟมากับบิลได้เลย ไม่ต้องบวกเลขไส้ในแล้ว
+    return Number(ticket.winning_amount || 0);
 };
 
-/**
- * คำนวณยอดสุทธิ (Net) = ยอดถูก - ยอดซื้อ
- */
-export const calculateNet = (ticket: any): number => {
-  if (ticket.status === 'CANCELLED') return 0;
-  const win = calculateWinAmount(ticket);
-  const buy = Number(ticket.total_amount || 0);
-  return win - buy;
+export const calculateNet = (ticket: any) => {
+    // 🌟 กำไร/ขาดทุน = ยอดถูกรางวัล - ยอดแทง
+    const winAmount = Number(ticket.winning_amount || 0);
+    const totalAmount = Number(ticket.total_amount || 0);
+    return winAmount - totalAmount;
 };
 
 // ============================================
