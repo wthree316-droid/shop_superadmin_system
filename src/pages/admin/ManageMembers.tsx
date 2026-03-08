@@ -19,7 +19,7 @@ export default function ManageMembers() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   
   // Forms State
-  const [newMember, setNewMember] = useState({ username: '', password: '', full_name: '', commission_percent: '' as string | number });
+  const [newMember, setNewMember] = useState({ username: '', password: '', full_name: '', commission_percent: 0 as string | number });
   const [creditForm, setCreditForm] = useState({ amount: '', note: '' });
   const [resetForm, setResetForm] = useState({ username: '', password: '', commission_percent: '' as string | number });
 
@@ -58,7 +58,7 @@ export default function ManageMembers() {
       await client.post('/users/members', newMember);
       alertAction('สร้างสมาชิกใหม่เรียบร้อยแล้ว', 'สำเร็จ', 'success');
       setShowCreateModal(false);
-      setNewMember({ username: '', password: '', full_name: '', commission_percent: '' });
+      setNewMember({ username: '', password: '', full_name: '', commission_percent: 0 });
       fetchMembers();
     } catch (err: any) {
       alertAction(err.response?.data?.detail || 'สร้างไม่สำเร็จ', 'ข้อผิดพลาด', 'error');
