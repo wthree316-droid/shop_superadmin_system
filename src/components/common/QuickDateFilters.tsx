@@ -34,18 +34,26 @@ export default function QuickDateFilters({ setStartDate, setEndDate }: QuickDate
             case 'last7':
                 start.setDate(today.getDate() - 6);
                 break;
-            case 'thisWeek':
+            // 🌟 แก้ไขสัปดาห์นี้
+            case 'thisWeek': {
                 const day = today.getDay();
                 const diff = today.getDate() - day + (day === 0 ? -6 : 1); 
                 start.setDate(diff);
-                end.setDate(start.getDate() + 6); 
+                // ให้ end เริ่มจากวันเดียวกับ start แล้วบวกไป 6 วัน
+                end = new Date(start); 
+                end.setDate(end.getDate() + 6); 
                 break;
-            case 'lastWeek':
+            }
+            // 🌟 แก้ไขสัปดาห์ที่แล้ว
+            case 'lastWeek': {
                 const prevWeekDay = today.getDay();
                 const prevDiff = today.getDate() - prevWeekDay + (prevWeekDay === 0 ? -6 : 1) - 7;
                 start.setDate(prevDiff);
-                end.setDate(start.getDate() + 6);
+                // ให้ end เริ่มจากวันเดียวกับ start แล้วบวกไป 6 วัน
+                end = new Date(start); 
+                end.setDate(end.getDate() + 6);
                 break;
+            }
             case 'thisMonth':
                 start = new Date(today.getFullYear(), today.getMonth(), 1);
                 end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
