@@ -80,12 +80,10 @@ const ResultModal = memo(({ lotto, existingResult, dateStr, onClose, onSuccess }
             toast.dismiss(toastId);
 
             if (res.data.success) {
-                const { total_winners, total_payout, total_tickets_processed } = res.data;
-                
-                // ✅ ใช้ alertAction แบบใหม่ แสดงสรุปผล
+                // ✅ แสดงแจ้งเตือนแบบรองรับระบบ Background Task
                 alertAction(
-                    `ตรวจโพยเสร็จสิ้น ${total_tickets_processed} ใบ\n\n🎉 ถูกรางวัล: ${total_winners} รายการ\n💰 จ่ายเงินรวม: ${Number(total_payout).toLocaleString()} บาท`,
-                    'บันทึกสำเร็จ!',
+                    res.data.message || 'ระบบได้รับคำสั่งเรียบร้อยแล้ว กำลังตรวจโพยและแจกเงินรางวัลเบื้องหลัง คุณสามารถทำอย่างอื่นต่อได้เลย!',
+                    'รับคำสั่งสำเร็จ',
                     'success',
                     'ตกลง',
                     () => {
