@@ -30,7 +30,7 @@ export default function HistoryOutside() {
   // --- Infinite Scroll States (✅ 2. Logic เลื่อนดูเรื่อยๆ) ---
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [itemsPerPage] = useState(200);
+  const [itemsPerPage] = useState(10000);
 
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
 

@@ -34,7 +34,7 @@ export default function History() {
   // --- Infinite Scroll States ---
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [itemsPerPage] = useState(200); 
+  const [itemsPerPage] = useState(10000); 
 
   // --- Observer for Infinite Scroll ---
   const observer = useRef<IntersectionObserver | null>(null);
